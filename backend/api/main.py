@@ -1,0 +1,868 @@
+"""
+main.py — FastAPI backend for the NBA stat driver app.
+
+Endpoints:
+  GET /players              — search players in the database
+  GET /player-stats         — season/career/L30/L14 averages for a player
+  GET /decompose            — run driver decomposition for a player + stat + two periods
+
+Run locally:
+  uvicorn api.main:app --reload
+  or from the backend folder:
+  uvicorn main:app --reload
+"""
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from typing import Optional
+import sys
+import os
+import math
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from schema import get_conn
+from engine.decompose import decompose
+from engine.shots import decompose_shots
+from engine.training_data import build_dataset
+from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
+from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
+
+app = FastAPI(title="NBA Stat Driver API")
+
+# Allow the React dev server to talk to this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+
+# -----------------------------------------------------------------------
+# GET /players
+# -----------------------------------------------------------------------
+
+@app.get("/players")
+def get_players(
+    q: Optional[str] = Query(None, description="Search by name"),
+    season: Optional[str] = Query(None, description="e.g. 2023-24"),
+):
+    """
+    Return list of players in the database.
+    Optionally filter by name search and/or season.
+    """
+    conn = get_conn()
+
+    if season:
+        sql = """
+            SELECT slug, full_name, team, season
+            FROM players
+            WHERE season = ?
+        """
+        params = [season]
+        if q:
+            sql += " AND full_name LIKE ?"
+            params.append(f"%{q}%")
+        sql += " ORDER BY full_name"
+    else:
+        # Return one row per player — the most recent season
+        sql = """
+            SELECT slug, full_name, team, MAX(season) AS season
+            FROM players
+            WHERE 1=1
+        """
+        params = []
+        if q:
+            sql += " AND full_name LIKE ?"
+            params.append(f"%{q}%")
+        sql += " GROUP BY slug ORDER BY full_name"
+
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+
+    return [
+        {
+            "slug":   r["slug"],
+            "name":   r["full_name"],
+            "team":   r["team"],
+            "season": r["season"],
+        }
+        for r in rows
+    ]
+
+
+# -----------------------------------------------------------------------
+# GET /player-stats
+# -----------------------------------------------------------------------
+
+Z_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct', 'ft_pct']
+
+
+def _avg_row(rows):
+    """Aggregate a list of game_log rows into per-game averages."""
+    if not rows:
+        return None
+    gp        = len(rows)
+    pts       = sum(r["pts"]  for r in rows) / gp
+    reb       = sum(r["reb"]  for r in rows) / gp
+    ast       = sum(r["ast"]  for r in rows) / gp
+    stl       = sum(r["stl"]  for r in rows) / gp
+    blk       = sum(r["blk"]  for r in rows) / gp
+    tov       = sum(r["tov"]  for r in rows) / gp
+    fg3m      = sum(r["fg3m"] for r in rows) / gp
+    min_pg    = sum(r["min"]  for r in rows) / gp
+    fga_pg    = sum(r["fga"]  for r in rows) / gp
+    fta_pg    = sum(r["fta"]  for r in rows) / gp
+    total_fga = sum(r["fga"]  for r in rows)
+    total_fta = sum(r["fta"]  for r in rows)
+    fg_pct    = sum(r["fgm"]  for r in rows) / total_fga if total_fga else None
+    ft_pct    = sum(r["ftm"]  for r in rows) / total_fta if total_fta else None
+    return {
+        "gp":     gp,
+        "min_pg": round(min_pg, 1),
+        "pts":    round(pts,  1),
+        "reb":    round(reb,  1),
+        "ast":    round(ast,  1),
+        "stl":    round(stl,  1),
+        "blk":    round(blk,  1),
+        "tov":    round(tov,  1),
+        "fg3m":   round(fg3m, 1),
+        "fg_pct": round(fg_pct * 100, 1) if fg_pct is not None else None,
+        "ft_pct": round(ft_pct * 100, 1) if ft_pct is not None else None,
+        "fga_pg": round(fga_pg, 1),
+        "fta_pg": round(fta_pg, 1),
+    }
+
+
+def _league_data(conn, season=None, cutoff=None, min_games=10):
+    """
+    Fetch per-player averages for all qualifying players in a period.
+    Returns (stats_dict, player_rows) where:
+      stats_dict  — {stat: (mean, std)} for Z-score computation
+      player_rows — list of dicts with player_slug + per-stat averages
+    fg_pct and ft_pct are on the 0-100 scale to match _avg_row.
+    """
+    clauses = ["min > 0"]
+    params  = []
+    if season:
+        clauses.append("season = ?")
+        params.append(season)
+    if cutoff:
+        clauses.append("game_date >= ?")
+        params.append(cutoff)
+    where = " AND ".join(clauses)
+
+    rows = conn.execute(f"""
+        SELECT
+            player_slug,
+            AVG(pts)  AS pts,
+            AVG(reb)  AS reb,
+            AVG(ast)  AS ast,
+            AVG(stl)  AS stl,
+            AVG(blk)  AS blk,
+            AVG(tov)  AS tov,
+            AVG(fg3m) AS fg3m,
+            SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+            SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
+            AVG(fga) AS fga_pg,
+            AVG(fta) AS fta_pg
+        FROM game_logs
+        WHERE {where}
+        GROUP BY player_slug
+        HAVING COUNT(*) >= ?
+    """, params + [min_games]).fetchall()
+    rows = [dict(r) for r in rows]
+
+    if len(rows) < 2:
+        return None, rows
+
+    # League-mean FG%/FT% for volume-weighted impact calculation
+    fg_vals = [r['fg_pct'] for r in rows if r['fg_pct'] is not None]
+    ft_vals = [r['ft_pct'] for r in rows if r['ft_pct'] is not None]
+    league_mean_fg = sum(fg_vals) / len(fg_vals) if fg_vals else None
+    league_mean_ft = sum(ft_vals) / len(ft_vals) if ft_vals else None
+
+    for r in rows:
+        r['fg_impact'] = (
+            (r['fg_pct'] - league_mean_fg) * r['fga_pg']
+            if r['fg_pct'] is not None and league_mean_fg is not None else None
+        )
+        r['ft_impact'] = (
+            (r['ft_pct'] - league_mean_ft) * r['fta_pg']
+            if r['ft_pct'] is not None and league_mean_ft is not None else None
+        )
+
+    stats = {'_fg_mean': league_mean_fg, '_ft_mean': league_mean_ft}
+    for key in Z_KEYS:
+        if key == 'fg_pct':
+            vals = [r['fg_impact'] for r in rows if r['fg_impact'] is not None]
+        elif key == 'ft_pct':
+            vals = [r['ft_impact'] for r in rows if r['ft_impact'] is not None]
+        else:
+            vals = [r[key] for r in rows if r[key] is not None]
+        if len(vals) < 2:
+            stats[key] = (None, None)
+            continue
+        mean = sum(vals) / len(vals)
+        std  = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))
+        stats[key] = (mean, std if std > 0 else None)
+
+    return stats, rows
+
+
+def _composite_z(player_avgs, league):
+    """Sum of Z-scores across all stats (TOV inverted). Returns float or None."""
+    if not league:
+        return None
+    total, count = 0.0, 0
+    fg_mean = league.get('_fg_mean')
+    ft_mean = league.get('_ft_mean')
+    for key in Z_KEYS:
+        mean, std = league.get(key, (None, None))
+        if mean is None or std is None:
+            continue
+        if key == 'fg_pct':
+            if 'fg_impact' in player_avgs:
+                val = player_avgs['fg_impact']
+            else:
+                fg_pct = player_avgs.get('fg_pct')
+                fga_pg = player_avgs.get('fga_pg')
+                if fg_pct is None or fga_pg is None or fg_mean is None:
+                    continue
+                val = (fg_pct - fg_mean) * fga_pg
+        elif key == 'ft_pct':
+            if 'ft_impact' in player_avgs:
+                val = player_avgs['ft_impact']
+            else:
+                ft_pct = player_avgs.get('ft_pct')
+                fta_pg = player_avgs.get('fta_pg')
+                if ft_pct is None or fta_pg is None or ft_mean is None:
+                    continue
+                val = (ft_pct - ft_mean) * fta_pg
+        else:
+            val = player_avgs.get(key)
+        if val is None:
+            continue
+        z = (val - mean) / std
+        total += (-z if key == 'tov' else z)
+        count += 1
+    return total if count > 0 else None
+
+
+def _player_rank(player_slug, player_rows, league):
+    """Return (rank, n_players) based on composite Z-score."""
+    if not league or not player_rows:
+        return None, None
+    scores = []
+    for r in player_rows:
+        cz = _composite_z(r, league)
+        if cz is not None:
+            scores.append((r["player_slug"], cz))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    n = len(scores)
+    for i, (slug, _) in enumerate(scores):
+        if slug == player_slug:
+            return i + 1, n
+    return None, n
+
+
+def _with_zscores(avg, league):
+    """Attach z_* keys to an avg_row dict."""
+    if not avg or not league:
+        return avg
+    fg_mean = league.get('_fg_mean')
+    ft_mean = league.get('_ft_mean')
+    def z(key):
+        mean, std = league.get(key, (None, None))
+        if mean is None or std is None:
+            return None
+        if key == 'fg_pct':
+            val    = avg.get('fg_pct')
+            fga_pg = avg.get('fga_pg')
+            if val is None or fga_pg is None or fg_mean is None:
+                return None
+            impact = (val - fg_mean) * fga_pg
+            return round((impact - mean) / std, 2)
+        if key == 'ft_pct':
+            val    = avg.get('ft_pct')
+            fta_pg = avg.get('fta_pg')
+            if val is None or fta_pg is None or ft_mean is None:
+                return None
+            impact = (val - ft_mean) * fta_pg
+            return round((impact - mean) / std, 2)
+        val = avg.get(key)
+        if val is None:
+            return None
+        return round((val - mean) / std, 2)
+    return {**avg, **{f"z_{k}": z(k) for k in Z_KEYS}}
+
+
+@app.get("/player-stats")
+def get_player_stats(player: str = Query(..., description="Player slug")):
+    """Return career, per-season, L30 and L14 averages + Z-scores for a player."""
+    conn = get_conn()
+
+    player_row = conn.execute(
+        "SELECT full_name, team FROM players WHERE slug = ? ORDER BY season DESC LIMIT 1", (player,)
+    ).fetchone()
+    if not player_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Player '{player}' not found.")
+
+    # Team per season (use last entry for that season in case of trades)
+    team_by_season = {
+        r["season"]: r["team"]
+        for r in conn.execute(
+            "SELECT season, team FROM players WHERE slug = ? ORDER BY season, team", (player,)
+        ).fetchall()
+    }
+
+    rows = conn.execute("""
+        SELECT season, min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, game_date
+        FROM game_logs
+        WHERE player_slug = ? AND min > 0
+        ORDER BY game_date DESC
+    """, (player,)).fetchall()
+    rows = [dict(r) for r in rows]
+
+    from datetime import date, timedelta
+    today     = date.today()
+    cutoff_30 = str(today - timedelta(days=30))
+    cutoff_14 = str(today - timedelta(days=14))
+
+    # Group by season
+    seasons = {}
+    for r in rows:
+        seasons.setdefault(r["season"], []).append(r)
+
+    # Precompute league data for each unique season + career + L30 + L14
+    unique_seasons = list(seasons.keys())
+    league_by_season, rows_by_season = {}, {}
+    for s in unique_seasons:
+        lg, pr = _league_data(conn, season=s, min_games=10)
+        league_by_season[s] = lg
+        rows_by_season[s]   = pr
+
+    league_career, rows_career = _league_data(conn, min_games=20)
+    league_l30,    rows_l30    = _league_data(conn, cutoff=cutoff_30, min_games=5)
+    league_l14,    rows_l14    = _league_data(conn, cutoff=cutoff_14, min_games=3)
+
+    conn.close()
+
+    def with_rank(avg, league, player_rows):
+        if avg is None:
+            return None
+        rank, n = _player_rank(player, player_rows, league)
+        return {**_with_zscores(avg, league), "rank": rank, "rank_n": n}
+
+    season_avgs = [
+        {"period": s, "team": team_by_season.get(s, ""), **with_rank(_avg_row(g), league_by_season.get(s), rows_by_season.get(s, []))}
+        for s, g in sorted(seasons.items(), reverse=True)
+    ]
+
+    return {
+        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"]},
+        "career":  with_rank(_avg_row(rows),                                     league_career, rows_career),
+        "seasons": season_avgs,
+        "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30]), league_l30, rows_l30),
+        "l14":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_14]), league_l14, rows_l14),
+    }
+
+
+# -----------------------------------------------------------------------
+# GET /decompose
+# -----------------------------------------------------------------------
+
+@app.get("/decompose")
+def get_decompose(
+    player: str   = Query(..., description="Player slug e.g. doncilu01"),
+    stat:   str   = Query(..., description="reb | pts | ast | stl | blk | tov"),
+    pa_start: str = Query(..., description="Period A start date YYYY-MM-DD"),
+    pa_end:   str = Query(..., description="Period A end date YYYY-MM-DD"),
+    pb_start: str = Query(..., description="Period B start date YYYY-MM-DD"),
+    pb_end:   str = Query(..., description="Period B end date YYYY-MM-DD"),
+):
+    """
+    Decompose a player's stat change between two periods into driver contributions.
+    Returns a waterfall-ready payload.
+    """
+    valid_stats = ["reb", "pts", "ast", "stl", "blk", "tov"]
+    if stat not in valid_stats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid stat '{stat}'. Must be one of {valid_stats}"
+        )
+
+    conn = get_conn()
+
+    # Verify player exists
+    player_row = conn.execute(
+        "SELECT full_name, team FROM players WHERE slug = ? LIMIT 1", (player,)
+    ).fetchone()
+
+    if not player_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Player '{player}' not found.")
+
+    result = decompose(
+        conn        = conn,
+        player_slug = player,
+        stat        = stat,
+        period_a    = (pa_start, pa_end),
+        period_b    = (pb_start, pb_end),
+    )
+    conn.close()
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Insufficient data for the requested player and date ranges."
+        )
+
+    return {
+        "player": {
+            "slug": player,
+            "name": player_row["full_name"],
+            "team": player_row["team"],
+        },
+        "stat":     stat,
+        "period_a": {"start": pa_start, "end": pa_end, "value": result.stat_a},
+        "period_b": {"start": pb_start, "end": pb_end, "value": result.stat_b},
+        "delta":    result.delta,
+        "drivers": [
+            {
+                "key":          d.key,
+                "label":        d.label,
+                "category":     d.category,
+                "value_a":      round(d.value_a, 4),
+                "value_b":      round(d.value_b, 4),
+                "contribution": d.contribution,
+            }
+            for d in result.drivers
+        ],
+    }
+
+
+# -----------------------------------------------------------------------
+# GET /seasons
+# -----------------------------------------------------------------------
+
+@app.get("/seasons")
+def get_seasons():
+    """Return all seasons available in the database."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT DISTINCT season FROM players ORDER BY season DESC"
+    ).fetchall()
+    conn.close()
+    return [r["season"] for r in rows]
+
+
+# -----------------------------------------------------------------------
+# GET /shot-diet
+# -----------------------------------------------------------------------
+
+@app.get("/shot-diet")
+def get_shot_diet(
+    player:   str = Query(..., description="Player slug"),
+    pa_start: str = Query(..., description="Period A start YYYY-MM-DD"),
+    pa_end:   str = Query(..., description="Period A end YYYY-MM-DD"),
+    pb_start: str = Query(..., description="Period B start YYYY-MM-DD"),
+    pb_end:   str = Query(..., description="Period B end YYYY-MM-DD"),
+):
+    conn   = get_conn()
+    result = decompose_shots(
+        conn, player,
+        period_a=(pa_start, pa_end),
+        period_b=(pb_start, pb_end),
+    )
+    conn.close()
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No shot data found for this player and date ranges. "
+                   "Run map_players.py then refresh_shots.py first."
+        )
+
+    return {
+        "fg_pct_a":         result.fg_pct_a,
+        "fg_pct_b":         result.fg_pct_b,
+        "delta":            result.delta,
+        "diet_total":       result.diet_total,
+        "efficiency_total": result.efficiency_total,
+        "zones": [
+            {
+                "zone":             z.zone,
+                "label":            z.label,
+                "fga_a":            z.fga_a,
+                "fgm_a":            z.fgm_a,
+                "fg_pct_a":         z.fg_pct_a,
+                "freq_a":           z.freq_a,
+                "fga_b":            z.fga_b,
+                "fgm_b":            z.fgm_b,
+                "fg_pct_b":         z.fg_pct_b,
+                "freq_b":           z.freq_b,
+                "diet_effect":      z.diet_effect,
+                "efficiency_effect":z.efficiency_effect,
+            }
+            for z in result.zones
+            if z.fga_a > 0 or z.fga_b > 0   # omit zones with no attempts
+        ],
+    }
+
+
+# -----------------------------------------------------------------------
+# GET /game-log
+# -----------------------------------------------------------------------
+
+@app.get("/game-log")
+def get_game_log(
+    player:   str = Query(..., description="Player slug"),
+    pa_start: str = Query(..., description="Period A start YYYY-MM-DD"),
+    pb_end:   str = Query(..., description="Period B end YYYY-MM-DD"),
+):
+    """Return game-by-game log for a player across both periods, newest first."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT
+            g.game_date,
+            g.opponent,
+            g.home_away,
+            ROUND(g.min, 0)  AS min,
+            g.pts,
+            g.reb,
+            g.ast,
+            g.stl,
+            g.blk,
+            g.tov,
+            g.fgm,
+            g.fga,
+            g.fg3m,
+            g.fg3a,
+            g.ftm,
+            g.fta
+        FROM game_logs g
+        WHERE g.player_slug = ?
+          AND g.game_date  >= ?
+          AND g.game_date  <= ?
+          AND g.min         > 0
+        ORDER BY g.game_date DESC
+    """, (player, pa_start, pb_end)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# -----------------------------------------------------------------------
+# GET /player-games
+# -----------------------------------------------------------------------
+
+@app.get("/player-games")
+def get_player_games(player: str = Query(..., description="Player slug")):
+    """Return full game-by-game log for a player, oldest first, with per-game fg_pct."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT
+            game_date,
+            season,
+            opponent,
+            home_away,
+            ROUND(min, 0)  AS min,
+            pts,
+            reb,
+            ast,
+            stl,
+            blk,
+            tov,
+            fgm,
+            fga,
+            fg3m,
+            fg3a,
+            ftm,
+            fta,
+            CASE WHEN fga > 0 THEN ROUND(fgm * 100.0 / fga, 1) ELSE NULL END AS fg_pct,
+            CASE WHEN fta > 0 THEN ROUND(ftm * 100.0 / fta, 1) ELSE NULL END AS ft_pct
+        FROM game_logs
+        WHERE player_slug = ? AND min > 0
+        ORDER BY game_date ASC
+    """, (player,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# -----------------------------------------------------------------------
+# GET /aging-curves
+# -----------------------------------------------------------------------
+
+_AGING_STATS = ['p30_pts', 'p30_reb', 'p30_ast', 'p30_stl', 'p30_blk', 'p30_tov', 'p30_fg3m', 'fg_pct']
+_AGING_KEYS  = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
+_MIN_SAMPLES = 5
+
+@app.get("/aging-curves")
+def get_aging_curves():
+    """Return per-30 stat averages grouped by archetype and integer age."""
+    conn = get_conn()
+    df   = build_dataset(conn)
+    conn.close()
+
+    df = assign_archetypes(df)
+    df = df.dropna(subset=['archetype'])
+    df['age_int'] = df['age'].apply(lambda a: int(a))
+
+    result = {}
+    for archetype in ARCHETYPES:
+        sub  = df[df['archetype'] == archetype]
+        rows = []
+        for age in sorted(sub['age_int'].unique()):
+            bucket = sub[sub['age_int'] == age]
+            n = len(bucket)
+            if n < _MIN_SAMPLES:
+                continue
+            row = {'age': int(age), 'n': n}
+            for col, key in zip(_AGING_STATS, _AGING_KEYS):
+                val = bucket[col].dropna()
+                row[key] = round(float(val.mean()), 1) if len(val) else None
+            rows.append(row)
+        result[archetype] = rows
+
+    return result
+
+
+# -----------------------------------------------------------------------
+# GET /data-range
+# -----------------------------------------------------------------------
+
+@app.get("/data-range")
+def get_data_range():
+    """Return the earliest and latest game dates available in the database."""
+    conn = get_conn()
+    row  = conn.execute(
+        "SELECT MIN(game_date) AS min_date, MAX(game_date) AS max_date FROM game_logs"
+    ).fetchone()
+    conn.close()
+    return {"min_date": row["min_date"], "max_date": row["max_date"]}
+
+
+# -----------------------------------------------------------------------
+# GET /project
+# -----------------------------------------------------------------------
+
+@app.get("/project")
+def get_projection(
+    player: str   = Query(..., description="Player slug e.g. curryst01"),
+    mpg:    float = Query(..., description="Projected minutes per game"),
+):
+    """
+    Project a player's next-season per-game stat line given projected minutes.
+
+    Steps:
+      1. Pull player's most recent qualifying season from training dataset
+      2. Assign archetype via position + per-30 thresholds
+      3. Run the archetype's Ridge regression model → per-30 projections
+      4. Scale per-30 → per-game using the supplied mpg
+    """
+    if mpg <= 0 or mpg > 48:
+        raise HTTPException(status_code=400, detail="mpg must be between 0 and 48.")
+
+    conn = get_conn()
+    df   = build_dataset(conn)
+    conn.close()
+
+    df = assign_archetypes(df)
+
+    player_df = df[df['player_slug'] == player]
+    if player_df.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No qualifying seasons found for '{player}'. "
+                   "Player must have >= 20 GP and >= 15 min/game in at least one season."
+        )
+
+    # Most recent qualifying season
+    current = player_df.sort_values('season').iloc[-1]
+    archetype = current.get('archetype')
+
+    if archetype is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot assign archetype for '{player}' — no position on record."
+        )
+
+    # Current per-30 stats (what went into the model)
+    current_p30 = {
+        col.replace('p30_', ''): (None if np.isnan(v) else round(float(v), 2))
+        for col in [f'p30_{c}' for c in ['pts','reb','ast','stl','blk','tov','fg3m']]
+        for v in [current.get(col, float('nan'))]
+    }
+    current_p30['fg_pct'] = (
+        None if np.isnan(current.get('fg_pct', float('nan')))
+        else round(float(current['fg_pct']), 1)
+    )
+
+    # Weighted FT% projection — exponential decay toward recent seasons (decay=0.6)
+    FT_DECAY = 0.6
+    player_seasons = player_df.sort_values('season')
+    ft_vals = []
+    for _, row in player_seasons.iterrows():
+        # ft_pct not in training_data directly — pull from game_logs via _avg_row is complex,
+        # so use fg_pct as a proxy signal; ft_pct comes from player_bio or game aggregation.
+        # We'll fetch it from the raw game_logs aggregate already on df if available.
+        v = row.get('ft_pct', None)
+        if v is not None and not (isinstance(v, float) and np.isnan(v)):
+            ft_vals.append(float(v))
+    if not ft_vals:
+        # Fall back: query game_logs directly for this player
+        conn2 = get_conn()
+        ft_row = conn2.execute("""
+            SELECT SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
+            FROM game_logs WHERE player_slug = ? AND min > 0
+        """, (player,)).fetchone()
+        conn2.close()
+        ft_vals = [float(ft_row['ft_pct'])] if ft_row and ft_row['ft_pct'] else [75.0]
+
+    # Compute exponentially weighted average (oldest → least weight)
+    weights   = [FT_DECAY ** (len(ft_vals) - 1 - i) for i in range(len(ft_vals))]
+    proj_ft_pct = round(sum(v * w for v, w in zip(ft_vals, weights)) / sum(weights), 1)
+
+    # League means/stds for z_sum — computed from training dataset (all archetypes)
+    Z_PROJ_KEYS   = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
+    Z_PROJ_INVERT = {'tov'}
+    league_stats = {}
+    for key in Z_PROJ_KEYS:
+        col = f'p30_{key}' if key != 'fg_pct' else 'fg_pct'
+        vals = df[col].dropna()
+        league_stats[key] = {'mean': float(vals.mean()), 'std': float(vals.std()) or 1.0}
+    # ft_pct league stats from training data if available, else sensible defaults
+    if 'ft_pct' in df.columns:
+        ft_league = df['ft_pct'].dropna()
+        league_stats['ft_pct'] = {'mean': float(ft_league.mean()), 'std': float(ft_league.std()) or 1.0}
+    else:
+        league_stats['ft_pct'] = {'mean': 75.0, 'std': 8.0}
+
+    def _proj_z_sum(p30_dict, ft_pct_val):
+        total = 0.0
+        for key in Z_PROJ_KEYS:
+            val = p30_dict.get(key)
+            if val is None:
+                continue
+            z = (val - league_stats[key]['mean']) / league_stats[key]['std']
+            total += -z if key in Z_PROJ_INVERT else z
+        # ft_pct z-score
+        z_ft = (ft_pct_val - league_stats['ft_pct']['mean']) / league_stats['ft_pct']['std']
+        total += z_ft
+        return round(total, 2)
+
+    # Build iterated multi-year projections.
+    # Year N's per-30 output becomes year N+1's input, age increments each year.
+    MAX_YEARS   = 4
+    scale       = mpg / 30.0
+    counting    = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
+
+    def _season_label(base_season: str, offset: int) -> str:
+        yr = int(base_season.split('-')[0]) + offset
+        return f"{yr}-{str(yr + 1)[2:]}"
+
+    position_group = str(current.get('position_group', ''))
+    stats = {f: float(current.get(f, np.nan)) for f in REG_FEATURES}
+    projections = []
+    current_archetype = archetype
+    for yr in range(1, MAX_YEARS + 1):
+        stats['age'] = float(current.get('age', 25)) + (yr - 1)
+        raw = regress_predict(current_archetype, stats)
+        p30 = {k.replace('next_', ''): round(float(v), 2) for k, v in raw.items()}
+        p30['ft_pct'] = proj_ft_pct
+        pg  = {s: round(p30[s] * scale, 1) for s in counting if s in p30}
+        pg['fg_pct'] = round(p30.get('fg_pct', 0), 1)
+        pg['ft_pct'] = proj_ft_pct
+        projections.append({
+            'year':      yr,
+            'season':    _season_label(str(current['season']), yr),
+            'archetype': current_archetype,
+            'projection_p30': p30,
+            'projection_pg':  pg,
+            'z_sum':     _proj_z_sum(p30, proj_ft_pct),
+        })
+        # Chain: this year's output → next year's input
+        stats = {
+            'p30_pts':  p30['pts'],
+            'p30_reb':  p30['reb'],
+            'p30_ast':  p30['ast'],
+            'p30_stl':  p30['stl'],
+            'p30_blk':  p30['blk'],
+            'p30_tov':  p30['tov'],
+            'p30_fg3m': p30['fg3m'],
+            'fg_pct':   p30['fg_pct'],
+            'age':      float(current.get('age', 25)) + yr,
+        }
+        # Re-derive archetype from projected stats for next iteration
+        next_archetype = _assign_row(
+            pos=position_group,
+            pts=p30['pts'],
+            ast=p30['ast'],
+            fg3m=p30['fg3m'],
+            blk=p30['blk'],
+            reb=p30['reb'],
+        )
+        if next_archetype:
+            current_archetype = next_archetype
+
+    # Include model quality (R²) for the archetype
+    model_obj = load_model(archetype)
+    r2 = {k.replace('next_', ''): v for k, v in model_obj['r2'].items()}
+
+    return {
+        "player":      player,
+        "season_used": str(current['season']),
+        "archetype":   archetype,
+        "current_mpg": round(float(current.get('min_pg', 32.0)), 1),
+        "current_p30": current_p30,
+        "projections": projections,
+        "model": {
+            "n_train": model_obj['n_train'],
+            "r2":      r2,
+        },
+    }
+
+
+# -----------------------------------------------------------------------
+# Health check
+# -----------------------------------------------------------------------
+
+@app.get("/healthz")
+def health():
+    return {"status": "ok"}
+
+
+# -----------------------------------------------------------------------
+# Serve React frontend (production build)
+# Must come AFTER all API routes so /api/* is never caught here.
+# -----------------------------------------------------------------------
+
+_FRONTEND_DIST = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "..", "frontend", "dist",
+)
+
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_FRONTEND_DIST, "assets")), name="assets")
+
+    @app.get("/")
+    def serve_root():
+        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str):
+        # Serve static files that exist; fall back to index.html for SPA routing
+        file_path = os.path.join(_FRONTEND_DIST, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+else:
+    @app.get("/")
+    def root():
+        return {"status": "ok", "message": "NBA stat driver API is running."}

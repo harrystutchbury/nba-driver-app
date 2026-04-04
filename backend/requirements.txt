@@ -1,0 +1,10 @@
+fastapi==0.111.0
+uvicorn==0.29.0
+python-multipart
+scikit-learn
+numpy
+joblib
+pandas==2.2.2
+basketball_reference_web_scraper
+python-dotenv==1.0.1
+rapidfuzz==3.9.3

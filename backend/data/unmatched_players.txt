@@ -1,0 +1,31 @@
+# Unmatched players — add entries to MANUAL_OVERRIDES in map_players.py
+# Format: br_slug | br_name
+
+brownda04 | Darius Brown II
+burtoty01 | Tyler Burton
+creekmi01 | Mitch Creek
+cryerlj01 | LJ Cryer
+cuiyo01 | Cui Yongxi
+enarutr01 | Tristan Enaruna
+garcian01 | Andersson Garcia
+gilbeke01 | Keshon Gilbert
+hinsobl01 | Blake Hinson
+hurtma01 | Matthew Hurt
+johnsch06 | Chaney Johnson
+kentja01 | Jayson Kent
+loverla01 | Lawson Lovering
+mashaja01 | Jahmai Mashack
+mbengbe01 | Bez Mbeng
+moralal01 | Alex Morales
+nelsogr02 | Grant Nelson
+nembhrj01 | RJ Nembhard Jr.
+omierno01 | Norchad Omier
+pedulse01 | Sean Pedulla
+poulajo01 | John Poulakidas
+reeseju01 | Julian Reese
+reynoca01 | Cameron Reynolds
+richmka01 | Kadary Richmond
+ryanco01 | Cormac Ryan
+sandfpa01 | Payton Sandfort
+scotttr01 | Tre Scott
+smithma02 | Malachi Smith

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+venv312/
+
+# DB — too large for git; upload manually to Render disk
+backend/data/nba.db
+backend/data/*.db
+
+# Trained models — regenerate on server or copy up manually
+# (comment this out if you want to include them)
+# backend/models/
+
+# Frontend build artefacts (Render builds these)
+frontend/dist/
+frontend/node_modules/
+frontend-old/
+
+# Claude Code auto-memory (personal, not for sharing)
+memory/
+
+# macOS
+.DS_Store
