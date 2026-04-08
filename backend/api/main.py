@@ -12,7 +12,7 @@ Run locally:
   uvicorn main:app --reload
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -33,6 +33,7 @@ from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
 
 app = FastAPI(title="NBA Stat Driver API")
+router = APIRouter(prefix="/api")
 
 # Allow the React dev server to talk to this API
 app.add_middleware(
@@ -47,7 +48,7 @@ app.add_middleware(
 # GET /players
 # -----------------------------------------------------------------------
 
-@app.get("/players")
+@router.get("/players")
 def get_players(
     q: Optional[str] = Query(None, description="Search by name"),
     season: Optional[str] = Query(None, description="e.g. 2023-24"),
@@ -302,7 +303,7 @@ def _with_zscores(avg, league):
     return {**avg, **{f"z_{k}": z(k) for k in Z_KEYS}}
 
 
-@app.get("/player-stats")
+@router.get("/player-stats")
 def get_player_stats(player: str = Query(..., description="Player slug")):
     """Return career, per-season, L30 and L14 averages + Z-scores for a player."""
     conn = get_conn()
@@ -378,7 +379,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 # GET /decompose
 # -----------------------------------------------------------------------
 
-@app.get("/decompose")
+@router.get("/decompose")
 def get_decompose(
     player: str   = Query(..., description="Player slug e.g. doncilu01"),
     stat:   str   = Query(..., description="reb | pts | ast | stl | blk | tov"),
@@ -452,7 +453,7 @@ def get_decompose(
 # GET /seasons
 # -----------------------------------------------------------------------
 
-@app.get("/seasons")
+@router.get("/seasons")
 def get_seasons():
     """Return all seasons available in the database."""
     conn = get_conn()
@@ -467,7 +468,7 @@ def get_seasons():
 # GET /shot-diet
 # -----------------------------------------------------------------------
 
-@app.get("/shot-diet")
+@router.get("/shot-diet")
 def get_shot_diet(
     player:   str = Query(..., description="Player slug"),
     pa_start: str = Query(..., description="Period A start YYYY-MM-DD"),
@@ -521,7 +522,7 @@ def get_shot_diet(
 # GET /game-log
 # -----------------------------------------------------------------------
 
-@app.get("/game-log")
+@router.get("/game-log")
 def get_game_log(
     player:   str = Query(..., description="Player slug"),
     pa_start: str = Query(..., description="Period A start YYYY-MM-DD"),
@@ -562,7 +563,7 @@ def get_game_log(
 # GET /player-games
 # -----------------------------------------------------------------------
 
-@app.get("/player-games")
+@router.get("/player-games")
 def get_player_games(player: str = Query(..., description="Player slug")):
     """Return full game-by-game log for a player, oldest first, with per-game fg_pct."""
     conn = get_conn()
@@ -603,7 +604,7 @@ _AGING_STATS = ['p30_pts', 'p30_reb', 'p30_ast', 'p30_stl', 'p30_blk', 'p30_tov'
 _AGING_KEYS  = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
 _MIN_SAMPLES = 5
 
-@app.get("/aging-curves")
+@router.get("/aging-curves")
 def get_aging_curves():
     """Return per-30 stat averages grouped by archetype and integer age."""
     conn = get_conn()
@@ -637,7 +638,7 @@ def get_aging_curves():
 # GET /data-range
 # -----------------------------------------------------------------------
 
-@app.get("/data-range")
+@router.get("/data-range")
 def get_data_range():
     """Return the earliest and latest game dates available in the database."""
     conn = get_conn()
@@ -652,7 +653,7 @@ def get_data_range():
 # GET /project
 # -----------------------------------------------------------------------
 
-@app.get("/project")
+@router.get("/project")
 def get_projection(
     player: str   = Query(..., description="Player slug e.g. curryst01"),
     mpg:    float = Query(..., description="Projected minutes per game"),
@@ -833,9 +834,12 @@ def get_projection(
 # Health check
 # -----------------------------------------------------------------------
 
-@app.get("/healthz")
+@router.get("/healthz")
 def health():
     return {"status": "ok"}
+
+
+app.include_router(router)
 
 
 # -----------------------------------------------------------------------
