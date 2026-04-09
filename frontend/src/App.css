@@ -441,6 +441,22 @@
 .analyse-btn:hover:not(:disabled) { border-color: #6a70a0; color: #fff; }
 .analyse-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* ── Preset buttons ──────────────────────────────────────── */
+.preset-group { flex-direction: column; align-items: flex-start; }
+.preset-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.preset-btn {
+  padding: 4px 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.preset-btn:hover { border-color: #4dffb4; color: #4dffb4; }
+
 /* ── Page body ───────────────────────────────────────────── */
 .page-body {
   padding: 24px 32px 80px;

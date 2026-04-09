@@ -371,8 +371,8 @@ export default function App() {
   const [showSugg, setShowSugg]       = useState(false)
   const [selectedPlayer, setSelected] = useState(null)
   const [stat, setStat]               = useState('reb')
-  const [periodA, setPeriodA]         = useState({ start: '2023-10-24', end: '2024-01-15' })
-  const [periodB, setPeriodB]         = useState({ start: '2024-01-16', end: '2024-04-14' })
+  const [periodA, setPeriodA]         = useState({ start: '2025-10-22', end: '2026-02-13' })
+  const [periodB, setPeriodB]         = useState({ start: '2026-02-21', end: '2026-04-06' })
   const [result, setResult]           = useState(null)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
@@ -1007,6 +1007,23 @@ export default function App() {
               {driverExpanded && (
                 <>
                 <div className="controls-inner">
+                  <div className="ctrl-group preset-group">
+                    <span className="ctrl-label">Presets</span>
+                    <div className="preset-btns">
+                      {[
+                        { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-06' } },
+                        { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+                        { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+                        { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-04-06' } },
+                      ].map(p => (
+                        <button
+                          key={p.label}
+                          className="preset-btn"
+                          onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}
+                        >{p.label}</button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="ctrl-group">
                     <span className="ctrl-label">Stat</span>
                     <select className="ctrl-input" value={stat} onChange={(e) => setStat(e.target.value)}>
