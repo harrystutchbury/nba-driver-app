@@ -515,10 +515,12 @@ export default function App() {
           pa_start: periodA.start, pa_end: periodA.end,
           pb_start: periodB.start, pb_end: periodB.end,
         })
-        fetch(`/api/shot-diet?${shotParams}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d) setShotDiet(d) })
-          .catch(() => {})
+        if (stat === 'pts' || stat === 'fg3m') {
+          fetch(`/api/shot-diet?${shotParams}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d) setShotDiet(d) })
+            .catch(() => {})
+        }
       }
     } catch (e) {
       setError(e.message)
@@ -1003,6 +1005,7 @@ export default function App() {
                 <span className="proj-toggle">{driverExpanded ? '▲' : '▼'}</span>
               </div>
               {driverExpanded && (
+                <>
                 <div className="controls-inner">
                   <div className="ctrl-group">
                     <span className="ctrl-label">Stat</span>
@@ -1032,6 +1035,224 @@ export default function App() {
                     {loading ? '…' : 'Analyse'}
                   </button>
                 </div>
+                {result && selectedPlayer && (
+                  <div className="driver-results">
+                    {/* ── Metrics row ──────────────────────────────── */}
+                    <div className="metrics-row">
+                      <div className="metric-card">
+                        <span className="metric-label">Baseline</span>
+                        <span className="metric-value">{result.period_a.value.toFixed(1)}</span>
+                        <span className="metric-sub">{statLabelShort}</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Comparison</span>
+                        <span className="metric-value">{result.period_b.value.toFixed(1)}</span>
+                        <span className={`metric-sub metric-delta ${result.delta >= 0 ? 'pos' : 'neg'}`}>
+                          {result.delta >= 0 ? '+' : ''}{result.delta.toFixed(2)}&ensp;
+                          ({result.delta >= 0 ? '+' : ''}{((result.delta / result.period_a.value) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Rate change</span>
+                        <span className={`metric-value ${skillSum >= 0 ? 'pos' : 'neg'}`}>
+                          {skillSum >= 0 ? '+' : ''}{skillSum.toFixed(2)}
+                        </span>
+                        <span className="metric-sub">rate changes</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Role</span>
+                        <span className={`metric-value ${roleSum >= 0 ? 'pos' : 'neg'}`}>
+                          {roleSum >= 0 ? '+' : ''}{roleSum.toFixed(2)}
+                        </span>
+                        <span className="metric-sub">minutes / usage</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Pace</span>
+                        <span className={`metric-value ${luckSum >= 0 ? 'pos' : 'neg'}`}>
+                          {luckSum >= 0 ? '+' : ''}{luckSum.toFixed(2)}
+                        </span>
+                        <span className="metric-sub">external factors</span>
+                      </div>
+                    </div>
+
+                    {/* ── Legend ───────────────────────────────────── */}
+                    <div className="chart-legend">
+                      {LEGEND_ITEMS.map((item) => (
+                        <span key={item.label} className="legend-item">
+                          <span className="legend-dot" style={{ background: item.color }} />
+                          {item.label}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* ── Waterfall chart ───────────────────────────── */}
+                    <div className="chart-wrap">
+                      <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                    </div>
+
+                    {/* ── Driver table + Insights ───────────────────── */}
+                    <div className="analysis-row">
+                      <div className="breakdown-panel">
+                        <h2 className="panel-title">Driver breakdown</h2>
+                        <table className="drivers-table">
+                          <thead>
+                            <tr>
+                              <th>Driver</th>
+                              <th className="num">Change</th>
+                              <th className="num">Attribution</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...result.drivers]
+                              .sort((a, b) => (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99))
+                              .map((d) => {
+                                const catColor = CATEGORY_COLORS[d.category] ?? '#888'
+                                const barColor = CATEGORY_COLORS[d.category] ?? '#888'
+                                const barPct   = (Math.abs(d.contribution) / maxContrib) * 100
+                                return (
+                                  <tr key={d.key}>
+                                    <td className="driver-cell">
+                                      <span className="driver-name">{d.label}</span>
+                                      <span
+                                        className="cat-pill"
+                                        style={{ background: catColor + '20', color: catColor, borderColor: catColor + '40' }}
+                                      >
+                                        {CATEGORY_DISPLAY[d.category] ?? d.category}
+                                      </span>
+                                    </td>
+                                    <td className={`num change-val ${d.contribution >= 0 ? 'pos' : 'neg'}`}>
+                                      {d.contribution >= 0 ? '+' : ''}{d.contribution.toFixed(2)}
+                                    </td>
+                                    <td className="attribution-cell">
+                                      <div
+                                        className="attr-bar"
+                                        style={{ width: `${barPct}%`, background: barColor }}
+                                      />
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="insights-panel">
+                        <h2 className="panel-title">Key insights</h2>
+                        <ul className="insights-list">
+                          {insights.map((ins, i) => (
+                            <li key={i}>
+                              <span className="insight-dot" />
+                              {ins}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    {shotDiet && (stat === 'pts' || stat === 'fg3m') && (() => {
+                      const zoneRows = ZONE_ORDER.map(zk => {
+                        const z = shotDiet.zones.find(r => r.zone === zk) || {
+                          zone: zk, label: ZONE_LABELS[zk],
+                          fga_a: 0, fga_b: 0, fg_pct_a: 0, fg_pct_b: 0,
+                          freq_a: 0, freq_b: 0,
+                          diet_effect: 0, efficiency_effect: 0,
+                        }
+                        return { ...z, net: z.diet_effect + z.efficiency_effect }
+                      })
+                      const courtZonesA = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_a, fga: z.fga_a, freq: z.freq_a, net: z.net }))
+                      const courtZonesB = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_b, fga: z.fga_b, freq: z.freq_b, net: z.net }))
+                      const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
+                      const attemptChartData = {
+                        labels: zoneLabels,
+                        datasets: [
+                          { label: 'Baseline', data: zoneRows.map(z => z.freq_a ? +(z.freq_a * 100).toFixed(1) : 0), backgroundColor: '#3a4470', borderRadius: 2 },
+                          { label: 'Comparison', data: zoneRows.map(z => z.freq_b ? +(z.freq_b * 100).toFixed(1) : 0), backgroundColor: '#4dffb4', borderRadius: 2 },
+                        ],
+                      }
+                      const attemptChartOptions = {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                          legend: { display: true, labels: { color: '#555', font: { family: "'DM Mono', monospace", size: 10 }, boxWidth: 10 } },
+                          tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
+                          datalabels: { labels: { count: { anchor: 'end', align: 'end', formatter: (val) => val > 0 ? `${Math.round(val)}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } }, pct: { anchor: 'center', align: 'center', formatter: (val, ctx) => { if (val === 0) return null; const z = zoneRows[ctx.dataIndex]; if (!z) return null; const pct = ctx.datasetIndex === 0 ? z.fg_pct_a : z.fg_pct_b; const fga = ctx.datasetIndex === 0 ? z.fga_a : z.fga_b; return fga > 0 ? `${Math.round(pct * 100)}FG%` : null }, color: (ctx) => ctx.datasetIndex === 0 ? 'rgba(255,255,255,0.75)' : '#0d1a14', font: { family: "'DM Mono', monospace", size: 9, weight: '500' } } } },
+                        },
+                        scales: {
+                          x: { grid: { color: '#1a1a1a', drawTicks: false }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
+                          y: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, callback: (v) => `${v}%` }, title: { display: true, text: '% of FGA', color: '#888', font: { family: "'DM Mono', monospace", size: 9 } } },
+                        },
+                      }
+                      return (
+                        <div className="shot-diet-section">
+                          <h2 className="panel-title">Shot diet analysis</h2>
+                          <div className="shot-summary">
+                            <div className="shot-metric"><span className="metric-label">Baseline FG%</span><span className="metric-value">{(shotDiet.fg_pct_a * 100).toFixed(1)}%</span></div>
+                            <div className="shot-metric"><span className="metric-label">Comparison FG%</span><span className="metric-value">{(shotDiet.fg_pct_b * 100).toFixed(1)}%</span><span className={`metric-sub metric-delta ${shotDiet.delta >= 0 ? 'pos' : 'neg'}`}>{shotDiet.delta >= 0 ? '+' : ''}{(shotDiet.delta * 100).toFixed(1)}pp</span></div>
+                            <div className="shot-metric"><span className="metric-label">Selection effect</span><span className={`metric-value ${shotDiet.diet_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.diet_total >= 0 ? '+' : ''}{(shotDiet.diet_total * 100).toFixed(1)}pp</span><span className="metric-sub">shot mix shift</span></div>
+                            <div className="shot-metric"><span className="metric-label">Efficiency effect</span><span className={`metric-value ${shotDiet.efficiency_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.efficiency_total >= 0 ? '+' : ''}{(shotDiet.efficiency_total * 100).toFixed(1)}pp</span><span className="metric-sub">zone accuracy</span></div>
+                          </div>
+                          <div className="shot-diet-body">
+                            <div className="courts-row">
+                              <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>
+                              <div className="court-wrap"><div className="court-label">Comparison</div><CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} /></div>
+                            </div>
+                            <div className="attempt-chart-wrap"><Bar data={attemptChartData} options={attemptChartOptions} /></div>
+                          </div>
+                          <table className="shot-table">
+                            <thead><tr><th>Zone</th><th className="num">Baseline freq</th><th className="num">Baseline FG%</th><th className="num">Comp freq</th><th className="num">Comp FG%</th><th className="num">Selection FG% impact</th><th className="num">Efficiency FG% impact</th></tr></thead>
+                            <tbody>
+                              {zoneRows.filter(z => z.fga_a > 0 || z.fga_b > 0).map(z => {
+                                const fgShift = Math.round((z.fg_pct_b - z.fg_pct_a) * 100)
+                                const freqShift = Math.round((z.freq_b - z.freq_a) * 100)
+                                return (
+                                  <tr key={z.zone}>
+                                    <td>{ZONE_LABELS[z.zone]}</td>
+                                    <td className="num mono">{z.freq_a > 0 ? `${Math.round(z.freq_a * 100)}%` : '—'}</td>
+                                    <td className="num mono">{z.fga_a > 0 ? `${Math.round(z.fg_pct_a * 100)}%` : '—'}</td>
+                                    <td className="num mono">{z.freq_b > 0 ? `${Math.round(z.freq_b * 100)}% (${freqShift >= 0 ? '+' : ''}${freqShift}%)` : '—'}</td>
+                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}%)` : '—'}</td>
+                                    <td className={`num mono ${z.diet_effect >= 0 ? 'pos' : 'neg'}`}>{z.diet_effect >= 0 ? '+' : ''}{(z.diet_effect * 100).toFixed(1)}</td>
+                                    <td className={`num mono ${z.efficiency_effect >= 0 ? 'pos' : 'neg'}`}>{z.efficiency_effect >= 0 ? '+' : ''}{(z.efficiency_effect * 100).toFixed(1)}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })()}
+                    {gameLog && gameLog.length > 0 && (
+                      <div className="gamelog-section">
+                        <h2 className="panel-title">Game log</h2>
+                        <div className="gamelog-wrap">
+                          <table className="gamelog-table">
+                            <thead><tr><th>Date</th><th>Opp</th><th className="num">Min</th><th className="num">Pts</th><th className="num">Reb</th><th className="num">Ast</th><th className="num">Stl</th><th className="num">Blk</th><th className="num">Tov</th><th className="num">FG</th><th className="num">FG%</th><th className="num">3P</th><th className="num">3P%</th><th className="num">FT</th><th className="num">FT%</th></tr></thead>
+                            <tbody>
+                              {gameLog.map((g, i) => (
+                                <tr key={i}>
+                                  <td className="mono">{g.game_date}</td>
+                                  <td>{g.opponent} {g.home_away === 'H' ? '' : '@'}</td>
+                                  <td className="num mono">{g.min}</td>
+                                  <td className="num mono">{g.pts}</td>
+                                  <td className="num mono">{g.reb}</td>
+                                  <td className="num mono">{g.ast}</td>
+                                  <td className="num mono">{g.stl}</td>
+                                  <td className="num mono">{g.blk}</td>
+                                  <td className="num mono">{g.tov}</td>
+                                  <td className="num mono">{g.fgm}-{g.fga}</td>
+                                  <td className="num mono">{g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(0) + '%' : '—'}</td>
+                                  <td className="num mono">{g.fg3m}-{g.fg3a}</td>
+                                  <td className="num mono">{g.fg3a > 0 ? (g.fg3m / g.fg3a * 100).toFixed(0) + '%' : '—'}</td>
+                                  <td className="num mono">{g.ftm}-{g.fta}</td>
+                                  <td className="num mono">{g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(0) + '%' : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                </>
               )}
             </div>
 
@@ -1282,7 +1503,7 @@ export default function App() {
           </div>
         )}
 
-        {result && selectedPlayer && (
+        {false && result && selectedPlayer && (
           <>
             {/* ── Metrics row ──────────────────────────────── */}
             <div className="metrics-row">
@@ -1395,7 +1616,7 @@ export default function App() {
                 </ul>
               </div>
             </div>
-            {shotDiet && (() => {
+            {shotDiet && (stat === 'pts' || stat === 'fg3m') && (() => {
               // Build per-zone data for courts + bar chart
               const zoneRows = ZONE_ORDER.map(zk => {
                 const z = shotDiet.zones.find(r => r.zone === zk) || {
