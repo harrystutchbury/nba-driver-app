@@ -1236,37 +1236,6 @@ export default function App() {
                         </div>
                       )
                     })()}
-                    {gameLog && gameLog.length > 0 && (
-                      <div className="gamelog-section">
-                        <h2 className="panel-title">Game log</h2>
-                        <div className="gamelog-wrap">
-                          <table className="gamelog-table">
-                            <thead><tr><th>Date</th><th>Opp</th><th className="num">Min</th><th className="num">Pts</th><th className="num">Reb</th><th className="num">Ast</th><th className="num">Stl</th><th className="num">Blk</th><th className="num">Tov</th><th className="num">FG</th><th className="num">FG%</th><th className="num">3P</th><th className="num">3P%</th><th className="num">FT</th><th className="num">FT%</th></tr></thead>
-                            <tbody>
-                              {gameLog.map((g, i) => (
-                                <tr key={i}>
-                                  <td className="mono">{g.game_date}</td>
-                                  <td>{g.opponent} {g.home_away === 'H' ? '' : '@'}</td>
-                                  <td className="num mono">{g.min}</td>
-                                  <td className="num mono">{g.pts}</td>
-                                  <td className="num mono">{g.reb}</td>
-                                  <td className="num mono">{g.ast}</td>
-                                  <td className="num mono">{g.stl}</td>
-                                  <td className="num mono">{g.blk}</td>
-                                  <td className="num mono">{g.tov}</td>
-                                  <td className="num mono">{g.fgm}-{g.fga}</td>
-                                  <td className="num mono">{g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(0) + '%' : '—'}</td>
-                                  <td className="num mono">{g.fg3m}-{g.fg3a}</td>
-                                  <td className="num mono">{g.fg3a > 0 ? (g.fg3m / g.fg3a * 100).toFixed(0) + '%' : '—'}</td>
-                                  <td className="num mono">{g.ftm}-{g.fta}</td>
-                                  <td className="num mono">{g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(0) + '%' : '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
                 </>
