@@ -1,162 +1,84 @@
 """
-aging.py — Smooth per-archetype aging curves.
+aging.py — Parametric per-year aging multipliers for NBA stat projections.
 
-Fits a quadratic with peak constrained to ages 26-30 per archetype per stat.
-Used in the projection loop to apply smooth year-over-year aging adjustments
-on top of the Ridge model's baseline predictions.
+Uses a simple age-bracket model calibrated to typical NBA development curves.
+Avoids data-fitting from per-30 population stats, which suffer from selection
+bias (only good young players get minutes, flattening the apparent age curve).
+
+Year-over-year rates by age bracket:
+  - Counting stats (pts/reb/ast/stl/blk/fg3m): +3-5% through mid-20s, flat at peak, -2-5% from early 30s
+  - Turnovers: improve (decrease) when young, worsen when old
+  - FG%: small gains through age 27, then slow decline
 """
 
 import numpy as np
-
-PEAK_MIN  = 26
-PEAK_MAX  = 30
-MIN_OBS   = 3          # minimum data points per age bucket to include
-AGE_RANGE = range(18, 42)
-
-# Stats we build curves for (mapping label → training_data column)
-AGING_STATS = {
-    'pts':   'p30_pts',
-    'reb':   'p30_reb',
-    'ast':   'p30_ast',
-    'stl':   'p30_stl',
-    'blk':   'p30_blk',
-    'tov':   'p30_tov',
-    'fg3m':  'p30_fg3m',
-    'fg_pct': 'fg_pct',
-}
 
 # Max year-over-year ratio change attributable to aging alone
 RATIO_FLOOR = 0.88
 RATIO_CAP   = 1.08
 
 
-def _fit_quadratic(obs_ages, obs_vals, peak_min=PEAK_MIN, peak_max=PEAK_MAX):
-    """
-    Fit y = a*(x - p)^2 + k  where p (peak age) is in [peak_min, peak_max].
-
-    Strategy:
-    1. Fit unconstrained quadratic.
-    2. If the vertex is already a downward-opening parabola inside the valid
-       range, keep it.
-    3. Otherwise clamp the peak to the nearest bound and refit with that
-       fixed peak.
-
-    Returns a callable  age -> predicted_value.
-    """
-    ages = np.array(obs_ages, dtype=float)
-    vals = np.array(obs_vals, dtype=float)
-
-    if len(ages) < 3:
-        coeffs = np.polyfit(ages, vals, 1)
-        return np.poly1d(coeffs)
-
-    coeffs = np.polyfit(ages, vals, 2)
-    a, b, _ = coeffs
-
-    # vertex of unconstrained fit
-    vertex_age = -b / (2 * a) if a != 0 else float('inf')
-
-    if a < 0 and peak_min <= vertex_age <= peak_max:
-        # Already a valid downward-opening parabola with peak in range — keep it
-        return np.poly1d(coeffs)
-
-    # Determine constrained peak
-    if a < 0:
-        # Parabola opens downward but peak is outside [26, 30] → clamp
-        p = float(np.clip(vertex_age, peak_min, peak_max))
-    else:
-        # Parabola opens upward (monotonic in data range) → force peak to midpoint
-        p = float((peak_min + peak_max) / 2)
-
-    # Refit: y = a_new*(x - p)^2 + k   (linear in [a_new, k])
-    X = np.column_stack([(ages - p) ** 2, np.ones_like(ages)])
-    try:
-        (a_new, k), *_ = np.linalg.lstsq(X, vals, rcond=None)
-    except np.linalg.LinAlgError:
-        return np.poly1d(coeffs)
-
-    # Ensure it opens downward (aging curves must eventually decline)
-    if a_new > 0:
-        a_new = -1e-4   # near-flat but technically declining
-
-    def curve(age):
-        return float(a_new * (float(age) - p) ** 2 + k)
-
-    return curve
-
-
 def build_aging_curves(df):
     """
-    Build smooth aging curves for every archetype × stat combination.
-
-    Parameters
-    ----------
-    df : DataFrame from build_dataset() with 'archetype' and 'age' columns.
-
-    Returns
-    -------
-    dict  {archetype: {stat_label: callable(age) -> value}}
+    No-op kept for API compatibility. The parametric model doesn't need training data.
+    Returns an empty dict; aging_ratio uses the parametric model directly.
     """
-    df = df.copy()
-    df = df.dropna(subset=['archetype', 'age'])
-    df['age'] = df['age'].astype(int)
-
-    curves = {}
-
-    # Build a league-wide fallback curve first
-    curves['_all'] = {}
-    for stat, col in AGING_STATS.items():
-        if col not in df.columns:
-            continue
-        obs_ages, obs_vals = [], []
-        for age in AGE_RANGE:
-            bucket = df[df['age'] == age][col].dropna()
-            if len(bucket) >= MIN_OBS:
-                obs_ages.append(age)
-                obs_vals.append(float(bucket.mean()))
-        if len(obs_ages) >= 4:
-            curves['_all'][stat] = _fit_quadratic(obs_ages, obs_vals)
-
-    for arch in df['archetype'].dropna().unique():
-        sub = df[df['archetype'] == arch]
-        curves[arch] = {}
-
-        for stat, col in AGING_STATS.items():
-            if col not in sub.columns:
-                continue
-
-            obs_ages, obs_vals = [], []
-            for age in AGE_RANGE:
-                bucket = sub[sub['age'] == age][col].dropna()
-                if len(bucket) >= MIN_OBS:
-                    obs_ages.append(age)
-                    obs_vals.append(float(bucket.mean()))
-
-            if len(obs_ages) < 4:
-                continue
-
-            curves[arch][stat] = _fit_quadratic(obs_ages, obs_vals)
-
-    return curves
+    return {}
 
 
 def aging_ratio(curves, archetype, stat, current_age, next_age):
     """
-    Return the multiplier to apply to a stat when a player ages from
-    current_age to next_age, based on the smooth aging curve.
+    Return the per-year multiplier when a player ages from current_age to next_age.
 
-    Returns 1.0 if no curve is available for this archetype/stat.
-    The ratio is clamped to [RATIO_FLOOR, RATIO_CAP] per year.
+    Uses a parametric model — see module docstring for rates.
+    The ratio is clamped to [RATIO_FLOOR, RATIO_CAP].
     """
-    curve = curves.get(archetype, {}).get(stat) or curves.get('_all', {}).get(stat)
-    if curve is None:
-        return 1.0
+    years = float(next_age) - float(current_age)
+    age   = float(current_age)
 
-    cur_val  = curve(current_age)
-    next_val = curve(next_age)
+    if stat == 'tov':
+        # Turnovers: fewer is better. Young players improve (ratio < 1), veterans get worse.
+        if age < 24:
+            rate = 0.96
+        elif age < 27:
+            rate = 0.98
+        elif age < 30:
+            rate = 1.00
+        elif age < 33:
+            rate = 1.02
+        else:
+            rate = 1.04
 
-    if cur_val is None or abs(cur_val) < 1e-6:
-        return 1.0
+    elif stat == 'fg_pct':
+        if age < 24:
+            rate = 1.006
+        elif age < 27:
+            rate = 1.003
+        elif age < 32:
+            rate = 1.000
+        elif age < 35:
+            rate = 0.997
+        else:
+            rate = 0.993
 
-    ratio = next_val / cur_val
+    else:
+        # Counting stats: pts, reb, ast, stl, blk, fg3m
+        if age < 22:
+            rate = 1.050
+        elif age < 24:
+            rate = 1.035
+        elif age < 26:
+            rate = 1.020
+        elif age < 28:
+            rate = 1.008
+        elif age < 30:
+            rate = 0.998
+        elif age < 32:
+            rate = 0.985
+        elif age < 34:
+            rate = 0.968
+        else:
+            rate = 0.950
+
+    ratio = rate ** years
     return float(np.clip(ratio, RATIO_FLOOR, RATIO_CAP))
