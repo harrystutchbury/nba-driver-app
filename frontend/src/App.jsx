@@ -1299,7 +1299,7 @@ export default function App() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  <span className="ctrl-label" style={{ marginLeft: '1rem' }}>Window</span>
+                  <span className="ctrl-label" style={{ marginLeft: '1rem' }}>Weighted Average Period</span>
                   <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
                     {MA_WINDOW_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
