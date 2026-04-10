@@ -773,22 +773,30 @@ def get_projection(
         return f"{yr}-{str(yr + 1)[2:]}"
 
     position_group = str(current.get('position_group', ''))
-    stats = {f: float(current.get(f, np.nan)) for f in REG_FEATURES}
+
+    # Anchor to current season's actual per-30 stats, then compound aging ratios each year.
+    # We avoid Ridge regression-to-mean in the loop — it suppresses young breakout players.
+    PROJ_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
+    prev_p30 = {
+        'pts':    float(current.get('p30_pts',  0) or 0),
+        'reb':    float(current.get('p30_reb',  0) or 0),
+        'ast':    float(current.get('p30_ast',  0) or 0),
+        'stl':    float(current.get('p30_stl',  0) or 0),
+        'blk':    float(current.get('p30_blk',  0) or 0),
+        'tov':    float(current.get('p30_tov',  0) or 0),
+        'fg3m':   float(current.get('p30_fg3m', 0) or 0),
+        'fg_pct': float(current.get('fg_pct',   0) or 0),
+    }
     projections = []
     current_archetype = archetype
     for yr in range(1, MAX_YEARS + 1):
         current_age = float(current.get('age', 25)) + (yr - 1)
         next_age    = current_age + 1
-        stats['age'] = current_age
-        raw = regress_predict(current_archetype, stats)
-        p30 = {k.replace('next_', ''): round(float(v), 2) for k, v in raw.items()}
-
-        # Apply smooth aging curve ratio on top of Ridge prediction
-        for stat in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']:
-            if stat in p30 and p30[stat] is not None:
-                ratio = _aging_ratio(aging_curves, current_archetype, stat,
-                                     current_age, next_age)
-                p30[stat] = round(p30[stat] * ratio, 2)
+        p30 = {}
+        for stat in PROJ_STATS:
+            base  = prev_p30.get(stat, 0)
+            ratio = _aging_ratio(aging_curves, current_archetype, stat, current_age, next_age)
+            p30[stat] = round(base * ratio, 2)
 
         p30['ft_pct'] = proj_ft_pct
         pg  = {s: round(p30[s] * scale, 1) for s in counting if s in p30}
@@ -802,18 +810,7 @@ def get_projection(
             'projection_pg':  pg,
             'z_sum':     _proj_z_sum(p30, proj_ft_pct),
         })
-        # Chain: this year's output → next year's input
-        stats = {
-            'p30_pts':  p30['pts'],
-            'p30_reb':  p30['reb'],
-            'p30_ast':  p30['ast'],
-            'p30_stl':  p30['stl'],
-            'p30_blk':  p30['blk'],
-            'p30_tov':  p30['tov'],
-            'p30_fg3m': p30['fg3m'],
-            'fg_pct':   p30['fg_pct'],
-            'age':      float(current.get('age', 25)) + yr,
-        }
+        prev_p30 = p30
         # Re-derive archetype from projected stats for next iteration
         next_archetype = _assign_row(
             pos=position_group,
