@@ -31,6 +31,7 @@ from engine.shots import decompose_shots
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
+from engine.aging import build_aging_curves, aging_ratio as _aging_ratio
 
 app = FastAPI(title="NBA Stat Driver API")
 router = APIRouter(prefix="/api")
@@ -758,6 +759,9 @@ def get_projection(
         total += z_ft
         return round(total, 2)
 
+    # Build smooth aging curves for ratio-based year-over-year adjustments
+    aging_curves = build_aging_curves(df)
+
     # Build iterated multi-year projections.
     # Year N's per-30 output becomes year N+1's input, age increments each year.
     MAX_YEARS   = 4
@@ -773,9 +777,19 @@ def get_projection(
     projections = []
     current_archetype = archetype
     for yr in range(1, MAX_YEARS + 1):
-        stats['age'] = float(current.get('age', 25)) + (yr - 1)
+        current_age = float(current.get('age', 25)) + (yr - 1)
+        next_age    = current_age + 1
+        stats['age'] = current_age
         raw = regress_predict(current_archetype, stats)
         p30 = {k.replace('next_', ''): round(float(v), 2) for k, v in raw.items()}
+
+        # Apply smooth aging curve ratio on top of Ridge prediction
+        for stat in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']:
+            if stat in p30 and p30[stat] is not None:
+                ratio = _aging_ratio(aging_curves, current_archetype, stat,
+                                     current_age, next_age)
+                p30[stat] = round(p30[stat] * ratio, 2)
+
         p30['ft_pct'] = proj_ft_pct
         pg  = {s: round(p30[s] * scale, 1) for s in counting if s in p30}
         pg['fg_pct'] = round(p30.get('fg_pct', 0), 1)
