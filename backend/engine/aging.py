@@ -102,6 +102,21 @@ def build_aging_curves(df):
     df['age'] = df['age'].astype(int)
 
     curves = {}
+
+    # Build a league-wide fallback curve first
+    curves['_all'] = {}
+    for stat, col in AGING_STATS.items():
+        if col not in df.columns:
+            continue
+        obs_ages, obs_vals = [], []
+        for age in AGE_RANGE:
+            bucket = df[df['age'] == age][col].dropna()
+            if len(bucket) >= MIN_OBS:
+                obs_ages.append(age)
+                obs_vals.append(float(bucket.mean()))
+        if len(obs_ages) >= 4:
+            curves['_all'][stat] = _fit_quadratic(obs_ages, obs_vals)
+
     for arch in df['archetype'].dropna().unique():
         sub = df[df['archetype'] == arch]
         curves[arch] = {}
@@ -133,7 +148,7 @@ def aging_ratio(curves, archetype, stat, current_age, next_age):
     Returns 1.0 if no curve is available for this archetype/stat.
     The ratio is clamped to [RATIO_FLOOR, RATIO_CAP] per year.
     """
-    curve = curves.get(archetype, {}).get(stat)
+    curve = curves.get(archetype, {}).get(stat) or curves.get('_all', {}).get(stat)
     if curve is None:
         return 1.0
 
