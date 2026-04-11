@@ -16,12 +16,16 @@ from fastapi import FastAPI, APIRouter, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from contextlib import asynccontextmanager
 from typing import Optional
 import sys
 import os
 import math
+import logging
+from datetime import datetime
 
 import numpy as np
+from apscheduler.schedulers.background import BackgroundScheduler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -33,7 +37,36 @@ from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
 from engine.aging import build_aging_curves, aging_ratio as _aging_ratio
 
-app = FastAPI(title="NBA Stat Driver API")
+logger = logging.getLogger(__name__)
+
+
+def _current_season_end_year():
+    now = datetime.utcnow()
+    return now.year + 1 if now.month >= 10 else now.year
+
+
+def _daily_refresh():
+    try:
+        import refresh
+        season_year = _current_season_end_year()
+        logger.info(f"Daily refresh starting for season {season_year}")
+        refresh.run([season_year])
+        logger.info("Daily refresh complete")
+    except Exception:
+        logger.exception("Daily refresh failed")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = BackgroundScheduler(timezone="UTC")
+    scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
+    scheduler.start()
+    logger.info("Scheduler started — daily refresh at 08:00 UTC")
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(title="NBA Stat Driver API", lifespan=lifespan)
 router = APIRouter(prefix="/api")
 
 # Allow the React dev server to talk to this API
