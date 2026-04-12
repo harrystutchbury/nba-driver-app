@@ -343,7 +343,10 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     conn = get_conn()
 
     player_row = conn.execute(
-        "SELECT full_name, team FROM players WHERE slug = ? ORDER BY season DESC LIMIT 1", (player,)
+        """SELECT p.full_name, p.team, b.birthdate
+           FROM players p
+           LEFT JOIN player_bio b ON b.br_slug = p.slug
+           WHERE p.slug = ? ORDER BY p.season DESC LIMIT 1""", (player,)
     ).fetchone()
     if not player_row:
         conn.close()
@@ -400,8 +403,18 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
         for s, g in sorted(seasons.items(), reverse=True)
     ]
 
+    # Calculate current age from birthdate
+    current_age = None
+    if player_row["birthdate"]:
+        try:
+            from datetime import datetime as dt
+            bd = dt.strptime(player_row["birthdate"], "%Y-%m-%d").date()
+            current_age = int((today - bd).days / 365.25)
+        except Exception:
+            pass
+
     return {
-        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"]},
+        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"], "age": current_age},
         "career":  with_rank(_avg_row(rows),                                     league_career, rows_career),
         "seasons": season_avgs,
         "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30]), league_l30, rows_l30),

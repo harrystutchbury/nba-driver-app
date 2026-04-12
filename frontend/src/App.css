@@ -209,6 +209,16 @@
   margin-left: auto;
 }
 
+.player-age {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.5px;
+}
+
 .archetype-badge {
   font-family: var(--mono);
   font-size: 10px;
