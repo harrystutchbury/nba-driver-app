@@ -958,6 +958,9 @@ export default function App() {
             <div className="player-profile-header">
               <h2 className="player-name">{playerStats.player.name}</h2>
               <span className="player-team">{teamAbbr(playerStats.player.team)}</span>
+              {playerStats.player.position && (
+                <span className="player-age">{playerStats.player.position}</span>
+              )}
               {playerStats.player.age && (
                 <span className="player-age">Age {playerStats.player.age}</span>
               )}

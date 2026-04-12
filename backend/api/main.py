@@ -343,7 +343,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     conn = get_conn()
 
     player_row = conn.execute(
-        """SELECT p.full_name, p.team, b.birthdate
+        """SELECT p.full_name, p.team, b.birthdate, b.position_group
            FROM players p
            LEFT JOIN player_bio b ON b.br_slug = p.slug
            WHERE p.slug = ? ORDER BY p.season DESC LIMIT 1""", (player,)
@@ -414,7 +414,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
             pass
 
     return {
-        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"], "age": current_age},
+        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"], "age": current_age, "position": player_row["position_group"]},
         "career":  with_rank(_avg_row(rows),                                     league_career, rows_career),
         "seasons": season_avgs,
         "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30]), league_l30, rows_l30),
