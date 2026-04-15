@@ -209,6 +209,19 @@
   margin-left: auto;
 }
 
+.forecast-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #4dffb4;
+  background: rgba(77,255,180,0.1);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 .player-age {
   font-family: var(--mono);
   font-size: 10px;
