@@ -915,8 +915,13 @@ export default function App() {
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="site-header">
         <div className="site-header-inner">
-          <h1>NBA stat driver analysis</h1>
-          <p>Decompose period-over-period stat changes into their underlying drivers</p>
+          <div className="site-logo">
+            <span className="site-logo-icon">🏀</span>
+            <div>
+              <h1>Fantasy Basketball Analyzer</h1>
+              <p>Decompose period-over-period stat changes into their underlying drivers</p>
+            </div>
+          </div>
         </div>
       </header>
 
