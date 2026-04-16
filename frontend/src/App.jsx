@@ -949,9 +949,6 @@ export default function App() {
               </ul>
             )}
           </div>
-          {dataRange?.min_date && (
-            <span className="data-note">Data: {dataRange.min_date} – {dataRange.max_date}</span>
-          )}
         </div>
 
         {error && <div className="error-banner">{error}</div>}
