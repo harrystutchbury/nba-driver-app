@@ -919,7 +919,6 @@ export default function App() {
             <span className="site-logo-icon">🏀</span>
             <div>
               <h1>Fantasy Basketball Analyzer</h1>
-              <p>Decompose period-over-period stat changes into their underlying drivers</p>
             </div>
           </div>
         </div>
