@@ -887,9 +887,8 @@ export default function App() {
     return (
       <tr className="stats-row-projection">
         <td className="stats-period-cell">
-          {label}
-          <span className="forecast-badge">Forecast</span>
-          {note && <span className="archetype-transition" title={`Projected archetype: ${note}`}> ↓</span>}
+          <div>{label}{note && <span className="archetype-transition" title={`Projected archetype: ${note}`}> ↓</span>}</div>
+          <div><span className="forecast-badge">Forecast</span></div>
         </td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
         <td className="num mono stat-cell muted">—</td>
