@@ -450,13 +450,13 @@ export default function App() {
   useEffect(() => {
     if (!cmpQueryA || cmpQueryA.length < 2) { setCmpSuggsA([]); return }
     fetch(`/api/players?q=${encodeURIComponent(cmpQueryA)}`)
-      .then(r => r.json()).then(d => setCmpSuggsA(d.players || [])).catch(() => {})
+      .then(r => r.json()).then(d => setCmpSuggsA(Array.isArray(d) ? d : [])).catch(() => {})
   }, [cmpQueryA])
 
   useEffect(() => {
     if (!cmpQueryB || cmpQueryB.length < 2) { setCmpSuggsB([]); return }
     fetch(`/api/players?q=${encodeURIComponent(cmpQueryB)}`)
-      .then(r => r.json()).then(d => setCmpSuggsB(d.players || [])).catch(() => {})
+      .then(r => r.json()).then(d => setCmpSuggsB(Array.isArray(d) ? d : [])).catch(() => {})
   }, [cmpQueryB])
 
   useEffect(() => {
