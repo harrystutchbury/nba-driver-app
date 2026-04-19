@@ -135,6 +135,18 @@ def init_db():
         )
     """)
 
+    # nba_schedule — upcoming games fetched during daily refresh
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS nba_schedule (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_date   TEXT NOT NULL,
+            home_team   TEXT NOT NULL,
+            away_team   TEXT NOT NULL,
+            season      INTEGER NOT NULL,
+            UNIQUE(game_date, home_team, away_team)
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

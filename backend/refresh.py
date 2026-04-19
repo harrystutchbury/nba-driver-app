@@ -444,6 +444,34 @@ def get_or_refresh_players(conn, season_end_year):
         )]
 
 
+def refresh_schedule(conn, season_end_year):
+    """Fetch the full season schedule and store upcoming games in nba_schedule."""
+    log.info(f"Refreshing schedule for {season_end_year}...")
+    try:
+        games = client.season_schedule(season_end_year=season_end_year)
+    except Exception as e:
+        log.warning(f"Schedule fetch failed: {e}")
+        return
+    today = date.today()
+    rows = [
+        (
+            g["start_time"].date().isoformat(),
+            g["home_team"].value,
+            g["away_team"].value,
+            season_end_year,
+        )
+        for g in games
+        if g["start_time"].date() >= today
+    ]
+    conn.execute("DELETE FROM nba_schedule WHERE season = ?", (season_end_year,))
+    conn.executemany(
+        "INSERT OR IGNORE INTO nba_schedule (game_date, home_team, away_team, season) VALUES (?,?,?,?)",
+        rows,
+    )
+    conn.commit()
+    log.info(f"Stored {len(rows)} upcoming games in nba_schedule.")
+
+
 def run(seasons):
     init_db()
     conn = get_conn()
@@ -459,6 +487,8 @@ def run(seasons):
         refresh_team_game_logs(conn, season_end_year)
 
         refresh_player_game_logs(conn, season_end_year, slugs)
+
+        refresh_schedule(conn, season_end_year)
 
         log.info(f"[{season_label(season_end_year)}] Refresh complete.")
 

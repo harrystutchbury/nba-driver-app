@@ -1011,8 +1011,7 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
     Return upcoming games for the player's team with per-game projected stats
     scaled by each opponent's defensive strength vs the player's position group.
     """
-    from datetime import date, timezone
-    from basketball_reference_web_scraper import client as br_client
+    from datetime import date
 
     conn = get_conn()
     try:
@@ -1082,27 +1081,27 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
                 for stat in SCHED_STATS
             }
 
-        # ── 3. Forward schedule ───────────────────────────────────────────
-        today = date.today()
-        all_games = br_client.season_schedule(season_end_year=season_year)
+        # ── 3. Forward schedule (from DB, populated by daily refresh) ─────
+        today = date.today().isoformat()
+        sched_rows = conn.execute("""
+            SELECT game_date, home_team, away_team
+            FROM nba_schedule
+            WHERE season = ?
+              AND game_date >= ?
+              AND (home_team = ? OR away_team = ?)
+            ORDER BY game_date
+            LIMIT 10
+        """, (season_year, today, team, team)).fetchall()
+
         upcoming = []
-        for g in all_games:
-            game_date = g["start_time"].astimezone(timezone.utc).date()
-            if game_date < today:
-                continue
-            away = g["away_team"].value
-            home = g["home_team"].value
-            if away != team and home != team:
-                continue
-            is_home   = home == team
-            opponent  = home if not is_home else away
+        for row in sched_rows:
+            is_home  = row["home_team"] == team
+            opponent = row["away_team"] if is_home else row["home_team"]
             upcoming.append({
-                "date":      game_date.isoformat(),
+                "date":      row["game_date"],
                 "opponent":  opponent,
                 "home_away": "Home" if is_home else "Away",
             })
-            if len(upcoming) >= 10:
-                break
 
         # ── 4. Apply opponent factor to baseline ──────────────────────────
         games_out = []
