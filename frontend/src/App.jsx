@@ -404,7 +404,7 @@ const PERIODS = [
   { value: 'l14',    label: 'Last 14 Days' },
 ]
 
-function RankingsPage() {
+function RankingsPage({ onSelectPlayer }) {
   const [period,   setPeriod]   = useState('season')
   const [position, setPosition] = useState('all')
   const [players,  setPlayers]  = useState(null)
@@ -502,7 +502,7 @@ function RankingsPage() {
                   <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                     <td className="rank-col muted">{p.rank}</td>
                     <td className="name-col">
-                      <div className="rank-player-name">{p.name}</div>
+                      <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>{p.name}</div>
                       <div className="rank-player-team">{p.team}</div>
                     </td>
                     <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
@@ -1123,7 +1123,7 @@ export default function App() {
       {/* ── Page body ──────────────────────────────────────── */}
       <main className="page-body">
 
-      {page === 'rankings' && <RankingsPage />}
+      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}
