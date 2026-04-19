@@ -1139,6 +1139,8 @@ def admin_refresh_schedule():
     """Fetch upcoming schedule from basketball-reference and store in DB."""
     try:
         import refresh as refresh_mod
+        from schema import init_db
+        init_db()
         season_year = _current_season_end_year()
         conn = get_conn()
         refresh_mod.refresh_schedule(conn, season_year)
