@@ -301,11 +301,19 @@ function CourtDiagram({ zones, period }) {
   function zoneColor(zoneKey) {
     const z = byZone[zoneKey]
     if (!z) return '#1e2235'
-    // colour by net contribution — green positive, red negative, neutral if tiny
     const net = z.net
     const intensity = Math.min(Math.abs(net) / 0.03, 1)
-    if (net > 0.002)  return `rgba(77,255,180,${0.15 + intensity * 0.4})`
-    if (net < -0.002) return `rgba(255,107,107,${0.15 + intensity * 0.4})`
+    const alpha = 0.15 + intensity * 0.4
+    // Pre-blend with dark background (#141828 = rgb(20,24,40)) so stacked zones don't mix
+    const bg = [20, 24, 40]
+    if (net > 0.002) {
+      const fg = [77, 255, 180]
+      return `rgb(${Math.round(fg[0]*alpha+bg[0]*(1-alpha))},${Math.round(fg[1]*alpha+bg[1]*(1-alpha))},${Math.round(fg[2]*alpha+bg[2]*(1-alpha))})`
+    }
+    if (net < -0.002) {
+      const fg = [255, 107, 107]
+      return `rgb(${Math.round(fg[0]*alpha+bg[0]*(1-alpha))},${Math.round(fg[1]*alpha+bg[1]*(1-alpha))},${Math.round(fg[2]*alpha+bg[2]*(1-alpha))})`
+    }
     return '#1e2235'
   }
 
