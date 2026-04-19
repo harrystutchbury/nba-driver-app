@@ -1660,7 +1660,7 @@ export default function App() {
                   })
                   const sosAvg = sosFactors.reduce((a, b) => a + b, 0) / sosFactors.length
                   const sosPct = Math.min(Math.max((sosAvg - 0.85) / 0.3, 0), 1) // 0.85–1.15 range → 0–1
-                  const sosLabel = sosAvg > 1.05 ? 'Easy slate' : sosAvg < 0.95 ? 'Hard slate' : 'Neutral slate'
+                  const sosLabel = sosAvg > 1.05 ? 'Easy slate' : sosAvg < 0.95 ? 'Hard slate' : 'Neutral difficulty'
                   const sosColor = sosAvg > 1.05 ? '#4dffb4' : sosAvg < 0.95 ? '#ff6b6b' : '#aaa'
 
                   const periodLabel = { season: 'Season', l30: 'Last 30', l14: 'Last 14' }[schedProj.period] || 'Season'
