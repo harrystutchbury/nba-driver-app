@@ -922,13 +922,15 @@ def get_rankings(
         if not player_rows:
             return []
 
-        # Build slug → position+name map
+        # Build slug → position+name map (latest season per slug)
         bio_rows = conn.execute("""
             SELECT p.slug, p.full_name AS name, p.team, b.position_group AS position
             FROM players p
             LEFT JOIN player_bio b ON b.br_slug = p.slug
-            WHERE p.season = ?
-        """, (season or str(_current_season_end_year()),)).fetchall()
+            WHERE (p.slug, p.season) IN (
+                SELECT slug, MAX(season) FROM players GROUP BY slug
+            )
+        """).fetchall()
         bio = {r["slug"]: dict(r) for r in bio_rows}
 
         results = []

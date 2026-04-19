@@ -485,6 +485,9 @@ function RankingsPage() {
                 {RANK_COLS.map(c => (
                   <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
                     {c.label} <SortIcon col={c.key} />
+                    <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
+                      z <SortIcon col={`z_${c.key}`} />
+                    </div>
                   </th>
                 ))}
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
@@ -505,11 +508,16 @@ function RankingsPage() {
                     <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
                     <td className="num mono">{p.gp ?? '—'}</td>
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
-                    {RANK_COLS.map(c => (
-                      <td key={c.key} className="num mono">
-                        {fmt(p[c.key], c.pct)}
-                      </td>
-                    ))}
+                    {RANK_COLS.map(c => {
+                      const z = p[`z_${c.key}`]
+                      const zColor = z == null ? '' : z >= 1 ? '#4dffb4' : z <= -1 ? '#ff6b6b' : '#888'
+                      return (
+                        <td key={c.key} className="num mono rank-stat-cell">
+                          <div>{fmt(p[c.key], c.pct)}</div>
+                          <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>
+                        </td>
+                      )
+                    })}
                     <td className="num mono z-total-cell">
                       {fmtZ(p.z_total)}
                     </td>

@@ -1149,5 +1149,16 @@
 
 .z-total-cell { color: #4dffb4; font-weight: 600; }
 
+.rank-stat-cell { padding-top: 6px !important; padding-bottom: 6px !important; }
+.rank-z { font-size: 10px; color: #555; margin-top: 2px; }
+
+.th-z {
+  font-size: 9px;
+  color: #444;
+  margin-top: 2px;
+  cursor: pointer;
+}
+.th-z:hover { color: #888; }
+
 .sort-icon      { margin-left: 3px; font-size: 10px; }
 .sort-icon.muted { color: #333; }
