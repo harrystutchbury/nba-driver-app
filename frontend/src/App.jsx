@@ -376,26 +376,12 @@ function CourtDiagram({ zones, period }) {
       {/* Rim */}
       <circle cx={250} cy={20} r={15} fill="none" stroke="#4a5070" strokeWidth={2} />
 
-      {/* ── Labels ── */}
-      {/* Restricted area */}
-      <text x={250} y={50}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={3} paintOrder="stroke fill">{fgLabel('restricted_area')}</text>
-      <text x={250} y={65}  textAnchor="middle" fill={text} fontSize={9}  fontFamily="DM Mono,monospace" opacity={0.8} stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('restricted_area')}</text>
-
-      {/* Paint */}
-      <text x={250} y={145} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={3} paintOrder="stroke fill">{fgLabel('paint_non_ra')}</text>
-      <text x={250} y={160} textAnchor="middle" fill={text} fontSize={9}  fontFamily="DM Mono,monospace" opacity={0.8} stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('paint_non_ra')}</text>
-
-      {/* Mid-range — label in upper elbow area, well inside arc */}
-      <text x={110} y={80} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={3} paintOrder="stroke fill">{fgLabel('mid_range')}</text>
-      <text x={110} y={95} textAnchor="middle" fill={text} fontSize={9}  fontFamily="DM Mono,monospace" opacity={0.8} stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('mid_range')}</text>
-
-      {/* Corner 3 left */}
-      <text x={30}  y={80}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={3} paintOrder="stroke fill">{fgLabel('corner_3')}</text>
-      <text x={30}  y={95}  textAnchor="middle" fill={text} fontSize={9}  fontFamily="DM Mono,monospace" opacity={0.8} stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('corner_3')}</text>
-
-      {/* Above break 3 */}
-      <text x={250} y={295} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={3} paintOrder="stroke fill">{fgLabel('above_break_3')}</text>
-      <text x={250} y={310} textAnchor="middle" fill={text} fontSize={9}  fontFamily="DM Mono,monospace" opacity={0.8} stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('above_break_3')}</text>
+      {/* ── Labels (freq % only, heatmap communicates efficiency) ── */}
+      <text x={250} y={58}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('restricted_area')}</text>
+      <text x={250} y={155} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('paint_non_ra')}</text>
+      <text x={110} y={88}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('mid_range')}</text>
+      <text x={30}  y={88}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('corner_3')}</text>
+      <text x={250} y={305} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('above_break_3')}</text>
 
       {/* Period label */}
       <text x={250} y={340} textAnchor="middle" fill="#555" fontSize={10} fontFamily="DM Mono,monospace">{period}</text>
@@ -1601,26 +1587,6 @@ export default function App() {
                       })
                       const courtZonesA = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_a, fga: z.fga_a, freq: z.freq_a, net: z.net }))
                       const courtZonesB = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_b, fga: z.fga_b, freq: z.freq_b, net: z.net }))
-                      const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
-                      const attemptChartData = {
-                        labels: zoneLabels,
-                        datasets: [
-                          { label: 'Baseline', data: zoneRows.map(z => z.freq_a ? +(z.freq_a * 100).toFixed(1) : 0), backgroundColor: '#3a4470', borderRadius: 2 },
-                          { label: 'Comparison', data: zoneRows.map(z => z.freq_b ? +(z.freq_b * 100).toFixed(1) : 0), backgroundColor: '#4dffb4', borderRadius: 2 },
-                        ],
-                      }
-                      const attemptChartOptions = {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                          legend: { display: true, labels: { color: '#555', font: { family: "'DM Mono', monospace", size: 10 }, boxWidth: 10 } },
-                          tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
-                          datalabels: { labels: { count: { anchor: 'end', align: 'end', formatter: (val) => val > 0 ? `${Math.round(val)}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } }, pct: { anchor: 'center', align: 'center', formatter: (val, ctx) => { if (val === 0) return null; const z = zoneRows[ctx.dataIndex]; if (!z) return null; const pct = ctx.datasetIndex === 0 ? z.fg_pct_a : z.fg_pct_b; const fga = ctx.datasetIndex === 0 ? z.fga_a : z.fga_b; return fga > 0 ? `${Math.round(pct * 100)}FG%` : null }, color: (ctx) => ctx.datasetIndex === 0 ? 'rgba(255,255,255,0.75)' : '#0d1a14', font: { family: "'DM Mono', monospace", size: 9, weight: '500' } } } },
-                        },
-                        scales: {
-                          x: { grid: { color: '#1a1a1a', drawTicks: false }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
-                          y: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, callback: (v) => `${v}%` }, title: { display: true, text: '% of FGA', color: '#888', font: { family: "'DM Mono', monospace", size: 9 } } },
-                        },
-                      }
                       return (
                         <div className="shot-diet-section">
                           <h2 className="panel-title">Shot diet analysis</h2>
@@ -1630,26 +1596,20 @@ export default function App() {
                             <div className="shot-metric"><span className="metric-label">Selection effect</span><span className={`metric-value ${shotDiet.diet_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.diet_total >= 0 ? '+' : ''}{(shotDiet.diet_total * 100).toFixed(1)}pp</span><span className="metric-sub">shot mix shift</span></div>
                             <div className="shot-metric"><span className="metric-label">Efficiency effect</span><span className={`metric-value ${shotDiet.efficiency_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.efficiency_total >= 0 ? '+' : ''}{(shotDiet.efficiency_total * 100).toFixed(1)}pp</span><span className="metric-sub">zone accuracy</span></div>
                           </div>
-                          <div className="shot-diet-body">
-                            <div className="courts-row">
-                              <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>
-                              <div className="court-wrap"><div className="court-label">Comparison</div><CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} /></div>
-                            </div>
-                            <div className="attempt-chart-wrap"><Bar data={attemptChartData} options={attemptChartOptions} /></div>
+                          <div className="courts-row">
+                            <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>
+                            <div className="court-wrap"><div className="court-label">Comparison</div><CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} /></div>
                           </div>
                           <table className="shot-table">
-                            <thead><tr><th>Zone</th><th className="num">Baseline freq</th><th className="num">Baseline FG%</th><th className="num">Comp freq</th><th className="num">Comp FG%</th><th className="num">Selection FG% impact</th><th className="num">Efficiency FG% impact</th></tr></thead>
+                            <thead><tr><th>Zone</th><th className="num">Baseline FG%</th><th className="num">Comp FG%</th><th className="num">Selection impact</th><th className="num">Efficiency impact</th></tr></thead>
                             <tbody>
                               {zoneRows.filter(z => z.fga_a > 0 || z.fga_b > 0).map(z => {
                                 const fgShift = Math.round((z.fg_pct_b - z.fg_pct_a) * 100)
-                                const freqShift = Math.round((z.freq_b - z.freq_a) * 100)
                                 return (
                                   <tr key={z.zone}>
                                     <td>{ZONE_LABELS[z.zone]}</td>
-                                    <td className="num mono">{z.freq_a > 0 ? `${Math.round(z.freq_a * 100)}%` : '—'}</td>
                                     <td className="num mono">{z.fga_a > 0 ? `${Math.round(z.fg_pct_a * 100)}%` : '—'}</td>
-                                    <td className="num mono">{z.freq_b > 0 ? `${Math.round(z.freq_b * 100)}% (${freqShift >= 0 ? '+' : ''}${freqShift}%)` : '—'}</td>
-                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}%)` : '—'}</td>
+                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}pp)` : '—'}</td>
                                     <td className={`num mono ${z.diet_effect >= 0 ? 'pos' : 'neg'}`}>{z.diet_effect >= 0 ? '+' : ''}{(z.diet_effect * 100).toFixed(1)}</td>
                                     <td className={`num mono ${z.efficiency_effect >= 0 ? 'pos' : 'neg'}`}>{z.efficiency_effect >= 0 ? '+' : ''}{(z.efficiency_effect * 100).toFixed(1)}</td>
                                   </tr>
