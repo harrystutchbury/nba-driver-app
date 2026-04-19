@@ -585,6 +585,12 @@
 .metric-delta.pos { color: var(--pos); }
 .metric-delta.neg { color: var(--neg); }
 
+.metric-sched {
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 /* ── Chart legend ────────────────────────────────────────── */
 .chart-legend {
   display: flex;

@@ -174,7 +174,7 @@ function buildWaterfall(result) {
   const drivers = [...result.drivers].sort(
     (a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99)
   )
-  const labels       = ['Baseline', ...drivers.map(d => LABEL_DISPLAY[d.label] ?? d.label), 'Total']
+  const labels       = ['Baseline', ...drivers.map(d => LABEL_DISPLAY[d.label] ?? d.label), 'Comparison']
   const floatData    = []
   const barData      = []
   const colors       = []
@@ -201,7 +201,7 @@ function buildWaterfall(result) {
   floatData.push(0)
   barData.push(period_b.value)
   colors.push(TOTAL_COLOR)
-  tipLabels.push(`Total: ${period_b.value.toFixed(2)}`)
+  tipLabels.push(`Comparison: ${period_b.value.toFixed(2)}`)
   displayLabels.push(period_b.value.toFixed(1))
 
   return { labels, floatData, barData, colors, tipLabels, displayLabels }
@@ -1467,14 +1467,12 @@ export default function App() {
                         <span className="metric-label">Baseline</span>
                         <span className="metric-value">{result.period_a.value.toFixed(1)}</span>
                         <span className="metric-sub">{statLabelShort}</span>
-                      </div>
-                      <div className="metric-card">
-                        <span className="metric-label">Comparison</span>
-                        <span className="metric-value">{result.period_b.value.toFixed(1)}</span>
-                        <span className={`metric-sub metric-delta ${result.delta >= 0 ? 'pos' : 'neg'}`}>
-                          {result.delta >= 0 ? '+' : ''}{result.delta.toFixed(2)}&ensp;
-                          ({result.delta >= 0 ? '+' : ''}{((result.delta / result.period_a.value) * 100).toFixed(1)}%)
-                        </span>
+                        {result.schedule_difficulty && (() => {
+                          const f = result.schedule_difficulty.period_a
+                          const pct = ((f - 1) * 100).toFixed(0)
+                          const label = `${pct >= 0 ? '+' : ''}${pct}%`
+                          return <span className="metric-sched" style={{ color: f >= 1 ? '#4dffb4' : '#ff6b6b' }}>Sched {label}</span>
+                        })()}
                       </div>
                       <div className="metric-card">
                         <span className="metric-label">Rate change</span>
@@ -1496,6 +1494,20 @@ export default function App() {
                           {luckSum >= 0 ? '+' : ''}{luckSum.toFixed(2)}
                         </span>
                         <span className="metric-sub">external factors</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Comparison</span>
+                        <span className="metric-value">{result.period_b.value.toFixed(1)}</span>
+                        <span className={`metric-sub metric-delta ${result.delta >= 0 ? 'pos' : 'neg'}`}>
+                          {result.delta >= 0 ? '+' : ''}{result.delta.toFixed(2)}&ensp;
+                          ({result.delta >= 0 ? '+' : ''}{((result.delta / result.period_a.value) * 100).toFixed(1)}%)
+                        </span>
+                        {result.schedule_difficulty && (() => {
+                          const f = result.schedule_difficulty.period_b
+                          const pct = ((f - 1) * 100).toFixed(0)
+                          const label = `${pct >= 0 ? '+' : ''}${pct}%`
+                          return <span className="metric-sched" style={{ color: f >= 1 ? '#4dffb4' : '#ff6b6b' }}>Sched {label}</span>
+                        })()}
                       </div>
                     </div>
 
@@ -1556,31 +1568,6 @@ export default function App() {
                                   </tr>
                                 )
                               })}
-                            {result.schedule_difficulty && (() => {
-                              const sd     = result.schedule_difficulty
-                              const sdColor = '#a78bfa'
-                              const aFactor = ((sd.period_a - 1) * 100).toFixed(0)
-                              const bFactor = ((sd.period_b - 1) * 100).toFixed(0)
-                              const aLabel  = `${aFactor >= 0 ? '+' : ''}${aFactor}%`
-                              const bLabel  = `${bFactor >= 0 ? '+' : ''}${bFactor}%`
-                              return (
-                                <tr key="sched-diff" className="sched-diff-row">
-                                  <td className="driver-cell">
-                                    <span className="driver-name">Schedule difficulty</span>
-                                    <span className="cat-pill" style={{ background: sdColor + '20', color: sdColor, borderColor: sdColor + '40' }}>
-                                      context
-                                    </span>
-                                  </td>
-                                  <td className="num sched-diff-vals">
-                                    <span className="sched-diff-period">A: <span style={{ color: sd.period_a >= 1 ? '#4dffb4' : '#ff6b6b' }}>{aLabel}</span></span>
-                                    <span className="sched-diff-period">B: <span style={{ color: sd.period_b >= 1 ? '#4dffb4' : '#ff6b6b' }}>{bLabel}</span></span>
-                                  </td>
-                                  <td className="attribution-cell">
-                                    <span className="sched-diff-note">vs {sd.position}s avg</span>
-                                  </td>
-                                </tr>
-                              )
-                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -2130,31 +2117,6 @@ export default function App() {
                           </tr>
                         )
                       })}
-                    {result.schedule_difficulty && (() => {
-                      const sd     = result.schedule_difficulty
-                      const sdColor = '#a78bfa'
-                      const aFactor = ((sd.period_a - 1) * 100).toFixed(0)
-                      const bFactor = ((sd.period_b - 1) * 100).toFixed(0)
-                      const aLabel  = `${aFactor >= 0 ? '+' : ''}${aFactor}%`
-                      const bLabel  = `${bFactor >= 0 ? '+' : ''}${bFactor}%`
-                      return (
-                        <tr key="sched-diff" className="sched-diff-row">
-                          <td className="driver-cell">
-                            <span className="driver-name">Schedule difficulty</span>
-                            <span className="cat-pill" style={{ background: sdColor + '20', color: sdColor, borderColor: sdColor + '40' }}>
-                              context
-                            </span>
-                          </td>
-                          <td className="num sched-diff-vals">
-                            <span className="sched-diff-period">A: <span style={{ color: sd.period_a >= 1 ? '#4dffb4' : '#ff6b6b' }}>{aLabel}</span></span>
-                            <span className="sched-diff-period">B: <span style={{ color: sd.period_b >= 1 ? '#4dffb4' : '#ff6b6b' }}>{bLabel}</span></span>
-                          </td>
-                          <td className="attribution-cell">
-                            <span className="sched-diff-note">vs {sd.position}s avg</span>
-                          </td>
-                        </tr>
-                      )
-                    })()}
                   </tbody>
                 </table>
               </div>
