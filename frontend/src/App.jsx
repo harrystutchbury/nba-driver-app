@@ -237,16 +237,19 @@ function generateInsights(result, statLabel) {
 
   // Schedule difficulty insight
   if (sd) {
-    const diff = sd.period_a - sd.period_b   // positive = Period A had easier schedule
+    const diff    = sd.period_a - sd.period_b  // positive = A easier, B harder
     const pctDiff = Math.abs(diff) * 100
+    const improved = result.delta > 0
     if (pctDiff >= 2) {
-      const easierPeriod = diff > 0 ? 'Period A' : 'Period B'
-      const harderPeriod = diff > 0 ? 'Period B' : 'Period A'
-      const direction    = result.delta >= 0 ? 'improvement' : 'decline'
-      ins.push(
-        `Schedule difficulty: ${easierPeriod} faced opponents allowing ${pctDiff.toFixed(0)}% more ${statLabel} to ${sd.position}s than ${harderPeriod}. ` +
-        `This may ${pctDiff >= 5 ? 'partially explain' : 'have contributed to'} the ${direction}.`
-      )
+      const pctStr = pctDiff.toFixed(0)
+      if (diff > 0 && improved)
+        ins.push(`Schedule difficulty: the comparison period faced harder opposition (${pctStr}% fewer ${statLabel} allowed to ${sd.position}s). The improvement came despite this headwind — suggesting a genuine performance gain.`)
+      else if (diff < 0 && improved)
+        ins.push(`Schedule difficulty: the comparison period faced easier opposition (${pctStr}% more ${statLabel} allowed to ${sd.position}s). This may partially explain the improvement — treat with some caution.`)
+      else if (diff > 0 && !improved)
+        ins.push(`Schedule difficulty: the comparison period faced harder opposition (${pctStr}% fewer ${statLabel} allowed to ${sd.position}s). This may partially explain the decline.`)
+      else
+        ins.push(`Schedule difficulty: the comparison period faced easier opposition (${pctStr}% more ${statLabel} allowed to ${sd.position}s) yet ${statLabel} still declined — suggesting a genuine performance drop.`)
     } else {
       ins.push(`Schedule difficulty was similar across both periods for ${sd.position} ${statLabel} — the change reflects genuine performance.`)
     }
