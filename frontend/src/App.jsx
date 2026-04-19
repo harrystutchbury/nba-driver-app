@@ -1479,14 +1479,14 @@ export default function App() {
                       </div>
                       <div className="metric-card">
                         <span className="metric-label">Rate change</span>
-                        <span className={`metric-value ${skillSum >= 0 ? 'pos' : 'neg'}`}>
+                        <span className="metric-value" style={{ color: CATEGORY_COLORS.skill }}>
                           {skillSum >= 0 ? '+' : ''}{skillSum.toFixed(2)}
                         </span>
                         <span className="metric-sub">rate changes</span>
                       </div>
                       <div className="metric-card">
                         <span className="metric-label">Role</span>
-                        <span className={`metric-value ${roleSum >= 0 ? 'pos' : 'neg'}`}>
+                        <span className="metric-value" style={{ color: CATEGORY_COLORS.role }}>
                           {roleSum >= 0 ? '+' : ''}{roleSum.toFixed(2)}
                         </span>
                         <span className="metric-sub">minutes / usage</span>
