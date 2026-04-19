@@ -319,7 +319,7 @@ function CourtDiagram({ zones, period }) {
     const z = byZone[zoneKey]
     if (!z || z.fga === 0 || totalFga === 0) return ''
     const freq = z.freq !== undefined ? z.freq : (z.fga / totalFga)
-    return `${(freq * 100).toFixed(0)}% of FGA`
+    return `${(freq * 100).toFixed(0)}%`
   }
 
   const W = 500, H = 350
@@ -380,7 +380,7 @@ function CourtDiagram({ zones, period }) {
       <text x={250} y={58}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('restricted_area')}</text>
       <text x={250} y={155} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('paint_non_ra')}</text>
       <text x={110} y={88}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('mid_range')}</text>
-      <text x={30}  y={88}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('corner_3')}</text>
+      <text x={30}  y={88}  textAnchor="middle" fill={text} fontSize={9} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('corner_3')}</text>
       <text x={250} y={305} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('above_break_3')}</text>
 
       {/* Period label */}
