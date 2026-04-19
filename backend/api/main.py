@@ -888,6 +888,118 @@ def get_projection(
 
 
 # -----------------------------------------------------------------------
+# GET /rankings
+# -----------------------------------------------------------------------
+
+@router.get("/rankings")
+def get_rankings(
+    period:   str = Query("season", description="season | l14 | l30"),
+    position: str = Query("all",    description="all | Guard | Forward | Center | Guard-Forward | Forward-Center"),
+):
+    """
+    Return all qualifying players ranked by composite Z-score for the given period.
+    """
+    from datetime import date, timedelta
+
+    conn = get_conn()
+    try:
+        if period == "season":
+            cutoff    = None
+            min_games = 10
+            season    = str(_current_season_end_year())
+        elif period == "l14":
+            cutoff    = (date.today() - timedelta(days=14)).isoformat()
+            min_games = 3
+            season    = None
+        else:  # l30
+            cutoff    = (date.today() - timedelta(days=30)).isoformat()
+            min_games = 5
+            season    = None
+
+        league, player_rows = _league_data(conn, season=season, cutoff=cutoff, min_games=min_games)
+
+        if not player_rows:
+            return []
+
+        # Build slug → position+name map
+        bio_rows = conn.execute("""
+            SELECT p.slug, p.full_name AS name, p.team, b.position_group AS position
+            FROM players p
+            LEFT JOIN player_bio b ON b.br_slug = p.slug
+            WHERE p.season = ?
+        """, (season or str(_current_season_end_year()),)).fetchall()
+        bio = {r["slug"]: dict(r) for r in bio_rows}
+
+        results = []
+        for r in player_rows:
+            slug = r["player_slug"]
+            info = bio.get(slug, {})
+            pos  = info.get("position") or ""
+
+            if position != "all" and pos != position:
+                continue
+
+            avg = _avg_row([r])  # already aggregated — just re-wrap
+            # _avg_row expects a list of raw game rows; player_rows are already aggregated.
+            # Build a synthetic avg dict directly from the aggregated row.
+            avg = {
+                "gp":     None,  # not available in league aggregate
+                "min_pg": round(r.get("min_pg") or 0, 1) if "min_pg" in r else None,
+                "pts":    round(r["pts"],  1) if r.get("pts")  is not None else None,
+                "reb":    round(r["reb"],  1) if r.get("reb")  is not None else None,
+                "ast":    round(r["ast"],  1) if r.get("ast")  is not None else None,
+                "stl":    round(r["stl"],  1) if r.get("stl")  is not None else None,
+                "blk":    round(r["blk"],  1) if r.get("blk")  is not None else None,
+                "tov":    round(r["tov"],  1) if r.get("tov")  is not None else None,
+                "fg3m":   round(r["fg3m"], 1) if r.get("fg3m") is not None else None,
+                "fg_pct": round(r["fg_pct"], 1) if r.get("fg_pct") is not None else None,
+                "ft_pct": round(r["ft_pct"], 1) if r.get("ft_pct") is not None else None,
+                "fga_pg": round(r.get("fga_pg") or 0, 1),
+                "fta_pg": round(r.get("fta_pg") or 0, 1),
+                "fg_impact": r.get("fg_impact"),
+                "ft_impact": r.get("ft_impact"),
+            }
+            z_total = _composite_z(r, league)
+            avg_z   = _with_zscores(avg, league)
+
+            results.append({
+                "slug":     slug,
+                "name":     info.get("name", slug),
+                "team":     info.get("team", ""),
+                "position": pos,
+                "z_total":  round(z_total, 2) if z_total is not None else None,
+                **{k: v for k, v in avg_z.items() if k != "gp"},
+            })
+
+        # Fetch GP counts separately (game_logs has individual rows)
+        clauses = ["min > 0"]
+        params  = []
+        if season:
+            clauses.append("season = ?")
+            params.append(season)
+        if cutoff:
+            clauses.append("game_date >= ?")
+            params.append(cutoff)
+        where = " AND ".join(clauses)
+        gp_rows = conn.execute(
+            f"SELECT player_slug, COUNT(*) AS gp FROM game_logs WHERE {where} GROUP BY player_slug",
+            params
+        ).fetchall()
+        gp_map = {r["player_slug"]: r["gp"] for r in gp_rows}
+
+        for p in results:
+            p["gp"] = gp_map.get(p["slug"])
+
+        results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
+        for i, p in enumerate(results):
+            p["rank"] = i + 1
+
+        return results
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # Health check
 # -----------------------------------------------------------------------
 

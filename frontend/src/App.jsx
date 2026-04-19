@@ -382,7 +382,156 @@ function CourtDiagram({ zones, period }) {
   )
 }
 
+// ─── Rankings Page ────────────────────────────────────────────────────────────
+
+const RANK_COLS = [
+  { key: 'pts',    label: 'PTS' },
+  { key: 'reb',    label: 'REB' },
+  { key: 'ast',    label: 'AST' },
+  { key: 'stl',    label: 'STL' },
+  { key: 'blk',    label: 'BLK' },
+  { key: 'tov',    label: 'TOV', lowerBetter: true },
+  { key: 'fg3m',   label: '3PM' },
+  { key: 'fg_pct', label: 'FG%', pct: true },
+  { key: 'ft_pct', label: 'FT%', pct: true },
+]
+
+const POSITIONS = ['All', 'Guard', 'Forward', 'Center', 'Guard-Forward', 'Forward-Center']
+
+const PERIODS = [
+  { value: 'season', label: 'Full Season' },
+  { value: 'l30',    label: 'Last 30 Days' },
+  { value: 'l14',    label: 'Last 14 Days' },
+]
+
+function RankingsPage() {
+  const [period,   setPeriod]   = useState('season')
+  const [position, setPosition] = useState('all')
+  const [players,  setPlayers]  = useState(null)
+  const [loading,  setLoading]  = useState(false)
+  const [sortKey,  setSortKey]  = useState('z_total')
+  const [sortAsc,  setSortAsc]  = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    setPlayers(null)
+    const pos = position === 'all' ? 'all' : position
+    fetch(`/api/rankings?period=${period}&position=${encodeURIComponent(pos)}`)
+      .then(r => r.json())
+      .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [period, position])
+
+  function handleSort(key) {
+    if (sortKey === key) setSortAsc(a => !a)
+    else { setSortKey(key); setSortAsc(key === 'tov') }
+  }
+
+  const sorted = players ? [...players].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity
+    const bv = b[sortKey] ?? -Infinity
+    return sortAsc ? av - bv : bv - av
+  }) : []
+
+  const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
+  const fmtZ = (z) => z == null ? '' : (z >= 0 ? '+' : '') + z.toFixed(2)
+
+  function SortIcon({ col }) {
+    if (sortKey !== col) return <span className="sort-icon muted">↕</span>
+    return <span className="sort-icon">{sortAsc ? '↑' : '↓'}</span>
+  }
+
+  return (
+    <div className="rankings-page">
+      <div className="rankings-controls">
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Period</span>
+          <div className="rank-pills">
+            {PERIODS.map(p => (
+              <button key={p.value} className={`rank-pill${period === p.value ? ' active' : ''}`}
+                onClick={() => setPeriod(p.value)}>{p.label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Position</span>
+          <div className="rank-pills">
+            {POSITIONS.map(p => (
+              <button key={p} className={`rank-pill${position === (p === 'All' ? 'all' : p) ? ' active' : ''}`}
+                onClick={() => setPosition(p === 'All' ? 'all' : p)}>{p}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading && <p className="rankings-loading">Loading…</p>}
+
+      {!loading && sorted.length > 0 && (
+        <div className="rankings-table-wrap">
+          <table className="rankings-table">
+            <thead>
+              <tr>
+                <th className="rank-col">#</th>
+                <th className="name-col" onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+                  Player <SortIcon col="name" />
+                </th>
+                <th>Pos</th>
+                <th className="num" onClick={() => handleSort('gp')} style={{ cursor: 'pointer' }}>
+                  GP <SortIcon col="gp" />
+                </th>
+                <th className="num" onClick={() => handleSort('min_pg')} style={{ cursor: 'pointer' }}>
+                  MIN <SortIcon col="min_pg" />
+                </th>
+                {RANK_COLS.map(c => (
+                  <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
+                    {c.label} <SortIcon col={c.key} />
+                  </th>
+                ))}
+                <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
+                  Value <SortIcon col="z_total" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p, i) => {
+                const isTopVal = sortKey === 'z_total'
+                return (
+                  <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                    <td className="rank-col muted">{p.rank}</td>
+                    <td className="name-col">
+                      <span className="rank-player-name">{p.name}</span>
+                      <span className="rank-player-team muted"> {p.team}</span>
+                    </td>
+                    <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
+                    <td className="num mono">{p.gp ?? '—'}</td>
+                    <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
+                    {RANK_COLS.map(c => (
+                      <td key={c.key} className="num mono">
+                        {fmt(p[c.key], c.pct)}
+                      </td>
+                    ))}
+                    <td className="num mono z-total-cell">
+                      {fmtZ(p.z_total)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && players && sorted.length === 0 && (
+        <p className="rankings-empty">No players found for this filter.</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+
 export default function App() {
+  const [page, setPage]               = useState('home')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -955,12 +1104,19 @@ export default function App() {
               <h1>Fantasy Basketball Analyzer</h1>
             </div>
           </div>
+          <nav className="site-nav">
+            <button className={`nav-btn${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>Player</button>
+            <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
+          </nav>
         </div>
       </header>
 
       {/* ── Page body ──────────────────────────────────────── */}
       <main className="page-body">
 
+      {page === 'rankings' && <RankingsPage />}
+
+      {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}
         <div className="player-search-section" ref={searchRef}>
           <div className="typeahead player-typeahead">
@@ -2063,6 +2219,7 @@ export default function App() {
             )}
           </>
         )}
+      </>}
 
       </main>
     </>
