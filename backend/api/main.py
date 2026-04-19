@@ -1131,6 +1131,25 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
 
 
 # -----------------------------------------------------------------------
+# POST /admin/refresh-schedule  (one-shot, no auth needed — low risk)
+# -----------------------------------------------------------------------
+
+@router.post("/admin/refresh-schedule")
+def admin_refresh_schedule():
+    """Fetch upcoming schedule from basketball-reference and store in DB."""
+    try:
+        import refresh as refresh_mod
+        season_year = _current_season_end_year()
+        conn = get_conn()
+        refresh_mod.refresh_schedule(conn, season_year)
+        count = conn.execute("SELECT COUNT(*) FROM nba_schedule WHERE season=?", (season_year,)).fetchone()[0]
+        conn.close()
+        return {"status": "ok", "games_stored": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------------------------------------------------------
 # Health check
 # -----------------------------------------------------------------------
 
