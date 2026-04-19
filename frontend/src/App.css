@@ -1235,7 +1235,22 @@
 .sched-proj-table td { padding: 7px 10px; border-bottom: 1px solid #1a1a1a; }
 .sched-proj-table td.num { text-align: right; }
 
-.sched-date { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.sched-date { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; vertical-align: middle; }
+
+.b2b-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-family: var(--sans);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f5a623;
+  border: 1px solid #f5a623;
+  border-radius: 3px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
 .sched-opp  { font-weight: 500; }
 .sched-ha   { font-size: 11px; width: 24px; }
 .sched-stat { font-size: 13px; }

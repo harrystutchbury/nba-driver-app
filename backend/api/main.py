@@ -1014,7 +1014,7 @@ def get_schedule_projection(
     Return upcoming games for the player's team with per-game projected stats
     scaled by each opponent's defensive strength vs the player's position group.
     """
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime
 
     conn = get_conn()
     try:
@@ -1113,17 +1113,55 @@ def get_schedule_projection(
                 for stat in SCHED_STATS
             }
 
-        # ── 3. Forward schedule (from DB, populated by daily refresh) ─────
-        today = date.today().isoformat()
-        sched_rows = conn.execute("""
-            SELECT game_date, home_team, away_team
-            FROM nba_schedule
-            WHERE season = ?
-              AND game_date >= ?
-              AND (home_team = ? OR away_team = ?)
+        # ── 3. B2B factor from historical game_logs ───────────────────────
+        # Tag each game as B2B if the player also played the previous calendar day
+        all_season_rows = conn.execute("""
+            SELECT game_date, min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta
+            FROM game_logs
+            WHERE player_slug = ? AND season = ? AND min > 0
             ORDER BY game_date
+        """, (player, season_label)).fetchall()
+        all_season_rows = [dict(r) for r in all_season_rows]
+
+        dates_played = {r["game_date"] for r in all_season_rows}
+        b2b_hist, normal_hist = [], []
+        for r in all_season_rows:
+            prev = (datetime.strptime(r["game_date"], "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
+            if prev in dates_played:
+                b2b_hist.append(r)
+            else:
+                normal_hist.append(r)
+
+        b2b_factor: dict = {}
+        if len(b2b_hist) >= 3 and len(normal_hist) >= 3:
+            b2b_avg    = _avg_row(b2b_hist)
+            normal_avg = _avg_row(normal_hist)
+            for stat in SCHED_STATS:
+                b = b2b_avg.get(stat)
+                n = normal_avg.get(stat)
+                b2b_factor[stat] = round(b / n, 3) if (b and n and n != 0) else 1.0
+        else:
+            b2b_factor = {stat: 1.0 for stat in SCHED_STATS}
+
+        b2b_games_count = len(b2b_hist)
+
+        # ── 4. Forward schedule + B2B detection ───────────────────────────
+        today_str = date.today().isoformat()
+        sched_rows = conn.execute("""
+            SELECT s.game_date, s.home_team, s.away_team,
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM nba_schedule s2
+                       WHERE (s2.home_team = ? OR s2.away_team = ?)
+                         AND s2.game_date = date(s.game_date, '-1 day')
+                         AND s2.season = s.season
+                   ) THEN 1 ELSE 0 END AS is_b2b
+            FROM nba_schedule s
+            WHERE s.season = ?
+              AND s.game_date >= ?
+              AND (s.home_team = ? OR s.away_team = ?)
+            ORDER BY s.game_date
             LIMIT 10
-        """, (season_year, today, team, team)).fetchall()
+        """, (team, team, season_year, today_str, team, team)).fetchall()
 
         upcoming = []
         for row in sched_rows:
@@ -1133,36 +1171,41 @@ def get_schedule_projection(
                 "date":      row["game_date"],
                 "opponent":  opponent,
                 "home_away": "Home" if is_home else "Away",
+                "is_b2b":    bool(row["is_b2b"]),
             })
 
-        # ── 4. Apply opponent factor to home/away-split baseline ─────────
+        # ── 5. Apply opponent + B2B factors to home/away-split baseline ───
         games_out = []
         for g in upcoming:
             opp      = g["opponent"]
             is_home  = g["home_away"] == "Home"
             base_row = home_baseline if is_home else away_baseline
-            factors  = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
+            opp_f    = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
+            b2b_f    = b2b_factor if g["is_b2b"] else {stat: 1.0 for stat in SCHED_STATS}
             projected = {}
+            combined_factors = {}
             for stat in SCHED_STATS:
                 base = base_row.get(stat)
-                if base is not None:
-                    projected[stat] = round(base * factors.get(stat, 1.0), 1)
-                else:
-                    projected[stat] = None
-            games_out.append({**g, "projected": projected, "factors": {
-                stat: round(factors.get(stat, 1.0), 3) for stat in SCHED_STATS
-            }})
+                of   = opp_f.get(stat, 1.0)
+                bf   = b2b_f.get(stat, 1.0)
+                combined_factors[stat] = round(of * bf, 3)
+                projected[stat] = round(base * of * bf, 1) if base is not None else None
+            games_out.append({**g, "projected": projected, "factors": combined_factors,
+                               "opp_factors": {s: round(opp_f.get(s, 1.0), 3) for s in SCHED_STATS},
+                               "b2b_factors": {s: round(b2b_f.get(s, 1.0), 3) for s in SCHED_STATS}})
 
         return {
-            "player":        player,
-            "team":          team,
-            "position":      position,
-            "period":        period,
+            "player":          player,
+            "team":            team,
+            "position":        position,
+            "period":          period,
             "games_in_window": len(game_rows),
-            "baseline":      {stat: baseline.get(stat)      for stat in SCHED_STATS},
-            "home_baseline": {stat: home_baseline.get(stat) for stat in SCHED_STATS},
-            "away_baseline": {stat: away_baseline.get(stat) for stat in SCHED_STATS},
-            "games":         games_out,
+            "b2b_games":       b2b_games_count,
+            "b2b_factor":      b2b_factor,
+            "baseline":        {stat: baseline.get(stat)      for stat in SCHED_STATS},
+            "home_baseline":   {stat: home_baseline.get(stat) for stat in SCHED_STATS},
+            "away_baseline":   {stat: away_baseline.get(stat) for stat in SCHED_STATS},
+            "games":           games_out,
         }
     finally:
         conn.close()

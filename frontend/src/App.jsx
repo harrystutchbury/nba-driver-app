@@ -1690,7 +1690,8 @@ export default function App() {
                         </div>
                       </div>
                       <p className="sched-proj-note">
-                        Based on {periodLabel} avg · scaled by opponent defence vs {schedProj.position}s · {schedProj.games_in_window}G sample
+                        Based on {periodLabel} avg · opponent defence vs {schedProj.position}s · {schedProj.games_in_window}G sample
+                        {schedProj.b2b_games >= 3 && ` · B2B factor from ${schedProj.b2b_games}G`}
                       </p>
                       <div className="sched-table-scroll">
                       <table className="sched-proj-table">
@@ -1705,7 +1706,10 @@ export default function App() {
                         <tbody>
                           {schedProj.games.map((g, i) => (
                             <tr key={i}>
-                              <td className="sched-date">{g.date.slice(5)}</td>
+                              <td className="sched-date">
+                                {g.date.slice(5)}
+                                {g.is_b2b && <span className="b2b-badge">B2B</span>}
+                              </td>
                               <td className="sched-opp">{g.opponent.split(' ').pop()}</td>
                               <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
                               {SCHED_COLS.map(c => {
