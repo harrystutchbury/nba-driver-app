@@ -1679,17 +1679,9 @@ export default function App() {
                             </tr>
                           ))}
                           <tr className="sched-baseline-row">
-                            <td colSpan={2} className="sched-baseline-label">Home avg</td>
-                            <td className="sched-ha muted">vs</td>
+                            <td colSpan={3} className="sched-baseline-label">Season avg</td>
                             {SCHED_COLS.map(c => (
-                              <td key={c.key} className="num mono muted">{homeBaseline[c.key] != null ? homeBaseline[c.key].toFixed(1) : '—'}</td>
-                            ))}
-                          </tr>
-                          <tr className="sched-baseline-row">
-                            <td colSpan={2} className="sched-baseline-label">Away avg</td>
-                            <td className="sched-ha muted">@</td>
-                            {SCHED_COLS.map(c => (
-                              <td key={c.key} className="num mono muted">{awayBaseline[c.key] != null ? awayBaseline[c.key].toFixed(1) : '—'}</td>
+                              <td key={c.key} className="num mono muted">{schedProj.baseline[c.key] != null ? schedProj.baseline[c.key].toFixed(1) : '—'}</td>
                             ))}
                           </tr>
                         </tbody>
