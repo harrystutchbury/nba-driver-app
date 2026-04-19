@@ -416,16 +416,11 @@ export default function App() {
   const [driverExpanded, setDriverExpanded] = useState(true)
 
   // Compare tool state
-  const [cmpQueryA,  setCmpQueryA]  = useState('')
-  const [cmpQueryB,  setCmpQueryB]  = useState('')
-  const [cmpSuggsA,  setCmpSuggsA]  = useState([])
-  const [cmpSuggsB,  setCmpSuggsB]  = useState([])
-  const [cmpShowA,   setCmpShowA]   = useState(false)
-  const [cmpShowB,   setCmpShowB]   = useState(false)
-  const [cmpPlayerA, setCmpPlayerA] = useState(null)
-  const [cmpPlayerB, setCmpPlayerB] = useState(null)
-  const [cmpStatsA,  setCmpStatsA]  = useState(null)
-  const [cmpStatsB,  setCmpStatsB]  = useState(null)
+  const [cmpExpanded, setCmpExpanded] = useState(false)
+  const [cmpQuery,    setCmpQuery]    = useState('')
+  const [cmpSuggs,    setCmpSuggs]    = useState([])
+  const [cmpShow,     setCmpShow]     = useState(false)
+  const [cmpPlayers,  setCmpPlayers]  = useState([]) // [{player, stats}]
 
   const searchRef   = useRef(null)
   const debounceRef = useRef(null)
@@ -446,30 +441,15 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  // Compare tool — fetch suggestions and stats
+  // Compare tool — suggestions
   useEffect(() => {
-    if (!cmpQueryA || cmpQueryA.length < 2) { setCmpSuggsA([]); return }
-    fetch(`/api/players?q=${encodeURIComponent(cmpQueryA)}`)
-      .then(r => r.json()).then(d => setCmpSuggsA(Array.isArray(d) ? d : [])).catch(() => {})
-  }, [cmpQueryA])
+    if (!cmpQuery || cmpQuery.length < 2) { setCmpSuggs([]); return }
+    fetch(`/api/players?q=${encodeURIComponent(cmpQuery)}`)
+      .then(r => r.json()).then(d => setCmpSuggs(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [cmpQuery])
 
-  useEffect(() => {
-    if (!cmpQueryB || cmpQueryB.length < 2) { setCmpSuggsB([]); return }
-    fetch(`/api/players?q=${encodeURIComponent(cmpQueryB)}`)
-      .then(r => r.json()).then(d => setCmpSuggsB(Array.isArray(d) ? d : [])).catch(() => {})
-  }, [cmpQueryB])
-
-  useEffect(() => {
-    if (!cmpPlayerA) return
-    fetch(`/api/player-stats?player=${cmpPlayerA.slug}`)
-      .then(r => r.json()).then(d => setCmpStatsA(d)).catch(() => {})
-  }, [cmpPlayerA])
-
-  useEffect(() => {
-    if (!cmpPlayerB) return
-    fetch(`/api/player-stats?player=${cmpPlayerB.slug}`)
-      .then(r => r.json()).then(d => setCmpStatsB(d)).catch(() => {})
-  }, [cmpPlayerB])
+  // Reset compare players when main player changes
+  useEffect(() => { setCmpPlayers([]) }, [selectedPlayer])
 
   const fetchSuggestions = useCallback(async (q) => {
     if (!q.trim()) { setSuggestions([]); return }
@@ -1547,6 +1527,174 @@ export default function App() {
               </div>
             )}
 
+            {/* ── Compare ───────────────────────────────────────── */}
+            <div className="projection-section">
+              <div className="projection-header" onClick={() => setCmpExpanded(e => !e)} style={{ cursor: 'pointer' }}>
+                <h3 className="panel-title">Compare</h3>
+                <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
+              </div>
+              {cmpExpanded && (() => {
+                const CMP_COLORS = ['#4dffb4', '#ff9e64', '#64b5ff', '#c084fc']
+                const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
+                const canAdd = cmpPlayers.length < 3
+
+                function removeCmpPlayer(slug) {
+                  setCmpPlayers(ps => ps.filter(p => p.player.slug !== slug))
+                }
+
+                function addCmpPlayer(p) {
+                  if (cmpPlayers.some(cp => cp.player.slug === p.slug)) return
+                  if (p.slug === playerStats.player.slug) return
+                  fetch(`/api/player-stats?player=${p.slug}`)
+                    .then(r => r.json())
+                    .then(stats => setCmpPlayers(ps => [...ps, { player: p, stats }]))
+                    .catch(() => {})
+                  setCmpQuery('')
+                  setCmpSuggs([])
+                  setCmpShow(false)
+                }
+
+                const radarData = allPlayers.every(p => p.stats?.seasons?.[0]) ? {
+                  labels: RADAR_STATS.map(s => s.label),
+                  datasets: allPlayers.map((p, i) => ({
+                    label: p.player.name,
+                    data: RADAR_STATS.map(s => zToRadar(p.stats.seasons[0][`z_${s.key}`], s.invert)),
+                    backgroundColor: CMP_COLORS[i] + '20',
+                    borderColor: CMP_COLORS[i],
+                    pointBackgroundColor: CMP_COLORS[i],
+                    borderWidth: 2,
+                  })),
+                } : null
+
+                const radarOptions = {
+                  scales: {
+                    r: {
+                      min: 0, max: 100,
+                      ticks: { display: false },
+                      grid: { color: 'rgba(255,255,255,0.07)' },
+                      angleLines: { color: 'rgba(255,255,255,0.07)' },
+                      pointLabels: { color: '#aaa', font: { size: 11 } },
+                    },
+                  },
+                  plugins: {
+                    legend: { labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } },
+                    datalabels: { display: false },
+                  },
+                }
+
+                const CMP_COLS = [
+                  { key: 'pts',    label: 'PTS' },
+                  { key: 'reb',    label: 'REB' },
+                  { key: 'ast',    label: 'AST' },
+                  { key: 'stl',    label: 'STL' },
+                  { key: 'blk',    label: 'BLK' },
+                  { key: 'tov',    label: 'TOV' },
+                  { key: 'fg_pct', label: 'FG%',  pct: true },
+                  { key: 'ft_pct', label: 'FT%',  pct: true },
+                  { key: 'fg3m',   label: '3PM' },
+                ]
+
+                const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
+
+                function bestIdx(col) {
+                  const vals = allPlayers.map(p => p.stats?.seasons?.[0]?.[col.key])
+                  if (vals.some(v => v == null)) return null
+                  const fn = col.key === 'tov' ? Math.min : Math.max
+                  const best = fn(...vals)
+                  const idx = vals.indexOf(best)
+                  return vals.filter(v => v === best).length === 1 ? idx : null
+                }
+
+                return (
+                  <div className="compare-content">
+                    {/* Chips + search */}
+                    <div className="cmp-chips">
+                      {allPlayers.map((p, i) => (
+                        <span key={p.player.slug} className="cmp-chip" style={{ borderColor: CMP_COLORS[i], color: CMP_COLORS[i] }}>
+                          {p.player.name}
+                          {i > 0 && (
+                            <button className="cmp-chip-remove" onClick={() => removeCmpPlayer(p.player.slug)}>×</button>
+                          )}
+                        </span>
+                      ))}
+                      {canAdd && (
+                        <div className="typeahead cmp-typeahead">
+                          <input
+                            className="ctrl-input cmp-search-input"
+                            placeholder="Add player…"
+                            value={cmpQuery}
+                            onChange={e => { setCmpQuery(e.target.value); setCmpShow(true) }}
+                            onFocus={() => setCmpShow(true)}
+                          />
+                          {cmpShow && cmpSuggs.length > 0 && (
+                            <ul className="suggestions">
+                              {cmpSuggs.map(p => (
+                                <li key={p.slug} onMouseDown={() => addCmpPlayer(p)}>
+                                  <span className="sugg-name">{p.name}</span>
+                                  <span className="sugg-team">{p.team}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Chart + table */}
+                    {allPlayers.length > 1 && radarData && (
+                      <div className="compare-results">
+                        <div className="compare-chart-wrap">
+                          <Radar data={radarData} options={radarOptions} />
+                        </div>
+                        <div className="compare-table-wrap">
+                          <table className="compare-table">
+                            <thead>
+                              <tr>
+                                <th>Player</th>
+                                <th className="num">GP</th>
+                                <th className="num">MIN</th>
+                                {CMP_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {allPlayers.map((p, i) => {
+                                const s = p.stats?.seasons?.[0]
+                                if (!s) return null
+                                const color = CMP_COLORS[i]
+                                return (
+                                  <tr key={p.player.slug}>
+                                    <td style={{ color, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                      {p.player.name}
+                                      <span className="compare-player-meta"> {teamAbbr(p.player.team)}</span>
+                                    </td>
+                                    <td className="num mono">{s.gp}</td>
+                                    <td className="num mono">{s.min_pg?.toFixed(1)}</td>
+                                    {CMP_COLS.map(c => {
+                                      const bi = bestIdx(c)
+                                      const highlight = bi === i
+                                      return (
+                                        <td key={c.key} className="num mono"
+                                          style={{ color: highlight ? color : '', fontWeight: highlight ? 600 : 400 }}>
+                                          {fmt(s[c.key], c.pct)}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    {allPlayers.length === 1 && (
+                      <p className="cmp-prompt">Add a player above to start comparing.</p>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
           </div>
         )}
 
@@ -1914,143 +2062,6 @@ export default function App() {
             )}
           </>
         )}
-        {/* ── Compare Players ───────────────────────────────── */}
-        <div className="compare-section">
-          <h3 className="compare-section-title">Compare Players</h3>
-          <div className="compare-searches">
-            {[
-              { query: cmpQueryA, setQuery: setCmpQueryA, suggs: cmpSuggsA, show: cmpShowA, setShow: setCmpShowA, setPlayer: setCmpPlayerA, setStats: setCmpStatsA, color: '#4dffb4', label: 'Player A' },
-              { query: cmpQueryB, setQuery: setCmpQueryB, suggs: cmpSuggsB, show: cmpShowB, setShow: setCmpShowB, setPlayer: setCmpPlayerB, setStats: setCmpStatsB, color: '#ff9e64', label: 'Player B' },
-            ].map(({ query, setQuery, suggs, show, setShow, setPlayer, setStats, color, label }) => (
-              <div key={label} className="compare-search-wrap">
-                <div className="typeahead">
-                  <input
-                    className="ctrl-input player-search-input"
-                    placeholder={`Search ${label}…`}
-                    value={query}
-                    style={{ borderColor: query ? color : '' }}
-                    onChange={e => { setQuery(e.target.value); setPlayer(null); setStats(null); setShow(true) }}
-                    onFocus={() => setShow(true)}
-                  />
-                  {show && suggs.length > 0 && (
-                    <ul className="suggestions">
-                      {suggs.map(p => (
-                        <li key={p.slug} onMouseDown={() => { setPlayer(p); setQuery(p.name); setShow(false) }}>
-                          <span className="sugg-name">{p.name}</span>
-                          <span className="sugg-team">{p.team}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {cmpStatsA && cmpStatsB && cmpStatsA.seasons?.[0] && cmpStatsB.seasons?.[0] && (() => {
-            const sA = cmpStatsA.seasons[0]
-            const sB = cmpStatsB.seasons[0]
-            const radarData = {
-              labels: RADAR_STATS.map(s => s.label),
-              datasets: [
-                {
-                  label: cmpStatsA.player.name,
-                  data: RADAR_STATS.map(s => zToRadar(sA[`z_${s.key}`], s.invert)),
-                  backgroundColor: 'rgba(77,255,180,0.12)',
-                  borderColor: '#4dffb4',
-                  pointBackgroundColor: '#4dffb4',
-                  borderWidth: 2,
-                },
-                {
-                  label: cmpStatsB.player.name,
-                  data: RADAR_STATS.map(s => zToRadar(sB[`z_${s.key}`], s.invert)),
-                  backgroundColor: 'rgba(255,158,100,0.12)',
-                  borderColor: '#ff9e64',
-                  pointBackgroundColor: '#ff9e64',
-                  borderWidth: 2,
-                },
-              ],
-            }
-            const radarOptions = {
-              scales: {
-                r: {
-                  min: 0, max: 100,
-                  ticks: { display: false },
-                  grid: { color: 'rgba(255,255,255,0.07)' },
-                  angleLines: { color: 'rgba(255,255,255,0.07)' },
-                  pointLabels: { color: '#aaa', font: { size: 11 } },
-                },
-              },
-              plugins: {
-                legend: { labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } },
-                datalabels: { display: false },
-              },
-            }
-            const CMP_COLS = [
-              { key: 'pts',    label: 'PTS' },
-              { key: 'reb',    label: 'REB' },
-              { key: 'ast',    label: 'AST' },
-              { key: 'stl',    label: 'STL' },
-              { key: 'blk',    label: 'BLK' },
-              { key: 'tov',    label: 'TOV' },
-              { key: 'fg_pct', label: 'FG%', pct: true },
-              { key: 'ft_pct', label: 'FT%', pct: true },
-              { key: 'fg3m',   label: '3PM' },
-            ]
-            const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
-            const better = (keyA, keyB, col) => {
-              if (keyA == null || keyB == null) return null
-              const invert = col.key === 'tov'
-              return invert ? (keyA < keyB ? 'a' : keyA > keyB ? 'b' : null)
-                            : (keyA > keyB ? 'a' : keyA < keyB ? 'b' : null)
-            }
-            return (
-              <div className="compare-results">
-                <div className="compare-chart-wrap">
-                  <Radar data={radarData} options={radarOptions} />
-                </div>
-                <div className="compare-table-wrap">
-                  <table className="compare-table">
-                    <thead>
-                      <tr>
-                        <th>Player</th>
-                        <th className="num">GP</th>
-                        <th className="num">MIN</th>
-                        {CMP_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { stats: sA, player: cmpStatsA.player, color: '#4dffb4', side: 'a' },
-                        { stats: sB, player: cmpStatsB.player, color: '#ff9e64', side: 'b' },
-                      ].map(({ stats, player, color, side }) => (
-                        <tr key={player.slug}>
-                          <td style={{ color, fontWeight: 500, whiteSpace: 'nowrap' }}>
-                            {player.name}
-                            <span className="compare-player-meta"> {teamAbbr(player.team)}</span>
-                          </td>
-                          <td className="num mono">{stats.gp}</td>
-                          <td className="num mono">{stats.min_pg?.toFixed(1)}</td>
-                          {CMP_COLS.map(c => {
-                            const valA = sA[c.key], valB = sB[c.key]
-                            const win = better(valA, valB, c)
-                            const highlight = win === side
-                            return (
-                              <td key={c.key} className="num mono"
-                                style={{ color: highlight ? color : '', fontWeight: highlight ? 600 : 400 }}>
-                                {fmt(stats[c.key], c.pct)}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )
-          })()}
-        </div>
 
       </main>
     </>

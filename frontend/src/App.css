@@ -976,3 +976,57 @@
   color: var(--muted);
   font-weight: 400;
 }
+
+.compare-content {
+  padding: 20px 0;
+}
+
+.cmp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.cmp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: var(--sans);
+  font-weight: 500;
+}
+
+.cmp-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+
+.cmp-chip-remove:hover { opacity: 1; }
+
+.cmp-typeahead {
+  position: relative;
+}
+
+.cmp-search-input {
+  width: 180px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.cmp-prompt {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
