@@ -195,6 +195,7 @@ def _league_data(conn, season=None, cutoff=None, min_games=10):
     rows = conn.execute(f"""
         SELECT
             player_slug,
+            AVG(min)  AS min_pg,
             AVG(pts)  AS pts,
             AVG(reb)  AS reb,
             AVG(ast)  AS ast,
@@ -939,9 +940,6 @@ def get_rankings(
             if position != "all" and pos != position:
                 continue
 
-            avg = _avg_row([r])  # already aggregated — just re-wrap
-            # _avg_row expects a list of raw game rows; player_rows are already aggregated.
-            # Build a synthetic avg dict directly from the aggregated row.
             avg = {
                 "gp":     None,  # not available in league aggregate
                 "min_pg": round(r.get("min_pg") or 0, 1) if "min_pg" in r else None,
