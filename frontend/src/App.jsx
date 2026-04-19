@@ -401,19 +401,19 @@ export default function App() {
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [projYear, setProjYear]       = useState(1)
-  const [projExpanded, setProjExpanded] = useState(true)
+  const [projExpanded, setProjExpanded] = useState(false)
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
   const [maLookback, setMaLookback]   = useState(20)
-  const [maExpanded, setMaExpanded]   = useState(true)
-  const [glExpanded, setGlExpanded]   = useState(true)
+  const [maExpanded, setMaExpanded]   = useState(false)
+  const [glExpanded, setGlExpanded]   = useState(false)
   const [glStart, setGlStart]         = useState(0)
   const [glEnd, setGlEnd]             = useState(0)
   const [agingCurves, setAgingCurves]     = useState(null)
   const [agingArchetype, setAgingArchetype] = useState(null)
   const [agingExpanded, setAgingExpanded]   = useState(false)
-  const [driverExpanded, setDriverExpanded] = useState(true)
+  const [driverExpanded, setDriverExpanded] = useState(false)
 
   // Compare tool state
   const [cmpExpanded, setCmpExpanded] = useState(false)
@@ -1039,6 +1039,174 @@ export default function App() {
               </table>
             </div>
 
+            {/* ── Compare ───────────────────────────────────────── */}
+            <div className="projection-section">
+              <div className="projection-header" onClick={() => setCmpExpanded(e => !e)} style={{ cursor: 'pointer' }}>
+                <h3 className="panel-title">Compare</h3>
+                <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
+              </div>
+              {cmpExpanded && (() => {
+                const CMP_COLORS = ['#4dffb4', '#ff9e64', '#64b5ff', '#c084fc']
+                const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
+                const canAdd = cmpPlayers.length < 3
+
+                function removeCmpPlayer(slug) {
+                  setCmpPlayers(ps => ps.filter(p => p.player.slug !== slug))
+                }
+
+                function addCmpPlayer(p) {
+                  if (cmpPlayers.some(cp => cp.player.slug === p.slug)) return
+                  if (p.slug === playerStats.player.slug) return
+                  fetch(`/api/player-stats?player=${p.slug}`)
+                    .then(r => r.json())
+                    .then(stats => setCmpPlayers(ps => [...ps, { player: p, stats }]))
+                    .catch(() => {})
+                  setCmpQuery('')
+                  setCmpSuggs([])
+                  setCmpShow(false)
+                }
+
+                const radarData = allPlayers.every(p => p.stats?.seasons?.[0]) ? {
+                  labels: RADAR_STATS.map(s => s.label),
+                  datasets: allPlayers.map((p, i) => ({
+                    label: p.player.name,
+                    data: RADAR_STATS.map(s => zToRadar(p.stats.seasons[0][`z_${s.key}`], s.invert)),
+                    backgroundColor: CMP_COLORS[i] + '20',
+                    borderColor: CMP_COLORS[i],
+                    pointBackgroundColor: CMP_COLORS[i],
+                    borderWidth: 2,
+                  })),
+                } : null
+
+                const radarOptions = {
+                  scales: {
+                    r: {
+                      min: 0, max: 100,
+                      ticks: { display: false },
+                      grid: { color: 'rgba(255,255,255,0.07)' },
+                      angleLines: { color: 'rgba(255,255,255,0.07)' },
+                      pointLabels: { color: '#aaa', font: { size: 11 } },
+                    },
+                  },
+                  plugins: {
+                    legend: { labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } },
+                    datalabels: { display: false },
+                  },
+                }
+
+                const CMP_COLS = [
+                  { key: 'pts',    label: 'PTS' },
+                  { key: 'reb',    label: 'REB' },
+                  { key: 'ast',    label: 'AST' },
+                  { key: 'stl',    label: 'STL' },
+                  { key: 'blk',    label: 'BLK' },
+                  { key: 'tov',    label: 'TOV' },
+                  { key: 'fg_pct', label: 'FG%',  pct: true },
+                  { key: 'ft_pct', label: 'FT%',  pct: true },
+                  { key: 'fg3m',   label: '3PM' },
+                ]
+
+                const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
+
+                function bestIdx(col) {
+                  const vals = allPlayers.map(p => p.stats?.seasons?.[0]?.[col.key])
+                  if (vals.some(v => v == null)) return null
+                  const fn = col.key === 'tov' ? Math.min : Math.max
+                  const best = fn(...vals)
+                  const idx = vals.indexOf(best)
+                  return vals.filter(v => v === best).length === 1 ? idx : null
+                }
+
+                return (
+                  <div className="compare-content">
+                    {/* Chips + search */}
+                    <div className="cmp-chips">
+                      {allPlayers.map((p, i) => (
+                        <span key={p.player.slug} className="cmp-chip" style={{ borderColor: CMP_COLORS[i], color: CMP_COLORS[i] }}>
+                          {p.player.name}
+                          {i > 0 && (
+                            <button className="cmp-chip-remove" onClick={() => removeCmpPlayer(p.player.slug)}>×</button>
+                          )}
+                        </span>
+                      ))}
+                      {canAdd && (
+                        <div className="typeahead cmp-typeahead">
+                          <input
+                            className="ctrl-input cmp-search-input"
+                            placeholder="Add player…"
+                            value={cmpQuery}
+                            onChange={e => { setCmpQuery(e.target.value); setCmpShow(true) }}
+                            onFocus={() => setCmpShow(true)}
+                          />
+                          {cmpShow && cmpSuggs.length > 0 && (
+                            <ul className="suggestions">
+                              {cmpSuggs.map(p => (
+                                <li key={p.slug} onMouseDown={() => addCmpPlayer(p)}>
+                                  <span className="sugg-name">{p.name}</span>
+                                  <span className="sugg-team">{p.team}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Chart + table */}
+                    {allPlayers.length > 1 && radarData && (
+                      <div className="compare-results">
+                        <div className="compare-chart-wrap">
+                          <Radar data={radarData} options={radarOptions} />
+                        </div>
+                        <div className="compare-table-wrap">
+                          <table className="compare-table">
+                            <thead>
+                              <tr>
+                                <th>Player</th>
+                                <th className="num">GP</th>
+                                <th className="num">MIN</th>
+                                {CMP_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {allPlayers.map((p, i) => {
+                                const s = p.stats?.seasons?.[0]
+                                if (!s) return null
+                                const color = CMP_COLORS[i]
+                                return (
+                                  <tr key={p.player.slug}>
+                                    <td style={{ color, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                      {p.player.name}
+                                      <span className="compare-player-meta"> {teamAbbr(p.player.team)}</span>
+                                    </td>
+                                    <td className="num mono">{s.gp}</td>
+                                    <td className="num mono">{s.min_pg?.toFixed(1)}</td>
+                                    {CMP_COLS.map(c => {
+                                      const bi = bestIdx(c)
+                                      const highlight = bi === i
+                                      return (
+                                        <td key={c.key} className="num mono"
+                                          style={{ color: highlight ? color : '', fontWeight: highlight ? 600 : 400 }}>
+                                          {fmt(s[c.key], c.pct)}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    {allPlayers.length === 1 && (
+                      <p className="cmp-prompt">Add a player above to start comparing.</p>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
             {/* ── Driver analysis tool ──────────────────────── */}
             <div className="projection-section">
               <div className="projection-header" onClick={() => setDriverExpanded(e => !e)} style={{ cursor: 'pointer' }}>
@@ -1527,173 +1695,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Compare ───────────────────────────────────────── */}
-            <div className="projection-section">
-              <div className="projection-header" onClick={() => setCmpExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                <h3 className="panel-title">Compare</h3>
-                <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
-              </div>
-              {cmpExpanded && (() => {
-                const CMP_COLORS = ['#4dffb4', '#ff9e64', '#64b5ff', '#c084fc']
-                const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
-                const canAdd = cmpPlayers.length < 3
-
-                function removeCmpPlayer(slug) {
-                  setCmpPlayers(ps => ps.filter(p => p.player.slug !== slug))
-                }
-
-                function addCmpPlayer(p) {
-                  if (cmpPlayers.some(cp => cp.player.slug === p.slug)) return
-                  if (p.slug === playerStats.player.slug) return
-                  fetch(`/api/player-stats?player=${p.slug}`)
-                    .then(r => r.json())
-                    .then(stats => setCmpPlayers(ps => [...ps, { player: p, stats }]))
-                    .catch(() => {})
-                  setCmpQuery('')
-                  setCmpSuggs([])
-                  setCmpShow(false)
-                }
-
-                const radarData = allPlayers.every(p => p.stats?.seasons?.[0]) ? {
-                  labels: RADAR_STATS.map(s => s.label),
-                  datasets: allPlayers.map((p, i) => ({
-                    label: p.player.name,
-                    data: RADAR_STATS.map(s => zToRadar(p.stats.seasons[0][`z_${s.key}`], s.invert)),
-                    backgroundColor: CMP_COLORS[i] + '20',
-                    borderColor: CMP_COLORS[i],
-                    pointBackgroundColor: CMP_COLORS[i],
-                    borderWidth: 2,
-                  })),
-                } : null
-
-                const radarOptions = {
-                  scales: {
-                    r: {
-                      min: 0, max: 100,
-                      ticks: { display: false },
-                      grid: { color: 'rgba(255,255,255,0.07)' },
-                      angleLines: { color: 'rgba(255,255,255,0.07)' },
-                      pointLabels: { color: '#aaa', font: { size: 11 } },
-                    },
-                  },
-                  plugins: {
-                    legend: { labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } },
-                    datalabels: { display: false },
-                  },
-                }
-
-                const CMP_COLS = [
-                  { key: 'pts',    label: 'PTS' },
-                  { key: 'reb',    label: 'REB' },
-                  { key: 'ast',    label: 'AST' },
-                  { key: 'stl',    label: 'STL' },
-                  { key: 'blk',    label: 'BLK' },
-                  { key: 'tov',    label: 'TOV' },
-                  { key: 'fg_pct', label: 'FG%',  pct: true },
-                  { key: 'ft_pct', label: 'FT%',  pct: true },
-                  { key: 'fg3m',   label: '3PM' },
-                ]
-
-                const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
-
-                function bestIdx(col) {
-                  const vals = allPlayers.map(p => p.stats?.seasons?.[0]?.[col.key])
-                  if (vals.some(v => v == null)) return null
-                  const fn = col.key === 'tov' ? Math.min : Math.max
-                  const best = fn(...vals)
-                  const idx = vals.indexOf(best)
-                  return vals.filter(v => v === best).length === 1 ? idx : null
-                }
-
-                return (
-                  <div className="compare-content">
-                    {/* Chips + search */}
-                    <div className="cmp-chips">
-                      {allPlayers.map((p, i) => (
-                        <span key={p.player.slug} className="cmp-chip" style={{ borderColor: CMP_COLORS[i], color: CMP_COLORS[i] }}>
-                          {p.player.name}
-                          {i > 0 && (
-                            <button className="cmp-chip-remove" onClick={() => removeCmpPlayer(p.player.slug)}>×</button>
-                          )}
-                        </span>
-                      ))}
-                      {canAdd && (
-                        <div className="typeahead cmp-typeahead">
-                          <input
-                            className="ctrl-input cmp-search-input"
-                            placeholder="Add player…"
-                            value={cmpQuery}
-                            onChange={e => { setCmpQuery(e.target.value); setCmpShow(true) }}
-                            onFocus={() => setCmpShow(true)}
-                          />
-                          {cmpShow && cmpSuggs.length > 0 && (
-                            <ul className="suggestions">
-                              {cmpSuggs.map(p => (
-                                <li key={p.slug} onMouseDown={() => addCmpPlayer(p)}>
-                                  <span className="sugg-name">{p.name}</span>
-                                  <span className="sugg-team">{p.team}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Chart + table */}
-                    {allPlayers.length > 1 && radarData && (
-                      <div className="compare-results">
-                        <div className="compare-chart-wrap">
-                          <Radar data={radarData} options={radarOptions} />
-                        </div>
-                        <div className="compare-table-wrap">
-                          <table className="compare-table">
-                            <thead>
-                              <tr>
-                                <th>Player</th>
-                                <th className="num">GP</th>
-                                <th className="num">MIN</th>
-                                {CMP_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {allPlayers.map((p, i) => {
-                                const s = p.stats?.seasons?.[0]
-                                if (!s) return null
-                                const color = CMP_COLORS[i]
-                                return (
-                                  <tr key={p.player.slug}>
-                                    <td style={{ color, fontWeight: 500, whiteSpace: 'nowrap' }}>
-                                      {p.player.name}
-                                      <span className="compare-player-meta"> {teamAbbr(p.player.team)}</span>
-                                    </td>
-                                    <td className="num mono">{s.gp}</td>
-                                    <td className="num mono">{s.min_pg?.toFixed(1)}</td>
-                                    {CMP_COLS.map(c => {
-                                      const bi = bestIdx(c)
-                                      const highlight = bi === i
-                                      return (
-                                        <td key={c.key} className="num mono"
-                                          style={{ color: highlight ? color : '', fontWeight: highlight ? 600 : 400 }}>
-                                          {fmt(s[c.key], c.pct)}
-                                        </td>
-                                      )
-                                    })}
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                    {allPlayers.length === 1 && (
-                      <p className="cmp-prompt">Add a player above to start comparing.</p>
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
 
           </div>
         )}
