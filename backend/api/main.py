@@ -1034,7 +1034,7 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
         season_label    = f"{end_yr - 1}-{str(end_yr)[2:]}"   # e.g. "2025-26"
 
         game_rows = conn.execute("""
-            SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta
+            SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, home_away
             FROM game_logs
             WHERE player_slug = ? AND season = ? AND min > 0
         """, (player, season_label)).fetchall()
@@ -1043,7 +1043,11 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
         if not game_rows:
             return {"games": [], "baseline": {}, "error": "No current season data"}
 
-        baseline = _avg_row(game_rows)
+        baseline      = _avg_row(game_rows)
+        home_rows     = [r for r in game_rows if r.get("home_away") == "H"]
+        away_rows     = [r for r in game_rows if r.get("home_away") == "A"]
+        home_baseline = _avg_row(home_rows) if len(home_rows) >= 3 else baseline
+        away_baseline = _avg_row(away_rows) if len(away_rows) >= 3 else baseline
 
         # ── 2. Opponent defensive factors vs this position group ──────────
         # For each team (as defender), avg stats allowed to players of this position
@@ -1103,14 +1107,16 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
                 "home_away": "Home" if is_home else "Away",
             })
 
-        # ── 4. Apply opponent factor to baseline ──────────────────────────
+        # ── 4. Apply opponent factor to home/away-split baseline ─────────
         games_out = []
         for g in upcoming:
-            opp     = g["opponent"]
-            factors = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
+            opp      = g["opponent"]
+            is_home  = g["home_away"] == "Home"
+            base_row = home_baseline if is_home else away_baseline
+            factors  = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
             projected = {}
             for stat in SCHED_STATS:
-                base = baseline.get(stat)
+                base = base_row.get(stat)
                 if base is not None:
                     projected[stat] = round(base * factors.get(stat, 1.0), 1)
                 else:
@@ -1120,11 +1126,13 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
             }})
 
         return {
-            "player":   player,
-            "team":     team,
-            "position": position,
-            "baseline": {stat: baseline.get(stat) for stat in SCHED_STATS},
-            "games":    games_out,
+            "player":        player,
+            "team":          team,
+            "position":      position,
+            "baseline":      {stat: baseline.get(stat)      for stat in SCHED_STATS},
+            "home_baseline": {stat: home_baseline.get(stat) for stat in SCHED_STATS},
+            "away_baseline": {stat: away_baseline.get(stat) for stat in SCHED_STATS},
+            "games":         games_out,
         }
     finally:
         conn.close()

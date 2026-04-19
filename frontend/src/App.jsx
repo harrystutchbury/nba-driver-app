@@ -1640,11 +1640,12 @@ export default function App() {
                     { key: 'tov',  label: 'TOV', invert: true },
                     { key: 'fg3m', label: '3PM' },
                   ]
-                  const baseline = schedProj.baseline
+                  const homeBaseline = schedProj.home_baseline
+                  const awayBaseline = schedProj.away_baseline
                   return (
                     <div className="sched-proj-wrap">
                       <p className="sched-proj-note">
-                        Projected stats scaled by opponent's defensive strength vs {schedProj.position}s this season.
+                        Projected stats scaled by opponent's defensive strength vs {schedProj.position}s this season. Home/away baselines applied per game.
                       </p>
                       <table className="sched-proj-table">
                         <thead>
@@ -1663,7 +1664,7 @@ export default function App() {
                               <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
                               {SCHED_COLS.map(c => {
                                 const proj = g.projected[c.key]
-                                const base = baseline[c.key]
+                                const base = (g.home_away === 'Home' ? homeBaseline : awayBaseline)[c.key]
                                 const factor = g.factors[c.key]
                                 const delta = factor - 1
                                 const good = c.invert ? delta < -0.05 : delta > 0.05
@@ -1678,9 +1679,17 @@ export default function App() {
                             </tr>
                           ))}
                           <tr className="sched-baseline-row">
-                            <td colSpan={3} className="sched-baseline-label">Season avg</td>
+                            <td colSpan={2} className="sched-baseline-label">Home avg</td>
+                            <td className="sched-ha muted">vs</td>
                             {SCHED_COLS.map(c => (
-                              <td key={c.key} className="num mono muted">{baseline[c.key] != null ? baseline[c.key].toFixed(1) : '—'}</td>
+                              <td key={c.key} className="num mono muted">{homeBaseline[c.key] != null ? homeBaseline[c.key].toFixed(1) : '—'}</td>
+                            ))}
+                          </tr>
+                          <tr className="sched-baseline-row">
+                            <td colSpan={2} className="sched-baseline-label">Away avg</td>
+                            <td className="sched-ha muted">@</td>
+                            {SCHED_COLS.map(c => (
+                              <td key={c.key} className="num mono muted">{awayBaseline[c.key] != null ? awayBaseline[c.key].toFixed(1) : '—'}</td>
                             ))}
                           </tr>
                         </tbody>
