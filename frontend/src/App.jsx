@@ -1491,6 +1491,7 @@ export default function App() {
                         </span>
                         <span className="metric-sub">minutes / usage</span>
                       </div>
+                      {(stat === 'stl' || stat === 'blk') && (
                       <div className="metric-card">
                         <span className="metric-label">Pace</span>
                         <span className={`metric-value ${luckSum >= 0 ? 'pos' : 'neg'}`}>
@@ -1498,6 +1499,7 @@ export default function App() {
                         </span>
                         <span className="metric-sub">external factors</span>
                       </div>
+                      )}
                       <div className="metric-card">
                         <span className="metric-label">Comparison</span>
                         <span className="metric-value">{result.period_b.value.toFixed(1)}</span>
