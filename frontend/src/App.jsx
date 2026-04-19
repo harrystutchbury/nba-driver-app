@@ -208,13 +208,14 @@ function buildWaterfall(result) {
 }
 
 function generateInsights(result, statLabel) {
-  const pct       = ((result.delta / result.period_a.value) * 100)
-  const skillSum  = result.drivers.filter(d => d.category === 'skill').reduce((s, d) => s + d.contribution, 0)
-  const luckSum   = result.drivers.filter(d => d.category === 'opponent' || d.category === 'team').reduce((s, d) => s + d.contribution, 0)
-  const roleSum   = result.drivers.filter(d => d.category === 'role').reduce((s, d) => s + d.contribution, 0)
-  const sorted    = [...result.drivers].sort((a, b) => b.contribution - a.contribution)
+  const pct        = ((result.delta / result.period_a.value) * 100)
+  const skillSum   = result.drivers.filter(d => d.category === 'skill').reduce((s, d) => s + d.contribution, 0)
+  const luckSum    = result.drivers.filter(d => d.category === 'opponent' || d.category === 'team').reduce((s, d) => s + d.contribution, 0)
+  const roleSum    = result.drivers.filter(d => d.category === 'role').reduce((s, d) => s + d.contribution, 0)
+  const sorted     = [...result.drivers].sort((a, b) => b.contribution - a.contribution)
   const biggestPos = sorted.find(d => d.contribution > 0)
   const biggestNeg = [...sorted].reverse().find(d => d.contribution < 0)
+  const sd         = result.schedule_difficulty
 
   const fmt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`
   const ins = []
@@ -233,6 +234,23 @@ function generateInsights(result, statLabel) {
 
   if (Math.abs(roleSum) > 0.01)
     ins.push(`Role/opportunity changes contributed ${fmt(roleSum)}, primarily through ${roleSum > 0 ? 'increased' : 'decreased'} minutes or usage.`)
+
+  // Schedule difficulty insight
+  if (sd) {
+    const diff = sd.period_a - sd.period_b   // positive = Period A had easier schedule
+    const pctDiff = Math.abs(diff) * 100
+    if (pctDiff >= 2) {
+      const easierPeriod = diff > 0 ? 'Period A' : 'Period B'
+      const harderPeriod = diff > 0 ? 'Period B' : 'Period A'
+      const direction    = result.delta >= 0 ? 'improvement' : 'decline'
+      ins.push(
+        `Schedule difficulty: ${easierPeriod} faced opponents allowing ${pctDiff.toFixed(0)}% more ${statLabel} to ${sd.position}s than ${harderPeriod}. ` +
+        `This may ${pctDiff >= 5 ? 'partially explain' : 'have contributed to'} the ${direction}.`
+      )
+    } else {
+      ins.push(`Schedule difficulty was similar across both periods for ${sd.position} ${statLabel} — the change reflects genuine performance.`)
+    }
+  }
 
   if (biggestPos)
     ins.push(`Biggest positive driver: "${biggestPos.label}" (${fmt(biggestPos.contribution)}).`)
@@ -1538,6 +1556,31 @@ export default function App() {
                                   </tr>
                                 )
                               })}
+                            {result.schedule_difficulty && (() => {
+                              const sd     = result.schedule_difficulty
+                              const sdColor = '#a78bfa'
+                              const aFactor = ((sd.period_a - 1) * 100).toFixed(0)
+                              const bFactor = ((sd.period_b - 1) * 100).toFixed(0)
+                              const aLabel  = `${aFactor >= 0 ? '+' : ''}${aFactor}%`
+                              const bLabel  = `${bFactor >= 0 ? '+' : ''}${bFactor}%`
+                              return (
+                                <tr key="sched-diff" className="sched-diff-row">
+                                  <td className="driver-cell">
+                                    <span className="driver-name">Schedule difficulty</span>
+                                    <span className="cat-pill" style={{ background: sdColor + '20', color: sdColor, borderColor: sdColor + '40' }}>
+                                      context
+                                    </span>
+                                  </td>
+                                  <td className="num sched-diff-vals">
+                                    <span className="sched-diff-period">A: <span style={{ color: sd.period_a >= 1 ? '#4dffb4' : '#ff6b6b' }}>{aLabel}</span></span>
+                                    <span className="sched-diff-period">B: <span style={{ color: sd.period_b >= 1 ? '#4dffb4' : '#ff6b6b' }}>{bLabel}</span></span>
+                                  </td>
+                                  <td className="attribution-cell">
+                                    <span className="sched-diff-note">vs {sd.position}s avg</span>
+                                  </td>
+                                </tr>
+                              )
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -2087,6 +2130,31 @@ export default function App() {
                           </tr>
                         )
                       })}
+                    {result.schedule_difficulty && (() => {
+                      const sd     = result.schedule_difficulty
+                      const sdColor = '#a78bfa'
+                      const aFactor = ((sd.period_a - 1) * 100).toFixed(0)
+                      const bFactor = ((sd.period_b - 1) * 100).toFixed(0)
+                      const aLabel  = `${aFactor >= 0 ? '+' : ''}${aFactor}%`
+                      const bLabel  = `${bFactor >= 0 ? '+' : ''}${bFactor}%`
+                      return (
+                        <tr key="sched-diff" className="sched-diff-row">
+                          <td className="driver-cell">
+                            <span className="driver-name">Schedule difficulty</span>
+                            <span className="cat-pill" style={{ background: sdColor + '20', color: sdColor, borderColor: sdColor + '40' }}>
+                              context
+                            </span>
+                          </td>
+                          <td className="num sched-diff-vals">
+                            <span className="sched-diff-period">A: <span style={{ color: sd.period_a >= 1 ? '#4dffb4' : '#ff6b6b' }}>{aLabel}</span></span>
+                            <span className="sched-diff-period">B: <span style={{ color: sd.period_b >= 1 ? '#4dffb4' : '#ff6b6b' }}>{bLabel}</span></span>
+                          </td>
+                          <td className="attribution-cell">
+                            <span className="sched-diff-note">vs {sd.position}s avg</span>
+                          </td>
+                        </tr>
+                      )
+                    })()}
                   </tbody>
                 </table>
               </div>

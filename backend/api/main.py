@@ -465,13 +465,96 @@ def get_decompose(
         period_a    = (pa_start, pa_end),
         period_b    = (pb_start, pb_end),
     )
-    conn.close()
 
     if result is None:
+        conn.close()
         raise HTTPException(
             status_code=404,
             detail="Insufficient data for the requested player and date ranges."
         )
+
+    # ── Schedule difficulty for each period ───────────────────────────────
+    # Get the player's position group
+    pos_row = conn.execute(
+        "SELECT position_group FROM player_bio WHERE br_slug = ?", (player,)
+    ).fetchone()
+    position = (pos_row["position_group"] if pos_row else None) or "Guard"
+
+    # Current season label (opponents stored per-season)
+    season_year  = _current_season_end_year()
+    season_label = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    # League-average stats allowed to this position group per opponent
+    opp_allowed = conn.execute("""
+        SELECT g.opponent,
+               AVG(CASE WHEN g.stat_col = 'pts'  THEN g.val END) AS pts,
+               AVG(CASE WHEN g.stat_col = 'reb'  THEN g.val END) AS reb,
+               AVG(CASE WHEN g.stat_col = 'ast'  THEN g.val END) AS ast,
+               AVG(CASE WHEN g.stat_col = 'stl'  THEN g.val END) AS stl,
+               AVG(CASE WHEN g.stat_col = 'blk'  THEN g.val END) AS blk,
+               AVG(CASE WHEN g.stat_col = 'tov'  THEN g.val END) AS tov
+        FROM (
+            SELECT gl.opponent,
+                   'pts' AS stat_col, gl.pts AS val FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            UNION ALL
+            SELECT gl.opponent, 'reb', gl.reb FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            UNION ALL
+            SELECT gl.opponent, 'ast', gl.ast FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            UNION ALL
+            SELECT gl.opponent, 'stl', gl.stl FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            UNION ALL
+            SELECT gl.opponent, 'blk', gl.blk FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            UNION ALL
+            SELECT gl.opponent, 'tov', gl.tov FROM game_logs gl
+                   JOIN player_bio b ON b.br_slug = gl.player_slug
+                   WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+        ) g
+        GROUP BY g.opponent
+    """, (season_label, position) * 6).fetchall()
+
+    # Simpler approach: one query per stat
+    def _opp_factors_for_stat(s):
+        rows = conn.execute(f"""
+            SELECT gl.opponent, AVG(gl.{s}) AS allowed
+            FROM game_logs gl
+            JOIN player_bio b ON b.br_slug = gl.player_slug
+            WHERE gl.season = ? AND b.position_group = ? AND gl.min > 0
+            GROUP BY gl.opponent
+            HAVING COUNT(*) >= 5
+        """, (season_label, position)).fetchall()
+        vals = [r["allowed"] for r in rows if r["allowed"] is not None]
+        league_avg = sum(vals) / len(vals) if vals else 1.0
+        return {r["opponent"]: (r["allowed"] / league_avg if r["allowed"] and league_avg else 1.0)
+                for r in rows}, league_avg
+
+    opp_factors, _ = _opp_factors_for_stat(stat)
+
+    def _period_sched_difficulty(start, end):
+        """Avg opponent factor for the stat over games in this period."""
+        opps = conn.execute("""
+            SELECT opponent FROM game_logs
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
+        """, (player, start, end)).fetchall()
+        factors = [opp_factors.get(r["opponent"], 1.0) for r in opps]
+        return round(sum(factors) / len(factors), 3) if factors else 1.0
+
+    sched_diff = {
+        "period_a": _period_sched_difficulty(pa_start, pa_end),
+        "period_b": _period_sched_difficulty(pb_start, pb_end),
+        "position": position,
+        "stat":     stat,
+    }
+    conn.close()
 
     return {
         "player": {
@@ -479,10 +562,11 @@ def get_decompose(
             "name": player_row["full_name"],
             "team": player_row["team"],
         },
-        "stat":     stat,
-        "period_a": {"start": pa_start, "end": pa_end, "value": result.stat_a},
-        "period_b": {"start": pb_start, "end": pb_end, "value": result.stat_b},
-        "delta":    result.delta,
+        "stat":               stat,
+        "period_a":           {"start": pa_start, "end": pa_end, "value": result.stat_a},
+        "period_b":           {"start": pb_start, "end": pb_end, "value": result.stat_b},
+        "delta":              result.delta,
+        "schedule_difficulty": sched_diff,
         "drivers": [
             {
                 "key":          d.key,
