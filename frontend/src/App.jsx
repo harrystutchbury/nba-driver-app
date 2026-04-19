@@ -502,8 +502,8 @@ function RankingsPage() {
                   <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                     <td className="rank-col muted">{p.rank}</td>
                     <td className="name-col">
-                      <span className="rank-player-name">{p.name}</span>
-                      <span className="rank-player-team muted"> {p.team}</span>
+                      <div className="rank-player-name">{p.name}</div>
+                      <div className="rank-player-team">{p.team}</div>
                     </td>
                     <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
                     <td className="num mono">{p.gp ?? '—'}</td>

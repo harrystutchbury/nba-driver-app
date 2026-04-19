@@ -1145,7 +1145,7 @@
 .rank-col   { width: 36px; text-align: center !important; color: var(--muted); }
 .name-col   { min-width: 160px; }
 .rank-player-name { font-weight: 500; color: var(--text); }
-.rank-player-team { font-size: 11px; }
+.rank-player-team { font-size: 10px; color: var(--muted); margin-top: 1px; }
 
 .z-total-cell { color: #4dffb4; font-weight: 600; }
 
