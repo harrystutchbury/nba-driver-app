@@ -401,7 +401,7 @@ export default function App() {
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [projYear, setProjYear]       = useState(1)
-  const [projExpanded, setProjExpanded] = useState(false)
+  const [projExpanded, setProjExpanded] = useState(true)
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
