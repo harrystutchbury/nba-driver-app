@@ -510,7 +510,8 @@ function RankingsPage() {
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {
                       const z = p[`z_${c.key}`]
-                      const zColor = z == null ? '' : z >= 1 ? '#4dffb4' : z <= -1 ? '#ff6b6b' : '#888'
+                      const zAdj = (z != null && c.lowerBetter) ? -z : z
+                      const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
                       return (
                         <td key={c.key} className="num mono rank-stat-cell">
                           <div>{fmt(p[c.key], c.pct)}</div>
