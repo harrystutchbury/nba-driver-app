@@ -574,6 +574,7 @@ export default function App() {
   const [driverExpanded, setDriverExpanded] = useState(false)
   const [schedProj, setSchedProj]           = useState(null)
   const [schedExpanded, setSchedExpanded]   = useState(false)
+  const [schedPeriod, setSchedPeriod]       = useState('season')
 
   // Compare tool state
   const [cmpExpanded, setCmpExpanded] = useState(false)
@@ -669,7 +670,14 @@ export default function App() {
         }
       })
       .catch(() => {})
-    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}`)
+    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}&period=${schedPeriod}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setSchedProj(d) })
+      .catch(() => {})
+  }
+
+  function fetchSchedProj(slug, period) {
+    fetch(`/api/schedule-projection?player=${encodeURIComponent(slug)}&period=${period}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
@@ -1642,16 +1650,54 @@ export default function App() {
                   ]
                   const homeBaseline = schedProj.home_baseline
                   const awayBaseline = schedProj.away_baseline
+
+                  // SOS: average pts factor across upcoming games (higher = easier slate)
+                  const sosFactors = schedProj.games.map(g => {
+                    const ptsFactor = g.factors['pts'] ?? 1
+                    const tovFactor = g.factors['tov'] ?? 1
+                    // combine: easy if pts allowed high AND tov allowed low
+                    return (ptsFactor + (2 - tovFactor)) / 2
+                  })
+                  const sosAvg = sosFactors.reduce((a, b) => a + b, 0) / sosFactors.length
+                  const sosPct = Math.min(Math.max((sosAvg - 0.85) / 0.3, 0), 1) // 0.85–1.15 range → 0–1
+                  const sosLabel = sosAvg > 1.05 ? 'Easy slate' : sosAvg < 0.95 ? 'Hard slate' : 'Neutral slate'
+                  const sosColor = sosAvg > 1.05 ? '#4dffb4' : sosAvg < 0.95 ? '#ff6b6b' : '#aaa'
+
+                  const periodLabel = { season: 'Season', l30: 'Last 30', l14: 'Last 14' }[schedProj.period] || 'Season'
+
                   return (
                     <div className="sched-proj-wrap">
+                      <div className="sched-controls">
+                        <div className="rank-pills">
+                          {['season', 'l30', 'l14'].map(p => (
+                            <button
+                              key={p}
+                              className={`rank-pill${schedPeriod === p ? ' active' : ''}`}
+                              onClick={() => {
+                                setSchedPeriod(p)
+                                fetchSchedProj(selectedPlayer.slug, p)
+                              }}
+                            >
+                              {p === 'season' ? 'Season' : p === 'l30' ? 'L30' : 'L14'}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="sos-bar-wrap">
+                          <span className="sos-label" style={{ color: sosColor }}>{sosLabel}</span>
+                          <div className="sos-bar-track">
+                            <div className="sos-bar-fill" style={{ width: `${sosPct * 100}%`, background: sosColor }} />
+                          </div>
+                        </div>
+                      </div>
                       <p className="sched-proj-note">
-                        Projected stats scaled by opponent's defensive strength vs {schedProj.position}s this season. Home/away baselines applied per game.
+                        Based on {periodLabel} avg · scaled by opponent defence vs {schedProj.position}s · {schedProj.games_in_window}G sample
                       </p>
+                      <div className="sched-table-scroll">
                       <table className="sched-proj-table">
                         <thead>
                           <tr>
                             <th>Date</th>
-                            <th>Opponent</th>
+                            <th>Opp</th>
                             <th></th>
                             {SCHED_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
                           </tr>
@@ -1659,12 +1705,11 @@ export default function App() {
                         <tbody>
                           {schedProj.games.map((g, i) => (
                             <tr key={i}>
-                              <td className="sched-date">{g.date}</td>
-                              <td className="sched-opp">{g.opponent.replace(/ [A-Z]+$/, m => ' ' + m.trim().split(' ').pop())}</td>
+                              <td className="sched-date">{g.date.slice(5)}</td>
+                              <td className="sched-opp">{g.opponent.split(' ').pop()}</td>
                               <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
                               {SCHED_COLS.map(c => {
                                 const proj = g.projected[c.key]
-                                const base = (g.home_away === 'Home' ? homeBaseline : awayBaseline)[c.key]
                                 const factor = g.factors[c.key]
                                 const delta = factor - 1
                                 const good = c.invert ? delta < -0.05 : delta > 0.05
@@ -1679,13 +1724,14 @@ export default function App() {
                             </tr>
                           ))}
                           <tr className="sched-baseline-row">
-                            <td colSpan={3} className="sched-baseline-label">Season avg</td>
+                            <td colSpan={3} className="sched-baseline-label">{periodLabel} avg</td>
                             {SCHED_COLS.map(c => (
                               <td key={c.key} className="num mono muted">{schedProj.baseline[c.key] != null ? schedProj.baseline[c.key].toFixed(1) : '—'}</td>
                             ))}
                           </tr>
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   )
                 })()}

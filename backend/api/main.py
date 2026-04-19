@@ -1006,16 +1006,19 @@ def get_rankings(
 SCHED_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
 
 @router.get("/schedule-projection")
-def get_schedule_projection(player: str = Query(..., description="Player slug")):
+def get_schedule_projection(
+    player: str = Query(..., description="Player slug"),
+    period: str = Query("season", description="Baseline window: season | l30 | l14"),
+):
     """
     Return upcoming games for the player's team with per-game projected stats
     scaled by each opponent's defensive strength vs the player's position group.
     """
-    from datetime import date
+    from datetime import date, timedelta
 
     conn = get_conn()
     try:
-        # ── 1. Player baseline (current season per-game avg) ──────────────
+        # ── 1. Player baseline ────────────────────────────────────────────
         player_row = conn.execute("""
             SELECT p.full_name, p.team, b.position_group
             FROM players p
@@ -1029,16 +1032,41 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
         team     = player_row["team"]
         position = player_row["position_group"] or "Guard"
 
-        season_year     = _current_season_end_year()
-        end_yr          = season_year
-        season_label    = f"{end_yr - 1}-{str(end_yr)[2:]}"   # e.g. "2025-26"
+        season_year  = _current_season_end_year()
+        end_yr       = season_year
+        season_label = f"{end_yr - 1}-{str(end_yr)[2:]}"   # e.g. "2025-26"
 
-        game_rows = conn.execute("""
-            SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, home_away
-            FROM game_logs
-            WHERE player_slug = ? AND season = ? AND min > 0
-        """, (player, season_label)).fetchall()
+        # Date cutoff for L30/L14
+        today = date.today()
+        if period == "l14":
+            cutoff = (today - timedelta(days=14)).isoformat()
+        elif period == "l30":
+            cutoff = (today - timedelta(days=30)).isoformat()
+        else:
+            cutoff = None
+
+        if cutoff:
+            game_rows = conn.execute("""
+                SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, home_away
+                FROM game_logs
+                WHERE player_slug = ? AND season = ? AND min > 0 AND game_date >= ?
+            """, (player, season_label, cutoff)).fetchall()
+        else:
+            game_rows = conn.execute("""
+                SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, home_away
+                FROM game_logs
+                WHERE player_slug = ? AND season = ? AND min > 0
+            """, (player, season_label)).fetchall()
         game_rows = [dict(r) for r in game_rows]
+
+        # Fall back to full season if window too small
+        if len(game_rows) < 3 and cutoff:
+            game_rows = conn.execute("""
+                SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, home_away
+                FROM game_logs
+                WHERE player_slug = ? AND season = ? AND min > 0
+            """, (player, season_label)).fetchall()
+            game_rows = [dict(r) for r in game_rows]
 
         if not game_rows:
             return {"games": [], "baseline": {}, "error": "No current season data"}
@@ -1129,6 +1157,8 @@ def get_schedule_projection(player: str = Query(..., description="Player slug"))
             "player":        player,
             "team":          team,
             "position":      position,
+            "period":        period,
+            "games_in_window": len(game_rows),
             "baseline":      {stat: baseline.get(stat)      for stat in SCHED_STATS},
             "home_baseline": {stat: home_baseline.get(stat) for stat in SCHED_STATS},
             "away_baseline": {stat: away_baseline.get(stat) for stat in SCHED_STATS},
