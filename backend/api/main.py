@@ -1151,6 +1151,26 @@ def admin_refresh_schedule():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/admin/upload-schedule")
+def admin_upload_schedule(games: list):
+    """Accept schedule JSON pushed from local machine and store in DB."""
+    try:
+        from schema import init_db
+        init_db()
+        conn = get_conn()
+        conn.execute("DELETE FROM nba_schedule")
+        conn.executemany(
+            "INSERT OR IGNORE INTO nba_schedule (game_date, home_team, away_team, season) VALUES (?,?,?,?)",
+            [(g["game_date"], g["home_team"], g["away_team"], g["season"]) for g in games]
+        )
+        conn.commit()
+        count = conn.execute("SELECT COUNT(*) FROM nba_schedule").fetchone()[0]
+        conn.close()
+        return {"status": "ok", "games_stored": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # -----------------------------------------------------------------------
 # Health check
 # -----------------------------------------------------------------------
