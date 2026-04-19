@@ -12,7 +12,7 @@ Run locally:
   uvicorn main:app --reload
 """
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -1152,7 +1152,7 @@ def admin_refresh_schedule():
 
 
 @router.post("/admin/upload-schedule")
-def admin_upload_schedule(games: list):
+def admin_upload_schedule(games: list = Body(...)):
     """Accept schedule JSON pushed from local machine and store in DB."""
     try:
         from schema import init_db
