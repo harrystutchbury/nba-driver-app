@@ -1000,6 +1000,138 @@ def get_rankings(
 
 
 # -----------------------------------------------------------------------
+# GET /schedule-projection
+# -----------------------------------------------------------------------
+
+SCHED_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
+
+@router.get("/schedule-projection")
+def get_schedule_projection(player: str = Query(..., description="Player slug")):
+    """
+    Return upcoming games for the player's team with per-game projected stats
+    scaled by each opponent's defensive strength vs the player's position group.
+    """
+    from datetime import date, timezone
+    from basketball_reference_web_scraper import client as br_client
+
+    conn = get_conn()
+    try:
+        # ── 1. Player baseline (current season per-game avg) ──────────────
+        player_row = conn.execute("""
+            SELECT p.full_name, p.team, b.position_group
+            FROM players p
+            LEFT JOIN player_bio b ON b.br_slug = p.slug
+            WHERE p.slug = ?
+            ORDER BY p.season DESC LIMIT 1
+        """, (player,)).fetchone()
+        if not player_row:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        team     = player_row["team"]
+        position = player_row["position_group"] or "Guard"
+
+        season_year     = _current_season_end_year()
+        end_yr          = season_year
+        season_label    = f"{end_yr - 1}-{str(end_yr)[2:]}"   # e.g. "2025-26"
+
+        game_rows = conn.execute("""
+            SELECT min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta
+            FROM game_logs
+            WHERE player_slug = ? AND season = ? AND min > 0
+        """, (player, season_label)).fetchall()
+        game_rows = [dict(r) for r in game_rows]
+
+        if not game_rows:
+            return {"games": [], "baseline": {}, "error": "No current season data"}
+
+        baseline = _avg_row(game_rows)
+
+        # ── 2. Opponent defensive factors vs this position group ──────────
+        # For each team (as defender), avg stats allowed to players of this position
+        allowed_rows = conn.execute("""
+            SELECT g.opponent AS defending_team,
+                   AVG(g.pts)  AS pts,
+                   AVG(g.reb)  AS reb,
+                   AVG(g.ast)  AS ast,
+                   AVG(g.stl)  AS stl,
+                   AVG(g.blk)  AS blk,
+                   AVG(g.tov)  AS tov,
+                   AVG(g.fg3m) AS fg3m,
+                   COUNT(*)    AS gp
+            FROM game_logs g
+            JOIN player_bio b ON b.br_slug = g.player_slug
+            WHERE g.season = ?
+              AND b.position_group = ?
+              AND g.min > 0
+            GROUP BY g.opponent
+            HAVING COUNT(*) >= 5
+        """, (season_label, position)).fetchall()
+        allowed_rows = [dict(r) for r in allowed_rows]
+
+        # League average allowed to this position
+        league_avgs = {}
+        for stat in SCHED_STATS:
+            vals = [r[stat] for r in allowed_rows if r[stat] is not None]
+            league_avgs[stat] = sum(vals) / len(vals) if vals else 1.0
+
+        # Factor per team: how much more/less they allow vs league avg
+        opp_factors = {}
+        for r in allowed_rows:
+            opp_factors[r["defending_team"]] = {
+                stat: (r[stat] / league_avgs[stat]) if (r[stat] and league_avgs[stat]) else 1.0
+                for stat in SCHED_STATS
+            }
+
+        # ── 3. Forward schedule ───────────────────────────────────────────
+        today = date.today()
+        all_games = br_client.season_schedule(season_end_year=season_year)
+        upcoming = []
+        for g in all_games:
+            game_date = g["start_time"].astimezone(timezone.utc).date()
+            if game_date < today:
+                continue
+            away = g["away_team"].value
+            home = g["home_team"].value
+            if away != team and home != team:
+                continue
+            is_home   = home == team
+            opponent  = home if not is_home else away
+            upcoming.append({
+                "date":      game_date.isoformat(),
+                "opponent":  opponent,
+                "home_away": "Home" if is_home else "Away",
+            })
+            if len(upcoming) >= 10:
+                break
+
+        # ── 4. Apply opponent factor to baseline ──────────────────────────
+        games_out = []
+        for g in upcoming:
+            opp     = g["opponent"]
+            factors = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
+            projected = {}
+            for stat in SCHED_STATS:
+                base = baseline.get(stat)
+                if base is not None:
+                    projected[stat] = round(base * factors.get(stat, 1.0), 1)
+                else:
+                    projected[stat] = None
+            games_out.append({**g, "projected": projected, "factors": {
+                stat: round(factors.get(stat, 1.0), 3) for stat in SCHED_STATS
+            }})
+
+        return {
+            "player":   player,
+            "team":     team,
+            "position": position,
+            "baseline": {stat: baseline.get(stat) for stat in SCHED_STATS},
+            "games":    games_out,
+        }
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # Health check
 # -----------------------------------------------------------------------
 

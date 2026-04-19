@@ -572,6 +572,8 @@ export default function App() {
   const [agingArchetype, setAgingArchetype] = useState(null)
   const [agingExpanded, setAgingExpanded]   = useState(false)
   const [driverExpanded, setDriverExpanded] = useState(false)
+  const [schedProj, setSchedProj]           = useState(null)
+  const [schedExpanded, setSchedExpanded]   = useState(false)
 
   // Compare tool state
   const [cmpExpanded, setCmpExpanded] = useState(false)
@@ -641,6 +643,7 @@ export default function App() {
     setPlayerStats(null)
     setProjection(null)
     setPlayerGames(null)
+    setSchedProj(null)
     setMaLookback(20)
     setProjYear(1)
     fetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
@@ -665,6 +668,10 @@ export default function App() {
           setGlStart(Math.max(0, d.length - 20))
         }
       })
+      .catch(() => {})
+    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
   }
 
@@ -1615,6 +1622,74 @@ export default function App() {
                 </>
               )}
             </div>
+
+            {/* ── Schedule projection ───────────────────────── */}
+            {schedProj && schedProj.games.length > 0 && (
+              <div className="projection-section">
+                <div className="projection-header" onClick={() => setSchedExpanded(e => !e)} style={{ cursor: 'pointer' }}>
+                  <h3 className="panel-title">Upcoming Games</h3>
+                  <span className="proj-toggle">{schedExpanded ? '▲' : '▼'}</span>
+                </div>
+                {schedExpanded && (() => {
+                  const SCHED_COLS = [
+                    { key: 'pts',  label: 'PTS' },
+                    { key: 'reb',  label: 'REB' },
+                    { key: 'ast',  label: 'AST' },
+                    { key: 'stl',  label: 'STL' },
+                    { key: 'blk',  label: 'BLK' },
+                    { key: 'tov',  label: 'TOV', invert: true },
+                    { key: 'fg3m', label: '3PM' },
+                  ]
+                  const baseline = schedProj.baseline
+                  return (
+                    <div className="sched-proj-wrap">
+                      <p className="sched-proj-note">
+                        Projected stats scaled by opponent's defensive strength vs {schedProj.position}s this season.
+                      </p>
+                      <table className="sched-proj-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Opponent</th>
+                            <th></th>
+                            {SCHED_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {schedProj.games.map((g, i) => (
+                            <tr key={i}>
+                              <td className="sched-date">{g.date}</td>
+                              <td className="sched-opp">{g.opponent.replace(/ [A-Z]+$/, m => ' ' + m.trim().split(' ').pop())}</td>
+                              <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
+                              {SCHED_COLS.map(c => {
+                                const proj = g.projected[c.key]
+                                const base = baseline[c.key]
+                                const factor = g.factors[c.key]
+                                const delta = factor - 1
+                                const good = c.invert ? delta < -0.05 : delta > 0.05
+                                const bad  = c.invert ? delta > 0.05  : delta < -0.05
+                                const cellColor = good ? '#4dffb4' : bad ? '#ff6b6b' : 'inherit'
+                                return (
+                                  <td key={c.key} className="num mono sched-stat" style={{ color: cellColor }}>
+                                    {proj != null ? proj.toFixed(1) : '—'}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                          <tr className="sched-baseline-row">
+                            <td colSpan={3} className="sched-baseline-label">Season avg</td>
+                            {SCHED_COLS.map(c => (
+                              <td key={c.key} className="num mono muted">{baseline[c.key] != null ? baseline[c.key].toFixed(1) : '—'}</td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             {/* ── Projection controls + trend chart ────────── */}
             {projection && (
