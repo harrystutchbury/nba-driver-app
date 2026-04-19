@@ -1600,8 +1600,14 @@ export default function App() {
                             <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>
                             <div className="court-wrap"><div className="court-label">Comparison</div><CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} /></div>
                           </div>
+                          <div className="court-legend">
+                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: 'rgba(77,255,180,0.45)' }} />Positive net contribution</span>
+                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: 'rgba(255,107,107,0.45)' }} />Negative net contribution</span>
+                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: '#1e2235' }} />Neutral / no shots</span>
+                            <span className="court-legend-note">Colour intensity = magnitude · Labels = shot frequency</span>
+                          </div>
                           <table className="shot-table">
-                            <thead><tr><th>Zone</th><th className="num">Baseline FG%</th><th className="num">Comp FG%</th><th className="num">Selection impact</th><th className="num">Efficiency impact</th></tr></thead>
+                            <thead><tr><th>Zone</th><th className="num">Baseline FG%</th><th className="num">Selection impact</th><th className="num">Efficiency impact</th><th className="num">Comp FG%</th></tr></thead>
                             <tbody>
                               {zoneRows.filter(z => z.fga_a > 0 || z.fga_b > 0).map(z => {
                                 const fgShift = Math.round((z.fg_pct_b - z.fg_pct_a) * 100)
@@ -1609,9 +1615,9 @@ export default function App() {
                                   <tr key={z.zone}>
                                     <td>{ZONE_LABELS[z.zone]}</td>
                                     <td className="num mono">{z.fga_a > 0 ? `${Math.round(z.fg_pct_a * 100)}%` : '—'}</td>
-                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}pp)` : '—'}</td>
                                     <td className={`num mono ${z.diet_effect >= 0 ? 'pos' : 'neg'}`}>{z.diet_effect >= 0 ? '+' : ''}{(z.diet_effect * 100).toFixed(1)}</td>
                                     <td className={`num mono ${z.efficiency_effect >= 0 ? 'pos' : 'neg'}`}>{z.efficiency_effect >= 0 ? '+' : ''}{(z.efficiency_effect * 100).toFixed(1)}</td>
+                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}pp)` : '—'}</td>
                                   </tr>
                                 )
                               })}
