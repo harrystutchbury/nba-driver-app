@@ -1555,6 +1555,20 @@ td.bs-name {
   .bs-muted { display: none; }
 }
 
+.bs-live-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #ff4444;
+  letter-spacing: 1px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 .bs-ztotal-head { color: var(--accent) !important; font-weight: 700; }
 .bs-ztotal { font-weight: 700; font-size: 13px; font-family: 'DM Mono', monospace; }
 .bs-ztotal.z-pos { color: #4dffb4; }

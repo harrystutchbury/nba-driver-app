@@ -1451,9 +1451,12 @@ def health():
 # Box Score
 # -----------------------------------------------------------------------
 
-# Simple in-memory cache: date_str -> response payload
-# Completed games don't change, so we cache them indefinitely.
-_box_score_cache: dict = {}
+# In-memory cache for box scores.
+# Past completed dates: cached indefinitely (scores never change).
+# Today: cached for 30s so auto-polling clients share one Tank01 fetch.
+_box_score_cache: dict = {}        # date_str -> payload  (past dates)
+_today_cache: dict     = {}        # {"payload": ..., "ts": float}  (today only)
+_TODAY_TTL = 30                    # seconds
 
 def _tank01_get(endpoint: str, params: dict):
     import urllib.request, urllib.parse, json as _json
@@ -1543,9 +1546,12 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     today    = datetime.utcnow().date()
     is_today = (d == today)
 
-    # Return cache for completed past dates
+    # Return cache for completed past dates (indefinite) or today within TTL
+    import time as _time_mod
     if not is_today and date_str in _box_score_cache:
         return _box_score_cache[date_str]
+    if is_today and _today_cache.get("payload") and (_time_mod.time() - _today_cache.get("ts", 0)) < _TODAY_TTL:
+        return _today_cache["payload"]
 
     # Determine season
     season_end = d.year + 1 if d.month >= 10 else d.year
@@ -1656,8 +1662,10 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
 
     payload = {"date": date, "games": results}
 
-    # Cache completed dates
-    if not is_today:
+    if is_today:
+        _today_cache["payload"] = payload
+        _today_cache["ts"]      = _time_mod.time()
+    else:
         _box_score_cache[date_str] = payload
 
     return payload

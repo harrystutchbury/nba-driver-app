@@ -705,15 +705,25 @@ function BoxScorePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState(null)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    setData(null)
+  const fetchScores = useCallback(() => {
     fetch(`/api/box-score?date=${date}`)
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [date])
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setData(null)
+    fetchScores()
+
+    // Auto-refresh every 30s for today only
+    const isToday = date === todayStr()
+    if (!isToday) return
+    const interval = setInterval(fetchScores, 30000)
+    return () => clearInterval(interval)
+  }, [date, fetchScores])
 
   function shiftDate(days) {
     const d = new Date(date + 'T12:00:00')
@@ -732,6 +742,7 @@ function BoxScorePage() {
           onChange={e => setDate(e.target.value)}
         />
         <button className="bs-nav-btn" onClick={() => shiftDate(1)} disabled={date >= todayStr()}>→</button>
+        {date === todayStr() && <span className="bs-live-pill">● LIVE</span>}
       </div>
 
       {loading && <div className="bs-loading">Loading box scores…</div>}
