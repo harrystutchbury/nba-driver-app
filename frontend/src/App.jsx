@@ -517,7 +517,10 @@ function RankingsPage({ onSelectPlayer }) {
                   <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                     <td className="rank-col muted">{p.rank}</td>
                     <td className="name-col">
-                      <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>{p.name}</div>
+                      <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
+                        {p.name}
+                        {p.injury && <InjuryBadge injury={p.injury} compact />}
+                      </div>
                       <div className="rank-player-team">{p.team}</div>
                     </td>
                     <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
