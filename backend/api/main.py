@@ -1532,6 +1532,7 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "stl":        int(stl),  "z_stl": zs("stl", stl),
                 "blk":        int(blk),  "z_blk": zs("blk", blk),
                 "tov":        int(tov),  "z_tov": zs("tov", tov),
+                "z_total":    round(zs("pts",pts) + zs("reb",reb) + zs("ast",ast) + zs("stl",stl) + zs("blk",blk) - zs("tov",tov) + zs("fg3m",fg3m) + (round(((fgm/fga - z_params["fg_pct"]["league_avg"]) * fga - z_params["fg_pct"]["mean"]) / z_params["fg_pct"]["std"], 2) if fga > 0 else 0.0) + (round(((ftm/fta - z_params["ft_pct"]["league_avg"]) * fta - z_params["ft_pct"]["mean"]) / z_params["ft_pct"]["std"], 2) if fta > 0 else 0.0), 2),
                 "fg":         f"{int(fgm)}/{int(fga)}",
                 "fg_pct":     round(fgm/fga, 3) if fga > 0 else None,
                 "z_fg_pct":   round(((fgm/fga - z_params["fg_pct"]["league_avg"]) * fga - z_params["fg_pct"]["mean"]) / z_params["fg_pct"]["std"], 2) if fga > 0 else 0.0,

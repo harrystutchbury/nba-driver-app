@@ -1554,3 +1554,8 @@ td.bs-name {
   td.bs-name { min-width: 110px; }
   .bs-muted { display: none; }
 }
+
+.bs-ztotal-head { color: var(--accent) !important; font-weight: 700; }
+.bs-ztotal { font-weight: 700; font-size: 13px; font-family: 'DM Mono', monospace; }
+.bs-ztotal.z-pos { color: #4dffb4; }
+.bs-ztotal.z-neg { color: #ff6b6b; }

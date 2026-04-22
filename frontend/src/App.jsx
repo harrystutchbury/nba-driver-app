@@ -592,6 +592,7 @@ function BoxScoreTable({ players }) {
           <th className="bs-ctr">FG%</th>
           <th className="bs-ctr">FT</th>
           <th className="bs-ctr">FT%</th>
+          <th className="bs-ctr bs-ztotal-head">Z</th>
         </tr>
       </thead>
       <tbody>
@@ -612,6 +613,7 @@ function BoxScoreTable({ players }) {
             <ZCell value={p.fg_pct != null ? `${(p.fg_pct*100).toFixed(0)}%` : '—'} z={p.z_fg_pct} isTov={false} />
             <td className="bs-ctr bs-muted">{p.ft}</td>
             <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
+            <td className={`bs-ctr bs-ztotal ${p.z_total > 0 ? 'z-pos' : p.z_total < 0 ? 'z-neg' : 'z-neu'}`}>{p.z_total > 0 ? '+' : ''}{p.z_total}</td>
           </tr>
         ))}
       </tbody>
