@@ -1409,24 +1409,33 @@ def _league_z_params(conn, season: str):
         mean = r[0] or 0.0
         var  = max(r[1] or 0.0, 0.0)
         params[s] = {"mean": mean, "std": math.sqrt(var) or 1.0}
-    # FG% — only where player attempted a shot
+    # FG weighted impact = (fg_pct - league_avg_fg_pct) * fga
+    # Captures both efficiency and volume — high volume poor shooting hurts, high volume good shooting helps
+    fg_avg = conn.execute(
+        "SELECT AVG(CAST(fgm AS REAL)/fga) FROM game_logs WHERE season=? AND min>=15 AND fga>0",
+        (season,)
+    ).fetchone()[0] or 0.0
     r = conn.execute(
-        "SELECT AVG(CAST(fgm AS REAL)/fga), AVG((CAST(fgm AS REAL)/fga)*(CAST(fgm AS REAL)/fga)) - AVG(CAST(fgm AS REAL)/fga)*AVG(CAST(fgm AS REAL)/fga) "
+        "SELECT AVG((CAST(fgm AS REAL)/fga - ?) * fga), "
+        "AVG(((CAST(fgm AS REAL)/fga - ?) * fga) * ((CAST(fgm AS REAL)/fga - ?) * fga)) "
+        "- AVG((CAST(fgm AS REAL)/fga - ?) * fga) * AVG((CAST(fgm AS REAL)/fga - ?) * fga) "
         "FROM game_logs WHERE season=? AND min>=15 AND fga>0",
-        (season,)
+        (fg_avg, fg_avg, fg_avg, fg_avg, fg_avg, season)
     ).fetchone()
-    mean = r[0] or 0.0
-    var  = max(r[1] or 0.0, 0.0)
-    params["fg_pct"] = {"mean": mean, "std": math.sqrt(var) or 1.0}
-    # FT% — only where player attempted a free throw
+    params["fg_pct"] = {"mean": r[0] or 0.0, "std": math.sqrt(max(r[1] or 0.0, 0.0)) or 1.0, "league_avg": fg_avg}
+    # FT weighted impact = (ft_pct - league_avg_ft_pct) * fta
+    ft_avg = conn.execute(
+        "SELECT AVG(CAST(ftm AS REAL)/fta) FROM game_logs WHERE season=? AND min>=15 AND fta>0",
+        (season,)
+    ).fetchone()[0] or 0.0
     r = conn.execute(
-        "SELECT AVG(CAST(ftm AS REAL)/fta), AVG((CAST(ftm AS REAL)/fta)*(CAST(ftm AS REAL)/fta)) - AVG(CAST(ftm AS REAL)/fta)*AVG(CAST(ftm AS REAL)/fta) "
+        "SELECT AVG((CAST(ftm AS REAL)/fta - ?) * fta), "
+        "AVG(((CAST(ftm AS REAL)/fta - ?) * fta) * ((CAST(ftm AS REAL)/fta - ?) * fta)) "
+        "- AVG((CAST(ftm AS REAL)/fta - ?) * fta) * AVG((CAST(ftm AS REAL)/fta - ?) * fta) "
         "FROM game_logs WHERE season=? AND min>=15 AND fta>0",
-        (season,)
+        (ft_avg, ft_avg, ft_avg, ft_avg, ft_avg, season)
     ).fetchone()
-    mean = r[0] or 0.0
-    var  = max(r[1] or 0.0, 0.0)
-    params["ft_pct"] = {"mean": mean, "std": math.sqrt(var) or 1.0}
+    params["ft_pct"] = {"mean": r[0] or 0.0, "std": math.sqrt(max(r[1] or 0.0, 0.0)) or 1.0, "league_avg": ft_avg}
     return params
 
 
@@ -1525,10 +1534,10 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "tov":        int(tov),  "z_tov": zs("tov", tov),
                 "fg":         f"{int(fgm)}/{int(fga)}",
                 "fg_pct":     round(fgm/fga, 3) if fga > 0 else None,
-                "z_fg_pct":   zs("fg_pct", fgm/fga) if fga > 0 else 0.0,
+                "z_fg_pct":   round(((fgm/fga - z_params["fg_pct"]["league_avg"]) * fga - z_params["fg_pct"]["mean"]) / z_params["fg_pct"]["std"], 2) if fga > 0 else 0.0,
                 "ft":         f"{int(ftm)}/{int(fta)}",
                 "ft_pct":     round(ftm/fta, 3) if fta > 0 else None,
-                "z_ft_pct":   zs("ft_pct", ftm/fta) if fta > 0 else 0.0,
+                "z_ft_pct":   round(((ftm/fta - z_params["ft_pct"]["league_avg"]) * fta - z_params["ft_pct"]["mean"]) / z_params["ft_pct"]["std"], 2) if fta > 0 else 0.0,
             })
 
         # Sort: home players first (by mins desc), then away (by mins desc)
