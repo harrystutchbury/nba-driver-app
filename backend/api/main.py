@@ -1382,6 +1382,163 @@ def admin_upload_schedule(games: list = Body(...)):
 
 
 # -----------------------------------------------------------------------
+# GET /projections
+# -----------------------------------------------------------------------
+
+_proj_cache: dict = {}   # (start, end) -> (ts, payload)
+_PROJ_CACHE_TTL = 600    # 10 minutes
+
+@router.get("/projections")
+def get_projections(
+    start: str = Query(..., description="Window start date YYYY-MM-DD"),
+    end:   str = Query(..., description="Window end date YYYY-MM-DD"),
+):
+    """
+    Return all qualified players ranked by projected fantasy value for the given date window.
+    Per-game stats are opponent-adjusted using defensive factors vs each player's position group.
+    period_value = composite_z_per_game × games_in_window (the ranking metric).
+    """
+    import time as _t
+
+    cache_key = (start, end)
+    cached = _proj_cache.get(cache_key)
+    if cached and (_t.time() - cached[0]) < _PROJ_CACHE_TTL:
+        return cached[1]
+
+    conn = get_conn()
+    try:
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        # ── 1. Upcoming schedule: opponents per team in window ──────────────
+        sched_rows = conn.execute("""
+            SELECT home_team, away_team FROM nba_schedule
+            WHERE game_date >= ? AND game_date <= ?
+        """, (start, end)).fetchall()
+
+        team_opponents = {}  # team -> [opponent, ...]
+        for r in sched_rows:
+            team_opponents.setdefault(r["home_team"], []).append(r["away_team"])
+            team_opponents.setdefault(r["away_team"], []).append(r["home_team"])
+
+        if not team_opponents:
+            return []
+
+        # ── 2. Opponent defensive factors per position ──────────────────────
+        opp_factors = {}   # (defending_team, position) -> {stat: factor}
+        for pos in ["Guard", "Forward", "Center", "Guard-Forward", "Forward-Center"]:
+            allowed = conn.execute("""
+                SELECT g.opponent AS defending_team,
+                       AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+                       AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+                       AVG(g.fg3m) AS fg3m
+                FROM game_logs g
+                JOIN player_bio b ON b.br_slug = g.player_slug
+                WHERE g.season = ? AND b.position_group = ? AND g.min > 0
+                GROUP BY g.opponent
+                HAVING COUNT(*) >= 5
+            """, (season, pos)).fetchall()
+
+            league_avgs = {}
+            for stat in SCHED_STATS:
+                vals = [r[stat] for r in allowed if r[stat] is not None]
+                league_avgs[stat] = sum(vals) / len(vals) if vals else 1.0
+
+            for r in allowed:
+                opp_factors[(r["defending_team"], pos)] = {
+                    stat: (r[stat] / league_avgs[stat]) if (r[stat] and league_avgs[stat]) else 1.0
+                    for stat in SCHED_STATS
+                }
+
+        # ── 3. Player baselines (current season, ≥10 GP, ≥15 min) ──────────
+        player_rows = conn.execute("""
+            SELECT g.player_slug, p.full_name, p.team, b.position_group,
+                   AVG(g.min) AS min_pg,
+                   AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+                   AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+                   AVG(g.fg3m) AS fg3m,
+                   SUM(g.fgm) * 100.0 / NULLIF(SUM(g.fga), 0) AS fg_pct,
+                   SUM(g.ftm) * 100.0 / NULLIF(SUM(g.fta), 0) AS ft_pct,
+                   AVG(g.fga) AS fga_pg, AVG(g.fta) AS fta_pg
+            FROM game_logs g
+            JOIN players p ON p.slug = g.player_slug
+            LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            WHERE g.season = ? AND g.min >= 15
+            GROUP BY g.player_slug
+            HAVING COUNT(*) >= 10
+        """, (season,)).fetchall()
+
+        # ── 4. League data + injury map ─────────────────────────────────────
+        league, _ = _league_data(conn, season=season, min_games=10)
+        if not league:
+            return []
+        injury_map = _get_injury_map(conn)
+
+        # ── 5. Compute projections ──────────────────────────────────────────
+        results = []
+        for r in player_rows:
+            slug     = r["player_slug"]
+            team     = r["team"]
+            position = r["position_group"] or "Guard"
+
+            opponents = team_opponents.get(team, [])
+            if not opponents:
+                continue
+
+            # Average opponent factor across all games in window
+            avg_factor = {stat: 0.0 for stat in SCHED_STATS}
+            matched = 0
+            for opp in opponents:
+                f = opp_factors.get((opp, position))
+                if f:
+                    for stat in SCHED_STATS:
+                        avg_factor[stat] += f[stat]
+                    matched += 1
+            if matched > 0:
+                for stat in SCHED_STATS:
+                    avg_factor[stat] /= matched
+            else:
+                avg_factor = {stat: 1.0 for stat in SCHED_STATS}
+
+            # Apply factor to baseline (counting stats only; pcts unadjusted)
+            proj = {
+                stat: round((r[stat] or 0.0) * avg_factor[stat], 1)
+                for stat in SCHED_STATS
+            }
+            proj["fg_pct"] = round(r["fg_pct"], 1) if r["fg_pct"] is not None else None
+            proj["ft_pct"] = round(r["ft_pct"], 1) if r["ft_pct"] is not None else None
+            proj["fga_pg"] = r["fga_pg"] or 0.0
+            proj["fta_pg"] = r["fta_pg"] or 0.0
+            proj["min_pg"] = round(r["min_pg"], 1) if r["min_pg"] is not None else None
+
+            gp      = len(opponents)
+            z_total = _composite_z(proj, league)
+            proj_z  = _with_zscores(proj, league)
+
+            results.append({
+                "slug":         slug,
+                "name":         r["full_name"],
+                "team":         team,
+                "position":     position,
+                "gp":           gp,
+                "injury":       injury_map.get(slug),
+                "z_total":      round(z_total, 2) if z_total is not None else None,
+                "period_value": round(z_total * gp, 2) if z_total is not None else None,
+                **{k: v for k, v in proj_z.items()},
+            })
+
+        results.sort(key=lambda x: (x["period_value"] or -999), reverse=True)
+        for i, p in enumerate(results):
+            p["rank"] = i + 1
+
+        _proj_cache[cache_key] = (_t.time(), results)
+        return results
+
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # GET /injuries
 # -----------------------------------------------------------------------
 

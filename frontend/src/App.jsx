@@ -790,6 +790,196 @@ function BoxScorePage() {
   )
 }
 
+// ─── Projections page ─────────────────────────────────────────────────────────
+
+const PROJ_PERIODS = [
+  { label: '7d',  days: 7 },
+  { label: '14d', days: 14 },
+  { label: '30d', days: 30 },
+  { label: 'ROS', fixedEnd: '2026-06-30' },
+]
+
+const PROJ_POSITIONS = ['All', 'Guard', 'Forward', 'Center', 'Guard-Forward', 'Forward-Center']
+
+const PROJ_COLS = [
+  { key: 'min_pg', label: 'MIN',  noZ: true },
+  { key: 'pts',    label: 'PTS' },
+  { key: 'reb',    label: 'REB' },
+  { key: 'ast',    label: 'AST' },
+  { key: 'stl',    label: 'STL' },
+  { key: 'blk',    label: 'BLK' },
+  { key: 'tov',    label: 'TOV', lowerBetter: true },
+  { key: 'fg3m',   label: '3PM' },
+  { key: 'fg_pct', label: 'FG%', pct: true },
+]
+
+function ProjectionsPage({ onSelectPlayer }) {
+  function todayStr() { return new Date().toISOString().slice(0, 10) }
+  function addDays(n) {
+    const d = new Date(todayStr() + 'T12:00:00')
+    d.setDate(d.getDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+
+  const [start, setStart]       = useState(todayStr)
+  const [end, setEnd]           = useState(() => addDays(14))
+  const [position, setPosition] = useState('all')
+  const [sortKey, setSortKey]   = useState('period_value')
+  const [sortAsc, setSortAsc]   = useState(false)
+  const [players, setPlayers]   = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+
+  useEffect(() => {
+    if (!start || !end || start > end) return
+    setLoading(true)
+    setError(null)
+    fetch(`/api/projections?start=${start}&end=${end}`)
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [start, end])
+
+  function setPeriod(days, fixedEnd) {
+    const t = todayStr()
+    setStart(t)
+    setEnd(fixedEnd ?? addDays(days))
+  }
+
+  function handleSort(key) {
+    if (sortKey === key) setSortAsc(a => !a)
+    else { setSortKey(key); setSortAsc(key === 'tov') }
+  }
+
+  const activePeriod = PROJ_PERIODS.find(p => {
+    const t = todayStr()
+    if (start !== t) return false
+    return p.fixedEnd ? end === p.fixedEnd : end === addDays(p.days)
+  })?.label
+
+  const filtered = players
+    ? players.filter(p => position === 'all' || p.position === position)
+    : []
+
+  const sorted = [...filtered].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity
+    const bv = b[sortKey] ?? -Infinity
+    if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+    return sortAsc ? av - bv : bv - av
+  })
+
+  const fmt  = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
+  const fmtZ = (z) => z == null ? '' : (z >= 0 ? '+' : '') + z.toFixed(2)
+
+  function SortIcon({ col }) {
+    if (sortKey !== col) return <span className="sort-icon muted">↕</span>
+    return <span className="sort-icon">{sortAsc ? '↑' : '↓'}</span>
+  }
+
+  return (
+    <div className="rankings-page">
+      <div className="rankings-controls">
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Window</span>
+          <div className="rank-pills">
+            {PROJ_PERIODS.map(p => (
+              <button
+                key={p.label}
+                className={`rank-pill${activePeriod === p.label ? ' active' : ''}`}
+                onClick={() => setPeriod(p.days, p.fixedEnd)}
+              >{p.label}</button>
+            ))}
+          </div>
+          <input type="date" className="proj-date-input" value={start} onChange={e => setStart(e.target.value)} />
+          <span className="proj-date-sep">→</span>
+          <input type="date" className="proj-date-input" value={end} onChange={e => setEnd(e.target.value)} />
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Position</span>
+          <div className="rank-pills">
+            {PROJ_POSITIONS.map(p => (
+              <button
+                key={p}
+                className={`rank-pill${position === (p === 'All' ? 'all' : p) ? ' active' : ''}`}
+                onClick={() => setPosition(p === 'All' ? 'all' : p)}
+              >{p}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading && <p className="rankings-loading">Computing projections…</p>}
+      {error   && <div className="bs-error">{error}</div>}
+
+      {!loading && players && sorted.length === 0 && (
+        <p className="rankings-loading">No players found — check the schedule table covers this window.</p>
+      )}
+
+      {!loading && sorted.length > 0 && (
+        <div className="rankings-table-wrap">
+          <table className="rankings-table">
+            <thead>
+              <tr>
+                <th className="rank-col">#</th>
+                <th className="name-col" onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+                  Player <SortIcon col="name" />
+                </th>
+                <th>Pos</th>
+                <th className="num" onClick={() => handleSort('gp')} style={{ cursor: 'pointer' }}>
+                  GP <SortIcon col="gp" />
+                </th>
+                {PROJ_COLS.map(c => (
+                  <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
+                    {c.label} <SortIcon col={c.key} />
+                    {!c.noZ && (
+                      <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
+                        z <SortIcon col={`z_${c.key}`} />
+                      </div>
+                    )}
+                  </th>
+                ))}
+                <th className="num" onClick={() => handleSort('period_value')} style={{ cursor: 'pointer' }}>
+                  Value <SortIcon col="period_value" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p, i) => (
+                <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                  <td className="rank-col muted">{i + 1}</td>
+                  <td className="name-col">
+                    <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
+                      {p.name}
+                      {p.injury && <InjuryBadge injury={p.injury} compact />}
+                    </div>
+                    <div className="rank-player-team">{p.team}</div>
+                  </td>
+                  <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
+                  <td className="num mono">{p.gp}</td>
+                  {PROJ_COLS.map(c => {
+                    const z    = p[`z_${c.key}`]
+                    const zAdj = (z != null && c.lowerBetter) ? -z : z
+                    const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                    return (
+                      <td key={c.key} className="num mono rank-stat-cell">
+                        <div>{fmt(p[c.key], c.pct)}</div>
+                        {!c.noZ && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                      </td>
+                    )
+                  })}
+                  <td className="num mono z-total-cell">
+                    {p.period_value != null ? (p.period_value > 0 ? '+' : '') + p.period_value.toFixed(1) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1385,6 +1575,7 @@ export default function App() {
             <button className={`nav-btn${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>Player</button>
             <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
             <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
+            <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries</button>
           </nav>
         </div>
@@ -1396,6 +1587,8 @@ export default function App() {
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'boxscores' && <BoxScorePage />}
+
+      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'injuries' && <InjuriesPage />}
 

@@ -1555,6 +1555,25 @@ td.bs-name {
   .bs-muted { display: none; }
 }
 
+/* ── Projections date inputs ───────────────────────────────── */
+.proj-date-input {
+  background: #1a1e30;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  cursor: pointer;
+}
+.proj-date-input:focus { border-color: var(--accent); }
+
+.proj-date-sep {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .bs-live-pill {
   font-family: var(--mono);
   font-size: 10px;
