@@ -1385,6 +1385,22 @@ def admin_upload_schedule(games: list = Body(...)):
 # GET /injuries
 # -----------------------------------------------------------------------
 
+@router.post("/admin/sync-injuries")
+def admin_sync_injuries():
+    """Trigger an immediate injury sync from Tank01. Requires RAPIDAPI_KEY on server."""
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    try:
+        import sync_injuries
+        sync_injuries.sync()
+        conn = get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM injuries").fetchone()[0]
+        conn.close()
+        return {"status": "ok", "injured_players": count}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @router.get("/injuries")
 def get_injuries():
     """
