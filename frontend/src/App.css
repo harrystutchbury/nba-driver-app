@@ -1340,3 +1340,212 @@
   .sched-proj-table { font-size: 12px; }
   .sched-proj-table th, .sched-proj-table td { padding: 5px 6px; }
 }
+
+/* ── Box Score Page ───────────────────────────────────────── */
+.bs-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.bs-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.bs-nav-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 18px;
+  cursor: pointer;
+}
+.bs-nav-btn:disabled { opacity: 0.3; cursor: default; }
+.bs-nav-btn:hover:not(:disabled) { border-color: var(--accent); }
+
+.bs-date-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+}
+
+.bs-loading, .bs-error, .bs-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 60px 0;
+  font-size: 15px;
+}
+.bs-error { color: #ff6b6b; }
+
+.bs-game {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+
+.bs-game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #1a1f35;
+}
+
+.bs-matchup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bs-team {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+.bs-loser { opacity: 0.45; }
+
+.bs-score {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'DM Mono', monospace;
+  color: var(--text);
+  letter-spacing: 2px;
+}
+
+.bs-game-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bs-status {
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.bs-final { background: #1e2a1e; color: #4dffb4; }
+.bs-live  { background: #2a1e1e; color: #ff6b6b; animation: pulse 1.5s infinite; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+.bs-blowout {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  background: #2a1e00;
+  color: #f5a623;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bs-teams-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.bs-team-section {
+  border-bottom: 1px solid var(--border);
+}
+.bs-team-section:last-child { border-bottom: none; }
+
+.bs-team-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 10px 16px 6px;
+}
+.bs-team-abbr { color: var(--accent); margin-left: 6px; }
+
+.bs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+}
+
+.bs-table thead th {
+  padding: 6px 10px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+.bs-table thead th.bs-name { text-align: left; }
+
+.bs-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+.bs-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.bs-table tbody tr:last-child td { border-bottom: none; }
+
+td.bs-name {
+  text-align: left;
+  color: var(--text);
+  min-width: 140px;
+  font-size: 13px;
+}
+
+.bs-stat-cell {
+  text-align: right;
+  vertical-align: middle;
+  min-width: 52px;
+}
+
+.bs-val {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bs-z {
+  display: block;
+  font-size: 10px;
+  margin-top: 1px;
+  opacity: 0.8;
+}
+
+.z-pos .bs-z { color: #4dffb4; }
+.z-neg .bs-z { color: #ff6b6b; }
+.z-neu .bs-z { color: var(--text-muted); }
+
+.bs-shooting {
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.bs-pm {
+  font-weight: 600;
+  font-size: 13px;
+}
+.bs-pm.z-pos { color: #4dffb4; }
+.bs-pm.z-neg { color: #ff6b6b; }
+
+@media (max-width: 768px) {
+  .bs-score { font-size: 20px; }
+  .bs-team  { font-size: 18px; }
+  .bs-table { font-size: 12px; }
+  td.bs-name { min-width: 110px; }
+  .bs-shooting { display: none; }
+}

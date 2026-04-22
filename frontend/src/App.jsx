@@ -366,13 +366,13 @@ function CourtDiagram({ zones, period }) {
       {/* Paint lane lines */}
       <line x1={160} y1={0}   x2={160} y2={190} stroke={stroke} strokeWidth={1} />
       <line x1={340} y1={0}   x2={340} y2={190} stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle */}
-      <circle cx={250} cy={190} r={60} fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
+      {/* Free throw circle — upper semicircle only (dashed) */}
+      <path d="M 190,190 A 60,60 0 0,1 310,190" fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
       {/* Free throw line */}
       <line x1={160} y1={190} x2={340} y2={190} stroke={stroke} strokeWidth={1.5} />
 
-      {/* Restricted area arc */}
-      <path d={`M 190,0 L 190,80 A 60,60 0 0,0 310,80 L 310,0`} fill="none" stroke={stroke} strokeWidth={1.5} />
+      {/* Restricted area arc — small semicircle around basket */}
+      <path d="M 215,20 A 35,35 0 0,0 285,20" fill="none" stroke={stroke} strokeWidth={1.5} />
 
       {/* 3pt line */}
       <line x1={60} y1={0}   x2={60}  y2={140} stroke={stroke} strokeWidth={1.5} />
@@ -548,6 +548,139 @@ function RankingsPage({ onSelectPlayer }) {
       {!loading && players && sorted.length === 0 && (
         <p className="rankings-empty">No players found for this filter.</p>
       )}
+    </div>
+  )
+}
+
+// ─── Box Score Page ───────────────────────────────────────────────────────────
+
+const BS_STATS = ['pts','reb','ast','stl','blk','tov']
+const BS_LABELS = { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK', tov:'TOV' }
+
+function ZCell({ value, z, isTov }) {
+  // For TOV, high z is bad; for everything else high z is good
+  const good = isTov ? z < -0.5 : z > 0.5
+  const bad  = isTov ? z > 0.5  : z < -0.5
+  const cls  = good ? 'z-pos' : bad ? 'z-neg' : 'z-neu'
+  return (
+    <td className={`bs-stat-cell ${cls}`}>
+      <span className="bs-val">{value}</span>
+      <span className="bs-z">{z > 0 ? '+' : ''}{z.toFixed(1)}σ</span>
+    </td>
+  )
+}
+
+function BoxScoreTable({ players }) {
+  if (!players.length) return null
+  return (
+    <table className="bs-table">
+      <thead>
+        <tr>
+          <th className="bs-name">Player</th>
+          <th className="num">MIN</th>
+          {BS_STATS.map(s => <th key={s} className="num bs-stat-head">{BS_LABELS[s]}</th>)}
+          <th className="num">FG</th>
+          <th className="num">3PT</th>
+          <th className="num">FT</th>
+          <th className="num">+/-</th>
+        </tr>
+      </thead>
+      <tbody>
+        {players.filter(p => p.min > 0).map((p, i) => (
+          <tr key={i}>
+            <td className="bs-name">{p.name}</td>
+            <td className="num">{p.min}</td>
+            {BS_STATS.map(s => (
+              <ZCell key={s} value={p[s]} z={p[`z_${s}`]} isTov={s === 'tov'} />
+            ))}
+            <td className="num bs-shooting">{p.fg}</td>
+            <td className="num bs-shooting">{p.fg3}</td>
+            <td className="num bs-shooting">{p.ft}</td>
+            <td className={`num bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function BoxScorePage() {
+  const todayStr = () => new Date().toISOString().slice(0, 10)
+  const [date, setDate]     = useState(todayStr())
+  const [data, setData]     = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]   = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setData(null)
+    fetch(`/api/box-score?date=${date}`)
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [date])
+
+  function shiftDate(days) {
+    const d = new Date(date + 'T12:00:00')
+    d.setDate(d.getDate() + days)
+    setDate(d.toISOString().slice(0, 10))
+  }
+
+  return (
+    <div className="bs-page">
+      <div className="bs-date-nav">
+        <button className="bs-nav-btn" onClick={() => shiftDate(-1)}>←</button>
+        <input
+          type="date"
+          className="bs-date-input"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+        />
+        <button className="bs-nav-btn" onClick={() => shiftDate(1)} disabled={date >= todayStr()}>→</button>
+      </div>
+
+      {loading && <div className="bs-loading">Loading box scores…</div>}
+      {error   && <div className="bs-error">{error}</div>}
+
+      {data && data.games.length === 0 && !loading && (
+        <div className="bs-empty">No games on this date.</div>
+      )}
+
+      {data && data.games.map(game => (
+        <div key={game.game_id} className="bs-game">
+          <div className="bs-game-header">
+            <div className="bs-matchup">
+              <span className={`bs-team ${game.away_pts < game.home_pts ? 'bs-loser' : ''}`}>
+                {game.away_abbr}
+              </span>
+              <span className="bs-score">
+                {game.away_pts ?? '–'} – {game.home_pts ?? '–'}
+              </span>
+              <span className={`bs-team ${game.home_pts < game.away_pts ? 'bs-loser' : ''}`}>
+                {game.home_abbr}
+              </span>
+            </div>
+            <div className="bs-game-meta">
+              <span className={`bs-status ${game.status === 'Completed' ? 'bs-final' : 'bs-live'}`}>
+                {game.status === 'Completed' ? 'Final' : game.game_clock || game.status}
+              </span>
+              {game.blowout && <span className="bs-blowout">Blowout +{game.margin}</span>}
+            </div>
+          </div>
+
+          <div className="bs-teams-wrap">
+            <div className="bs-team-section">
+              <div className="bs-team-label">{game.away} <span className="bs-team-abbr">{game.away_abbr}</span></div>
+              <BoxScoreTable players={game.away_players} />
+            </div>
+            <div className="bs-team-section">
+              <div className="bs-team-label">{game.home} <span className="bs-team-abbr">{game.home_abbr}</span></div>
+              <BoxScoreTable players={game.home_players} />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -1146,6 +1279,7 @@ export default function App() {
           <nav className="site-nav">
             <button className={`nav-btn${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>Player</button>
             <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
+            <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
           </nav>
         </div>
       </header>
@@ -1154,6 +1288,8 @@ export default function App() {
       <main className="page-body">
 
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+
+      {page === 'boxscores' && <BoxScorePage />}
 
       {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}
@@ -1600,9 +1736,9 @@ export default function App() {
                           <h2 className="panel-title">Shot diet analysis</h2>
                           <div className="shot-summary">
                             <div className="shot-metric"><span className="metric-label">Baseline FG%</span><span className="metric-value">{(shotDiet.fg_pct_a * 100).toFixed(1)}%</span></div>
-                            <div className="shot-metric"><span className="metric-label">Comparison FG%</span><span className="metric-value">{(shotDiet.fg_pct_b * 100).toFixed(1)}%</span><span className={`metric-sub metric-delta ${shotDiet.delta >= 0 ? 'pos' : 'neg'}`}>{shotDiet.delta >= 0 ? '+' : ''}{(shotDiet.delta * 100).toFixed(1)}pp</span></div>
                             <div className="shot-metric"><span className="metric-label">Selection effect</span><span className={`metric-value ${shotDiet.diet_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.diet_total >= 0 ? '+' : ''}{(shotDiet.diet_total * 100).toFixed(1)}pp</span><span className="metric-sub">shot mix shift</span></div>
                             <div className="shot-metric"><span className="metric-label">Efficiency effect</span><span className={`metric-value ${shotDiet.efficiency_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.efficiency_total >= 0 ? '+' : ''}{(shotDiet.efficiency_total * 100).toFixed(1)}pp</span><span className="metric-sub">zone accuracy</span></div>
+                            <div className="shot-metric"><span className="metric-label">Comparison FG%</span><span className="metric-value">{(shotDiet.fg_pct_b * 100).toFixed(1)}%</span><span className={`metric-sub metric-delta ${shotDiet.delta >= 0 ? 'pos' : 'neg'}`}>{shotDiet.delta >= 0 ? '+' : ''}{(shotDiet.delta * 100).toFixed(1)}pp</span></div>
                           </div>
                           <div className="courts-row">
                             <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>

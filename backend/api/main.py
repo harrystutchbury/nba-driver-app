@@ -46,22 +46,37 @@ def _current_season_end_year():
 
 
 def _daily_refresh():
+    """Pull last 2 days of game logs from Tank01 and upsert into DB."""
     try:
-        import refresh
+        import ingest_tank01
+        from datetime import date, timedelta
         season_year = _current_season_end_year()
-        logger.info(f"Daily refresh starting for season {season_year}")
-        refresh.run([season_year])
-        logger.info("Daily refresh complete")
+        since = date.today() - timedelta(days=2)
+        logger.info(f"Daily Tank01 refresh starting (season {season_year}, since {since})")
+        ingest_tank01.ingest(season_year, since_date=since)
+        logger.info("Daily Tank01 refresh complete")
     except Exception:
-        logger.exception("Daily refresh failed")
+        logger.exception("Daily Tank01 refresh failed")
+
+
+def _weekly_schedule_sync():
+    """Re-fetch upcoming schedule from Tank01 (playoff brackets update weekly)."""
+    try:
+        import upload_schedule
+        logger.info("Weekly schedule sync starting")
+        upload_schedule.run()
+        logger.info("Weekly schedule sync complete")
+    except Exception:
+        logger.exception("Weekly schedule sync failed")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
+    scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
     scheduler.start()
-    logger.info("Scheduler started — daily refresh at 08:00 UTC")
+    logger.info("Scheduler started — daily refresh at 08:00 UTC, schedule sync Mondays 09:00 UTC")
     yield
     scheduler.shutdown()
 
@@ -1343,6 +1358,188 @@ def admin_upload_schedule(games: list = Body(...)):
 @router.get("/healthz")
 def health():
     return {"status": "ok"}
+
+
+# -----------------------------------------------------------------------
+# Box Score
+# -----------------------------------------------------------------------
+
+# Simple in-memory cache: date_str -> response payload
+# Completed games don't change, so we cache them indefinitely.
+_box_score_cache: dict = {}
+
+def _tank01_get(endpoint: str, params: dict):
+    import urllib.request, urllib.parse, json as _json
+    key  = os.environ.get("RAPIDAPI_KEY", "")
+    host = "tank01-fantasy-stats.p.rapidapi.com"
+    qs   = urllib.parse.urlencode(params)
+    url  = f"https://{host}/{endpoint}?{qs}"
+    req  = urllib.request.Request(url, headers={
+        "X-RapidAPI-Key":  key,
+        "X-RapidAPI-Host": host,
+    })
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return _json.loads(resp.read())
+
+_TEAM_ABBREV = {
+    "ATL":"ATLANTA HAWKS","BOS":"BOSTON CELTICS","BKN":"BROOKLYN NETS",
+    "CHA":"CHARLOTTE HORNETS","CHI":"CHICAGO BULLS","CLE":"CLEVELAND CAVALIERS",
+    "DAL":"DALLAS MAVERICKS","DEN":"DENVER NUGGETS","DET":"DETROIT PISTONS",
+    "GS":"GOLDEN STATE WARRIORS","GSW":"GOLDEN STATE WARRIORS",
+    "HOU":"HOUSTON ROCKETS","IND":"INDIANA PACERS","LAC":"LOS ANGELES CLIPPERS",
+    "LAL":"LOS ANGELES LAKERS","MEM":"MEMPHIS GRIZZLIES","MIA":"MIAMI HEAT",
+    "MIL":"MILWAUKEE BUCKS","MIN":"MINNESOTA TIMBERWOLVES",
+    "NO":"NEW ORLEANS PELICANS","NOP":"NEW ORLEANS PELICANS",
+    "NY":"NEW YORK KNICKS","NYK":"NEW YORK KNICKS","OKC":"OKLAHOMA CITY THUNDER",
+    "ORL":"ORLANDO MAGIC","PHI":"PHILADELPHIA 76ERS","PHO":"PHOENIX SUNS",
+    "POR":"PORTLAND TRAIL BLAZERS","SA":"SAN ANTONIO SPURS","SAS":"SAN ANTONIO SPURS",
+    "SAC":"SACRAMENTO KINGS","TOR":"TORONTO RAPTORS","UTA":"UTAH JAZZ",
+    "WAS":"WASHINGTON WIZARDS",
+}
+
+def _league_z_params(conn, season: str):
+    """Compute league-wide mean + std for each stat from game_logs this season."""
+    stats = ["pts", "reb", "ast", "stl", "blk", "tov"]
+    row = conn.execute(f"""
+        SELECT
+            {', '.join(f'AVG({s}) AS mean_{s}, MAX(({s} - (SELECT AVG({s}) FROM game_logs WHERE season=? AND min>=15)) * ({s} - (SELECT AVG({s}) FROM game_logs WHERE season=? AND min>=15))) AS var_{s}' for s in stats)}
+        FROM game_logs WHERE season=? AND min>=15
+    """, [season, season] * len(stats) + [season]).fetchone()
+    # Simpler query - compute per stat
+    params = {}
+    for s in stats:
+        r = conn.execute(
+            f"SELECT AVG({s}), AVG({s}*{s}) - AVG({s})*AVG({s}) FROM game_logs WHERE season=? AND min>=15",
+            (season,)
+        ).fetchone()
+        mean = r[0] or 0.0
+        var  = max(r[1] or 0.0, 0.0)
+        params[s] = {"mean": mean, "std": math.sqrt(var) or 1.0}
+    return params
+
+
+@router.get("/box-score")
+def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format")):
+    import time as _time
+
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+
+    # Normalise date
+    try:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+
+    date_str = d.strftime("%Y%m%d")
+    today    = datetime.utcnow().date()
+    is_today = (d == today)
+
+    # Return cache for completed past dates
+    if not is_today and date_str in _box_score_cache:
+        return _box_score_cache[date_str]
+
+    # Determine season
+    season_end = d.year + 1 if d.month >= 10 else d.year
+    season = f"{season_end - 1}-{str(season_end)[2:]}"
+
+    conn = get_conn()
+    z_params = _league_z_params(conn, season)
+    conn.close()
+
+    def zs(stat, val):
+        p = z_params.get(stat, {"mean": 0, "std": 1})
+        return round((val - p["mean"]) / p["std"], 2)
+
+    # Fetch games for date
+    try:
+        games_resp = _tank01_get("getNBAGamesForDate", {"gameDate": date_str})
+        games_list = games_resp.get("body", [])
+    except Exception as e:
+        raise HTTPException(502, f"Tank01 schedule fetch failed: {e}")
+
+    if not games_list:
+        return {"date": date, "games": []}
+
+    results = []
+    for g in games_list:
+        game_id    = g.get("gameID", "")
+        home_abbr  = g.get("home", "")
+        away_abbr  = g.get("away", "")
+
+        try:
+            bs = _tank01_get("getNBABoxScore", {"gameID": game_id})
+            body = bs.get("body", {})
+            _time.sleep(0.3)
+        except Exception as e:
+            logger.warning(f"Box score fetch failed for {game_id}: {e}")
+            continue
+
+        home_pts    = body.get("homePts")
+        away_pts    = body.get("awayPts")
+        status      = body.get("gameStatus", "")
+        game_clock  = body.get("gameClock", "")
+        margin      = abs(int(home_pts or 0) - int(away_pts or 0)) if home_pts and away_pts else 0
+        blowout     = status == "Completed" and margin > 20
+
+        players_raw = body.get("playerStats", {})
+        players = []
+        for pid, p in players_raw.items():
+            def f(k):
+                v = p.get(k, 0)
+                try: return float(v) if v not in (None, "", "null") else 0.0
+                except: return 0.0
+
+            pts  = f("pts");  reb  = f("reb");  ast = f("ast")
+            stl  = f("stl");  blk  = f("blk");  tov = f("TOV")
+            mins = f("mins"); fgm  = f("fgm");   fga = f("fga")
+            fg3m = f("tptfgm"); fg3a = f("tptfga")
+            ftm  = f("ftm");  fta  = f("fta")
+            pm   = p.get("plusMinus", "0")
+
+            players.append({
+                "name":      p.get("longName", ""),
+                "team":      p.get("teamAbv", ""),
+                "min":       int(mins),
+                "pts":       int(pts),  "z_pts": zs("pts", pts),
+                "reb":       int(reb),  "z_reb": zs("reb", reb),
+                "ast":       int(ast),  "z_ast": zs("ast", ast),
+                "stl":       int(stl),  "z_stl": zs("stl", stl),
+                "blk":       int(blk),  "z_blk": zs("blk", blk),
+                "tov":       int(tov),  "z_tov": zs("tov", tov),
+                "fg":        f"{int(fgm)}/{int(fga)}",
+                "fg3":       f"{int(fg3m)}/{int(fg3a)}",
+                "ft":        f"{int(ftm)}/{int(fta)}",
+                "plus_minus": pm,
+            })
+
+        # Sort: home players first (by mins desc), then away (by mins desc)
+        home_players = sorted([p for p in players if p["team"] == home_abbr], key=lambda x: -x["min"])
+        away_players = sorted([p for p in players if p["team"] == away_abbr], key=lambda x: -x["min"])
+
+        results.append({
+            "game_id":    game_id,
+            "home":       _TEAM_ABBREV.get(home_abbr, home_abbr),
+            "home_abbr":  home_abbr,
+            "home_pts":   home_pts,
+            "away":       _TEAM_ABBREV.get(away_abbr, away_abbr),
+            "away_abbr":  away_abbr,
+            "away_pts":   away_pts,
+            "status":     status,
+            "game_clock": game_clock,
+            "blowout":    blowout,
+            "margin":     margin,
+            "home_players": home_players,
+            "away_players": away_players,
+        })
+
+    payload = {"date": date, "games": results}
+
+    # Cache completed dates
+    if not is_today:
+        _box_score_cache[date_str] = payload
+
+    return payload
 
 
 app.include_router(router)

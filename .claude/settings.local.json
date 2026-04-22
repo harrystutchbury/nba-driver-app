@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:rapidapi.com)",
+      "WebSearch",
+      "WebFetch(domain:www.tank01.com)",
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(export RAPIDAPI_KEY=8b894236ffmsh04597919d710687p10d3ddjsn1c9c719d0b36)",
+      "Bash(python upload_schedule.py)"
+    ]
+  }
+}
