@@ -1483,7 +1483,7 @@
 
 .bs-table thead th {
   padding: 6px 10px;
-  text-align: right;
+  text-align: center;
   font-size: 11px;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
@@ -1506,8 +1506,13 @@ td.bs-name {
   font-size: 13px;
 }
 
+.bs-ctr {
+  text-align: center;
+  vertical-align: middle;
+}
+
 .bs-stat-cell {
-  text-align: right;
+  text-align: center;
   vertical-align: middle;
   min-width: 52px;
 }
@@ -1529,8 +1534,8 @@ td.bs-name {
 .z-neg .bs-z { color: #ff6b6b; }
 .z-neu .bs-z { color: var(--text-muted); }
 
-.bs-shooting {
-  text-align: right;
+.bs-muted {
+  text-align: center;
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -1547,5 +1552,5 @@ td.bs-name {
   .bs-team  { font-size: 18px; }
   .bs-table { font-size: 12px; }
   td.bs-name { min-width: 110px; }
-  .bs-shooting { display: none; }
+  .bs-muted { display: none; }
 }

@@ -556,6 +556,7 @@ function RankingsPage({ onSelectPlayer }) {
 
 const BS_STATS = ['pts','reb','ast','stl','blk','tov']
 const BS_LABELS = { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK', tov:'TOV' }
+const BS_COL_ORDER = ['pts','reb','ast','stl','blk','tov']
 
 function ZCell({ value, z, isTov }) {
   // For TOV, high z is bad; for everything else high z is good
@@ -577,26 +578,36 @@ function BoxScoreTable({ players }) {
       <thead>
         <tr>
           <th className="bs-name">Player</th>
-          <th className="num">MIN</th>
-          {BS_STATS.map(s => <th key={s} className="num bs-stat-head">{BS_LABELS[s]}</th>)}
-          <th className="num">FG</th>
-          <th className="num">3PT</th>
-          <th className="num">FT</th>
-          <th className="num">+/-</th>
+          <th className="bs-ctr">MIN</th>
+          <th className="bs-ctr">+/-</th>
+          <th className="bs-ctr">PF</th>
+          <th className="bs-ctr bs-stat-head">PTS</th>
+          <th className="bs-ctr">3PM</th>
+          <th className="bs-ctr bs-stat-head">REB</th>
+          <th className="bs-ctr bs-stat-head">AST</th>
+          <th className="bs-ctr bs-stat-head">STL</th>
+          <th className="bs-ctr bs-stat-head">BLK</th>
+          <th className="bs-ctr bs-stat-head">TOV</th>
+          <th className="bs-ctr">FG</th>
+          <th className="bs-ctr">FT</th>
         </tr>
       </thead>
       <tbody>
         {players.filter(p => p.min > 0).map((p, i) => (
           <tr key={i}>
             <td className="bs-name">{p.name}</td>
-            <td className="num">{p.min}</td>
-            {BS_STATS.map(s => (
-              <ZCell key={s} value={p[s]} z={p[`z_${s}`]} isTov={s === 'tov'} />
-            ))}
-            <td className="num bs-shooting">{p.fg}</td>
-            <td className="num bs-shooting">{p.fg3}</td>
-            <td className="num bs-shooting">{p.ft}</td>
-            <td className={`num bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
+            <td className="bs-ctr">{p.min}</td>
+            <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
+            <td className="bs-ctr bs-muted">{p.pf}</td>
+            <ZCell value={p.pts} z={p.z_pts} isTov={false} />
+            <td className="bs-ctr bs-muted">{p.fg3m}</td>
+            <ZCell value={p.reb} z={p.z_reb} isTov={false} />
+            <ZCell value={p.ast} z={p.z_ast} isTov={false} />
+            <ZCell value={p.stl} z={p.z_stl} isTov={false} />
+            <ZCell value={p.blk} z={p.z_blk} isTov={false} />
+            <ZCell value={p.tov} z={p.z_tov} isTov={true} />
+            <td className="bs-ctr bs-muted">{p.fg}</td>
+            <td className="bs-ctr bs-muted">{p.ft}</td>
           </tr>
         ))}
       </tbody>

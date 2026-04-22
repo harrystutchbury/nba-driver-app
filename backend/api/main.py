@@ -1496,21 +1496,23 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
             fg3m = f("tptfgm"); fg3a = f("tptfga")
             ftm  = f("ftm");  fta  = f("fta")
             pm   = p.get("plusMinus", "0")
+            pf   = int(f("PF"))
 
             players.append({
-                "name":      p.get("longName", ""),
-                "team":      p.get("teamAbv", ""),
-                "min":       int(mins),
-                "pts":       int(pts),  "z_pts": zs("pts", pts),
-                "reb":       int(reb),  "z_reb": zs("reb", reb),
-                "ast":       int(ast),  "z_ast": zs("ast", ast),
-                "stl":       int(stl),  "z_stl": zs("stl", stl),
-                "blk":       int(blk),  "z_blk": zs("blk", blk),
-                "tov":       int(tov),  "z_tov": zs("tov", tov),
-                "fg":        f"{int(fgm)}/{int(fga)}",
-                "fg3":       f"{int(fg3m)}/{int(fg3a)}",
-                "ft":        f"{int(ftm)}/{int(fta)}",
+                "name":       p.get("longName", ""),
+                "team":       p.get("teamAbv", ""),
+                "min":        int(mins),
                 "plus_minus": pm,
+                "pf":         pf,
+                "pts":        int(pts),  "z_pts": zs("pts", pts),
+                "fg3m":       int(fg3m),
+                "reb":        int(reb),  "z_reb": zs("reb", reb),
+                "ast":        int(ast),  "z_ast": zs("ast", ast),
+                "stl":        int(stl),  "z_stl": zs("stl", stl),
+                "blk":        int(blk),  "z_blk": zs("blk", blk),
+                "tov":        int(tov),  "z_tov": zs("tov", tov),
+                "fg":         f"{int(fgm)}/{int(fga)}",
+                "ft":         f"{int(ftm)}/{int(fta)}",
             })
 
         # Sort: home players first (by mins desc), then away (by mins desc)
