@@ -602,16 +602,16 @@ function BoxScoreTable({ players }) {
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
             <td className="bs-ctr bs-muted">{p.pf}</td>
             <ZCell value={p.pts} z={p.z_pts} isTov={false} />
-            <td className="bs-ctr bs-muted">{p.fg3m}</td>
+            <ZCell value={p.fg3m} z={p.z_fg3m} isTov={false} />
             <ZCell value={p.reb} z={p.z_reb} isTov={false} />
             <ZCell value={p.ast} z={p.z_ast} isTov={false} />
             <ZCell value={p.stl} z={p.z_stl} isTov={false} />
             <ZCell value={p.blk} z={p.z_blk} isTov={false} />
             <ZCell value={p.tov} z={p.z_tov} isTov={true} />
             <td className="bs-ctr bs-muted">{p.fg}</td>
-            <td className="bs-ctr bs-muted">{p.fg_pct}</td>
+            <ZCell value={p.fg_pct != null ? `${(p.fg_pct*100).toFixed(0)}%` : '—'} z={p.z_fg_pct} isTov={false} />
             <td className="bs-ctr bs-muted">{p.ft}</td>
-            <td className="bs-ctr bs-muted">{p.ft_pct}</td>
+            <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
           </tr>
         ))}
       </tbody>

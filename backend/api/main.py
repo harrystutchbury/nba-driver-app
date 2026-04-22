@@ -1399,15 +1399,9 @@ _TEAM_ABBREV = {
 
 def _league_z_params(conn, season: str):
     """Compute league-wide mean + std for each stat from game_logs this season."""
-    stats = ["pts", "reb", "ast", "stl", "blk", "tov"]
-    row = conn.execute(f"""
-        SELECT
-            {', '.join(f'AVG({s}) AS mean_{s}, MAX(({s} - (SELECT AVG({s}) FROM game_logs WHERE season=? AND min>=15)) * ({s} - (SELECT AVG({s}) FROM game_logs WHERE season=? AND min>=15))) AS var_{s}' for s in stats)}
-        FROM game_logs WHERE season=? AND min>=15
-    """, [season, season] * len(stats) + [season]).fetchone()
-    # Simpler query - compute per stat
     params = {}
-    for s in stats:
+    # Standard counting stats
+    for s in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]:
         r = conn.execute(
             f"SELECT AVG({s}), AVG({s}*{s}) - AVG({s})*AVG({s}) FROM game_logs WHERE season=? AND min>=15",
             (season,)
@@ -1415,6 +1409,24 @@ def _league_z_params(conn, season: str):
         mean = r[0] or 0.0
         var  = max(r[1] or 0.0, 0.0)
         params[s] = {"mean": mean, "std": math.sqrt(var) or 1.0}
+    # FG% — only where player attempted a shot
+    r = conn.execute(
+        "SELECT AVG(CAST(fgm AS REAL)/fga), AVG((CAST(fgm AS REAL)/fga)*(CAST(fgm AS REAL)/fga)) - AVG(CAST(fgm AS REAL)/fga)*AVG(CAST(fgm AS REAL)/fga) "
+        "FROM game_logs WHERE season=? AND min>=15 AND fga>0",
+        (season,)
+    ).fetchone()
+    mean = r[0] or 0.0
+    var  = max(r[1] or 0.0, 0.0)
+    params["fg_pct"] = {"mean": mean, "std": math.sqrt(var) or 1.0}
+    # FT% — only where player attempted a free throw
+    r = conn.execute(
+        "SELECT AVG(CAST(ftm AS REAL)/fta), AVG((CAST(ftm AS REAL)/fta)*(CAST(ftm AS REAL)/fta)) - AVG(CAST(ftm AS REAL)/fta)*AVG(CAST(ftm AS REAL)/fta) "
+        "FROM game_logs WHERE season=? AND min>=15 AND fta>0",
+        (season,)
+    ).fetchone()
+    mean = r[0] or 0.0
+    var  = max(r[1] or 0.0, 0.0)
+    params["ft_pct"] = {"mean": mean, "std": math.sqrt(var) or 1.0}
     return params
 
 
@@ -1505,16 +1517,18 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "plus_minus": pm,
                 "pf":         pf,
                 "pts":        int(pts),  "z_pts": zs("pts", pts),
-                "fg3m":       int(fg3m),
+                "fg3m":       int(fg3m),  "z_fg3m": zs("fg3m", fg3m),
                 "reb":        int(reb),  "z_reb": zs("reb", reb),
                 "ast":        int(ast),  "z_ast": zs("ast", ast),
                 "stl":        int(stl),  "z_stl": zs("stl", stl),
                 "blk":        int(blk),  "z_blk": zs("blk", blk),
                 "tov":        int(tov),  "z_tov": zs("tov", tov),
                 "fg":         f"{int(fgm)}/{int(fga)}",
-                "fg_pct":     f"{fgm/fga*100:.0f}%" if fga > 0 else "—",
+                "fg_pct":     round(fgm/fga, 3) if fga > 0 else None,
+                "z_fg_pct":   zs("fg_pct", fgm/fga) if fga > 0 else 0.0,
                 "ft":         f"{int(ftm)}/{int(fta)}",
-                "ft_pct":     f"{ftm/fta*100:.0f}%" if fta > 0 else "—",
+                "ft_pct":     round(ftm/fta, 3) if fta > 0 else None,
+                "z_ft_pct":   zs("ft_pct", ftm/fta) if fta > 0 else 0.0,
             })
 
         # Sort: home players first (by mins desc), then away (by mins desc)
