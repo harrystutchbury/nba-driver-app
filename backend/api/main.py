@@ -40,6 +40,14 @@ from engine.aging import build_aging_curves, aging_ratio as _aging_ratio
 logger = logging.getLogger(__name__)
 
 
+def _get_injury_map(conn):
+    """Return dict of player_slug -> {designation, description} for all injured players."""
+    rows = conn.execute(
+        "SELECT player_slug, designation, description FROM injuries"
+    ).fetchall()
+    return {r["player_slug"]: {"designation": r["designation"], "description": r["description"]} for r in rows}
+
+
 def _current_season_end_year():
     now = datetime.utcnow()
     return now.year + 1 if now.month >= 10 else now.year
@@ -57,6 +65,14 @@ def _daily_refresh():
         logger.info("Daily Tank01 refresh complete")
     except Exception:
         logger.exception("Daily Tank01 refresh failed")
+
+    try:
+        import sync_injuries
+        logger.info("Injury sync starting")
+        sync_injuries.sync()
+        logger.info("Injury sync complete")
+    except Exception:
+        logger.exception("Injury sync failed")
 
 
 def _weekly_schedule_sync():
@@ -133,6 +149,7 @@ def get_players(
         sql += " GROUP BY slug ORDER BY full_name"
 
     rows = conn.execute(sql, params).fetchall()
+    injury_map = _get_injury_map(conn)
     conn.close()
 
     return [
@@ -141,6 +158,7 @@ def get_players(
             "name":   r["full_name"],
             "team":   r["team"],
             "season": r["season"],
+            "injury": injury_map.get(r["slug"]),
         }
         for r in rows
     ]
@@ -406,6 +424,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     league_l30,    rows_l30    = _league_data(conn, cutoff=cutoff_30, min_games=5)
     league_l14,    rows_l14    = _league_data(conn, cutoff=cutoff_14, min_games=3)
 
+    injury_map = _get_injury_map(conn)
     conn.close()
 
     def with_rank(avg, league, player_rows):
@@ -430,7 +449,14 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
             pass
 
     return {
-        "player":  {"slug": player, "name": player_row["full_name"], "team": player_row["team"], "age": current_age, "position": player_row["position_group"]},
+        "player":  {
+            "slug":     player,
+            "name":     player_row["full_name"],
+            "team":     player_row["team"],
+            "age":      current_age,
+            "position": player_row["position_group"],
+            "injury":   injury_map.get(player),
+        },
         "career":  with_rank(_avg_row(rows),                                     league_career, rows_career),
         "seasons": season_avgs,
         "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30]), league_l30, rows_l30),
@@ -1089,6 +1115,10 @@ def get_rankings(
         for p in results:
             p["gp"] = gp_map.get(p["slug"])
 
+        injury_map = _get_injury_map(conn)
+        for p in results:
+            p["injury"] = injury_map.get(p["slug"])
+
         results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
         for i, p in enumerate(results):
             p["rank"] = i + 1
@@ -1352,6 +1382,47 @@ def admin_upload_schedule(games: list = Body(...)):
 
 
 # -----------------------------------------------------------------------
+# GET /injuries
+# -----------------------------------------------------------------------
+
+@router.get("/injuries")
+def get_injuries():
+    """
+    Return all current injury designations, grouped by team.
+    Each entry: player_slug, name, team, designation, description, inj_date, return_date.
+    """
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT player_slug, name, team, designation, description, inj_date, return_date, updated_at
+        FROM injuries
+        ORDER BY team, designation, name
+    """).fetchall()
+    conn.close()
+
+    # Group by team
+    grouped = {}
+    for r in rows:
+        team = r["team"] or "Unknown"
+        if team not in grouped:
+            grouped[team] = []
+        grouped[team].append({
+            "slug":        r["player_slug"],
+            "name":        r["name"],
+            "designation": r["designation"],
+            "description": r["description"],
+            "inj_date":    r["inj_date"],
+            "return_date": r["return_date"],
+        })
+
+    updated_at = rows[0]["updated_at"] if rows else None
+    return {
+        "updated_at": updated_at,
+        "total":      len(rows),
+        "teams":      grouped,
+    }
+
+
+# -----------------------------------------------------------------------
 # Health check
 # -----------------------------------------------------------------------
 
@@ -1465,7 +1536,12 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     season = f"{season_end - 1}-{str(season_end)[2:]}"
 
     conn = get_conn()
-    z_params = _league_z_params(conn, season)
+    z_params   = _league_z_params(conn, season)
+    # Build injury lookup by Tank01 playerID (box score uses playerID not br_slug)
+    inj_rows = conn.execute(
+        "SELECT tank01_id, designation, description FROM injuries WHERE tank01_id IS NOT NULL AND tank01_id != ''"
+    ).fetchall()
+    inj_by_t01 = {r["tank01_id"]: {"designation": r["designation"], "description": r["description"]} for r in inj_rows}
     conn.close()
 
     def zs(stat, val):
@@ -1525,6 +1601,7 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "min":        int(mins),
                 "plus_minus": pm,
                 "pf":         pf,
+                "injury":     inj_by_t01.get(pid),
                 "pts":        int(pts),  "z_pts": zs("pts", pts),
                 "fg3m":       int(fg3m),  "z_fg3m": zs("fg3m", fg3m),
                 "reb":        int(reb),  "z_reb": zs("reb", reb),

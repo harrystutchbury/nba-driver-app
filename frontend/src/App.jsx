@@ -571,6 +571,80 @@ function ZCell({ value, z, isTov }) {
   )
 }
 
+// ── Injury badge ────────────────────────────────────────────────────────────
+
+const INJ_COLORS = {
+  'Out':          { bg: '#ff4444', text: '#fff' },
+  'Doubtful':     { bg: '#ff7700', text: '#fff' },
+  'Questionable': { bg: '#ccaa00', text: '#000' },
+  'Day-To-Day':   { bg: '#ccaa00', text: '#000' },
+}
+
+function InjuryBadge({ injury, compact }) {
+  if (!injury?.designation) return null
+  const colors = INJ_COLORS[injury.designation] ?? { bg: '#555', text: '#fff' }
+  const label  = compact
+    ? (injury.designation === 'Questionable' || injury.designation === 'Day-To-Day' ? 'GTD' : injury.designation === 'Doubtful' ? 'DBT' : 'OUT')
+    : injury.designation
+  return (
+    <span
+      className="inj-badge"
+      style={{ background: colors.bg, color: colors.text }}
+      title={injury.description || injury.designation}
+    >
+      {label}
+    </span>
+  )
+}
+
+// ── Injuries page ────────────────────────────────────────────────────────────
+
+function InjuriesPage() {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
+
+  useEffect(() => {
+    fetch('/api/injuries')
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  if (loading) return <div className="inj-loading">Loading injury report…</div>
+  if (error)   return <div className="bs-error">{error}</div>
+  if (!data || !Object.keys(data.teams).length) return <div className="bs-empty">No injuries on record.</div>
+
+  const DES_ORDER = { 'Out': 0, 'Doubtful': 1, 'Questionable': 2, 'Day-To-Day': 3 }
+
+  return (
+    <div className="inj-page">
+      <div className="inj-header">
+        <h2 className="inj-title">Injury Report</h2>
+        {data.updated_at && (
+          <span className="inj-updated">Updated {data.updated_at.slice(0, 16).replace('T', ' ')} UTC</span>
+        )}
+        <span className="inj-count">{data.total} players affected</span>
+      </div>
+
+      <div className="inj-grid">
+        {Object.entries(data.teams).sort(([a], [b]) => a.localeCompare(b)).map(([team, players]) => (
+          <div key={team} className="inj-team-card">
+            <div className="inj-team-name">{team}</div>
+            {[...players].sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9)).map((p, i) => (
+              <div key={i} className="inj-player-row">
+                <InjuryBadge injury={p} compact={false} />
+                <span className="inj-player-name">{p.name}</span>
+                {p.description && <span className="inj-desc">{p.description}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function BoxScoreTable({ players }) {
   if (!players.length) return null
   return (
@@ -598,7 +672,7 @@ function BoxScoreTable({ players }) {
       <tbody>
         {players.filter(p => p.min > 0).map((p, i) => (
           <tr key={i}>
-            <td className="bs-name">{p.name}</td>
+            <td className="bs-name">{p.name}{p.injury && <InjuryBadge injury={p.injury} compact />}</td>
             <td className="bs-ctr">{p.min}</td>
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
             <td className="bs-ctr bs-muted">{p.pf}</td>
@@ -1297,6 +1371,7 @@ export default function App() {
             <button className={`nav-btn${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>Player</button>
             <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
             <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
+            <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries</button>
           </nav>
         </div>
       </header>
@@ -1307,6 +1382,8 @@ export default function App() {
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'boxscores' && <BoxScorePage />}
+
+      {page === 'injuries' && <InjuriesPage />}
 
       {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}
@@ -1326,6 +1403,7 @@ export default function App() {
                   <li key={p.slug} onMouseDown={() => selectPlayer(p)}>
                     <span className="sugg-name">{p.name}</span>
                     <span className="sugg-team">{p.team}</span>
+                    {p.injury && <InjuryBadge injury={p.injury} compact />}
                   </li>
                 ))}
               </ul>
@@ -1349,6 +1427,9 @@ export default function App() {
               )}
               {projection?.archetype && (
                 <span className="archetype-badge">{projection.archetype}</span>
+              )}
+              {playerStats.player.injury && (
+                <InjuryBadge injury={playerStats.player.injury} compact={false} />
               )}
             </div>
 

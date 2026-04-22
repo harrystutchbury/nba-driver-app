@@ -1559,3 +1559,116 @@ td.bs-name {
 .bs-ztotal { font-weight: 700; font-size: 13px; font-family: 'DM Mono', monospace; }
 .bs-ztotal.z-pos { color: #4dffb4; }
 .bs-ztotal.z-neg { color: #ff6b6b; }
+
+/* ── Injury badges ─────────────────────────────────────────── */
+.inj-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+/* ── Injuries page ─────────────────────────────────────────── */
+.inj-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.inj-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.inj-title {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.inj-updated {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.inj-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: auto;
+}
+
+.inj-loading {
+  text-align: center;
+  padding: 64px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.inj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.inj-team-card {
+  background: #141828;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.inj-team-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.inj-player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #1e2235;
+  flex-wrap: wrap;
+}
+
+.inj-player-row:last-child {
+  border-bottom: none;
+}
+
+.inj-player-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  min-width: 120px;
+}
+
+.inj-desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  width: 100%;
+  padding-left: 50px;
+}
+
+@media (max-width: 600px) {
+  .inj-grid { grid-template-columns: 1fr; }
+}

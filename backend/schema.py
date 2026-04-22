@@ -147,6 +147,21 @@ def init_db():
         )
     """)
 
+    # injuries — current injury status for each player
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS injuries (
+            player_slug TEXT PRIMARY KEY,
+            tank01_id   TEXT,
+            name        TEXT,
+            team        TEXT,
+            designation TEXT,   -- 'Out', 'Doubtful', 'Questionable', 'Day-To-Day'
+            description TEXT,
+            inj_date    TEXT,   -- YYYY-MM-DD
+            return_date TEXT,   -- YYYY-MM-DD or NULL
+            updated_at  TEXT    -- ISO datetime
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")
