@@ -1512,7 +1512,9 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "blk":        int(blk),  "z_blk": zs("blk", blk),
                 "tov":        int(tov),  "z_tov": zs("tov", tov),
                 "fg":         f"{int(fgm)}/{int(fga)}",
+                "fg_pct":     f"{fgm/fga*100:.0f}%" if fga > 0 else "—",
                 "ft":         f"{int(ftm)}/{int(fta)}",
+                "ft_pct":     f"{ftm/fta*100:.0f}%" if fta > 0 else "—",
             })
 
         # Sort: home players first (by mins desc), then away (by mins desc)

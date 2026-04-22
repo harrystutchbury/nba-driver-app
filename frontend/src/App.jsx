@@ -566,7 +566,7 @@ function ZCell({ value, z, isTov }) {
   return (
     <td className={`bs-stat-cell ${cls}`}>
       <span className="bs-val">{value}</span>
-      <span className="bs-z">{z > 0 ? '+' : ''}{z.toFixed(1)}σ</span>
+      <span className="bs-z">{z > 0 ? '+' : ''}{z.toFixed(1)}</span>
     </td>
   )
 }
@@ -589,7 +589,9 @@ function BoxScoreTable({ players }) {
           <th className="bs-ctr bs-stat-head">BLK</th>
           <th className="bs-ctr bs-stat-head">TOV</th>
           <th className="bs-ctr">FG</th>
+          <th className="bs-ctr">FG%</th>
           <th className="bs-ctr">FT</th>
+          <th className="bs-ctr">FT%</th>
         </tr>
       </thead>
       <tbody>
@@ -607,7 +609,9 @@ function BoxScoreTable({ players }) {
             <ZCell value={p.blk} z={p.z_blk} isTov={false} />
             <ZCell value={p.tov} z={p.z_tov} isTov={true} />
             <td className="bs-ctr bs-muted">{p.fg}</td>
+            <td className="bs-ctr bs-muted">{p.fg_pct}</td>
             <td className="bs-ctr bs-muted">{p.ft}</td>
+            <td className="bs-ctr bs-muted">{p.ft_pct}</td>
           </tr>
         ))}
       </tbody>
