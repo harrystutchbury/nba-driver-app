@@ -1002,6 +1002,7 @@ function ProjectionsPage({ onSelectPlayer }) {
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState(null)
   const [viewMode, setViewMode]     = useState('pg')
+  const [showRanges, setShowRanges] = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
 
   useEffect(() => {
@@ -1129,6 +1130,7 @@ function ProjectionsPage({ onSelectPlayer }) {
           <div className="rank-pills">
             <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
+            <button className={`rank-pill${showRanges ? ' active' : ''}`} onClick={() => setShowRanges(r => !r)}>Ranges</button>
           </div>
         </div>
         <div className="rank-filter-group">
@@ -1212,10 +1214,14 @@ function ProjectionsPage({ onSelectPlayer }) {
                     const displayFmt = isTotalsKey(c.key)
                       ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                       : fmt(p[c.key], c.pct)
+                    const hasRange = showRanges && !c.noZ && !c.pct
+                    const rangeLow  = p[`${c.key}_low`]
+                    const rangeHigh = p[`${c.key}_high`]
                     return (
                       <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                         <div>{displayFmt}</div>
-                        {!c.noZ && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                        {!c.noZ && !hasRange && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                        {hasRange && rangeLow != null && <div className="rank-range">{rangeLow}–{rangeHigh}</div>}
                       </td>
                     )
                   })}

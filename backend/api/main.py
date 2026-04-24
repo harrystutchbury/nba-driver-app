@@ -1549,13 +1549,21 @@ def get_projections(
         # ── 3. Player baselines (current season, ≥10 GP, ≥15 min) ──────────
         player_rows = conn.execute("""
             SELECT g.player_slug, p.full_name, p.team, b.position_group,
+                   COUNT(*) AS gp_current,
                    AVG(g.min) AS min_pg,
                    AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
                    AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
                    AVG(g.fg3m) AS fg3m,
                    SUM(g.fgm) * 100.0 / NULLIF(SUM(g.fga), 0) AS fg_pct,
                    SUM(g.ftm) * 100.0 / NULLIF(SUM(g.fta), 0) AS ft_pct,
-                   AVG(g.fga) AS fga_pg, AVG(g.fta) AS fta_pg
+                   AVG(g.fga) AS fga_pg, AVG(g.fta) AS fta_pg,
+                   SQRT(MAX(0, AVG(g.pts*g.pts)  - AVG(g.pts)*AVG(g.pts)))  AS pts_sd,
+                   SQRT(MAX(0, AVG(g.reb*g.reb)  - AVG(g.reb)*AVG(g.reb)))  AS reb_sd,
+                   SQRT(MAX(0, AVG(g.ast*g.ast)  - AVG(g.ast)*AVG(g.ast)))  AS ast_sd,
+                   SQRT(MAX(0, AVG(g.stl*g.stl)  - AVG(g.stl)*AVG(g.stl)))  AS stl_sd,
+                   SQRT(MAX(0, AVG(g.blk*g.blk)  - AVG(g.blk)*AVG(g.blk)))  AS blk_sd,
+                   SQRT(MAX(0, AVG(g.tov*g.tov)  - AVG(g.tov)*AVG(g.tov)))  AS tov_sd,
+                   SQRT(MAX(0, AVG(g.fg3m*g.fg3m) - AVG(g.fg3m)*AVG(g.fg3m))) AS fg3m_sd
             FROM game_logs g
             JOIN players p ON p.slug = g.player_slug
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
@@ -1563,6 +1571,25 @@ def get_projections(
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 10
         """, (season,)).fetchall()
+
+        # ── 3b. Last season SDs (for early-season blending) ─────────────────
+        prev_season_year = season_year - 1
+        prev_season = f"{prev_season_year - 1}-{str(prev_season_year)[2:]}"
+        prev_sd_rows = conn.execute("""
+            SELECT player_slug,
+                   SQRT(MAX(0, AVG(pts*pts)  - AVG(pts)*AVG(pts)))  AS pts_sd,
+                   SQRT(MAX(0, AVG(reb*reb)  - AVG(reb)*AVG(reb)))  AS reb_sd,
+                   SQRT(MAX(0, AVG(ast*ast)  - AVG(ast)*AVG(ast)))  AS ast_sd,
+                   SQRT(MAX(0, AVG(stl*stl)  - AVG(stl)*AVG(stl)))  AS stl_sd,
+                   SQRT(MAX(0, AVG(blk*blk)  - AVG(blk)*AVG(blk)))  AS blk_sd,
+                   SQRT(MAX(0, AVG(tov*tov)  - AVG(tov)*AVG(tov)))  AS tov_sd,
+                   SQRT(MAX(0, AVG(fg3m*fg3m) - AVG(fg3m)*AVG(fg3m))) AS fg3m_sd
+            FROM game_logs
+            WHERE season = ? AND min >= 15
+            GROUP BY player_slug
+            HAVING COUNT(*) >= 10
+        """, (prev_season,)).fetchall()
+        prev_sd_map = {r["player_slug"]: dict(r) for r in prev_sd_rows}
 
         # ── 4. League data + injury map ─────────────────────────────────────
         league, _ = _league_data(conn, season=season, min_games=10)
@@ -1607,6 +1634,18 @@ def get_projections(
             proj["fta_pg"] = r["fta_pg"] or 0.0
             proj["min_pg"] = round(r["min_pg"], 1) if r["min_pg"] is not None else None
 
+            # Per-player opponent-adjusted SD → outcome ranges (blended with last season)
+            gp_current = r["gp_current"]
+            w_current  = min(gp_current, 50) / 50.0
+            prev_sd    = prev_sd_map.get(slug, {})
+            for stat in SCHED_STATS:
+                sd_current  = r[f"{stat}_sd"] or 0.0
+                sd_prev     = prev_sd.get(f"{stat}_sd") or sd_current
+                blended_sd  = w_current * sd_current + (1 - w_current) * sd_prev
+                adj_sd      = blended_sd * avg_factor[stat]
+                proj[f"{stat}_low"]  = round(max(0.0, proj[stat] - adj_sd), 1)
+                proj[f"{stat}_high"] = round(proj[stat] + adj_sd, 1)
+
             gp      = len(opponents)
             z_total = _composite_z(proj, league)
             proj_z  = _with_zscores(proj, league)
@@ -1621,6 +1660,8 @@ def get_projections(
                 "z_total":      round(z_total, 2) if z_total is not None else None,
                 "period_value": round(z_total * gp, 2) if z_total is not None else None,
                 **{k: v for k, v in proj_z.items()},
+                **{f"{stat}_low":  proj[f"{stat}_low"]  for stat in SCHED_STATS},
+                **{f"{stat}_high": proj[f"{stat}_high"] for stat in SCHED_STATS},
             })
 
         results.sort(key=lambda x: (x["period_value"] or -999), reverse=True)
