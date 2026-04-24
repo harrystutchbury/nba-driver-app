@@ -1666,6 +1666,16 @@ def get_news():
     now = int(_time.time())
     conn = get_conn()
 
+    # Ensure table exists (may not on first deploy)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS news_cache (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            payload    TEXT,
+            fetched_at INTEGER
+        )
+    """)
+    conn.commit()
+
     # Check DB cache first
     row = conn.execute("SELECT payload, fetched_at FROM news_cache WHERE id = 1").fetchone()
     if row and (now - row["fetched_at"]) < _NEWS_TTL:
