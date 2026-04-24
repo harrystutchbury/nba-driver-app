@@ -2511,20 +2511,23 @@ export default function App() {
               const minScale = effMin / baseMpg
               const usgScale = effUsg / baseUsg
 
-              // Efficiency decay: each +1% USG above baseline costs ~0.7% scoring efficiency
-              // (based on empirical finding that ~0.5-1% TS% drops per +1% USG)
+              // Efficiency decay: empirically ~0.3% FG% per +1% USG (from within-player YoY analysis)
               // Only applies when usage is increasing; no boost for lower usage.
               const deltaUsg = effUsg - baseUsg
-              const effDecay = deltaUsg > 0 ? Math.max(0.80, 1 - deltaUsg * 0.007) : 1.0
+              const effDecay = deltaUsg > 0 ? Math.max(0.85, 1 - deltaUsg * 0.003) : 1.0
+
+              // Defensive stats scale sub-linearly with minutes (α=0.75 from YoY regression)
+              // BLK shows strongest degradation (r=-0.136), REB/STL also confirmed negative
+              const defScale = Math.pow(minScale, 0.75)
 
               const proj = {
                 pts:  +(base.pts  * minScale * usgScale * effDecay).toFixed(1),
-                ast:  +(base.ast  * minScale * usgScale).toFixed(1),           // linear with usage
-                tov:  +(base.tov  * minScale * usgScale * 1.08).toFixed(1),    // slightly super-linear
-                fg3m: +(base.fg3m * minScale * usgScale * effDecay).toFixed(1),// shooting volume decays
-                reb:  +(base.reb  * minScale).toFixed(1),
-                stl:  +(base.stl  * minScale).toFixed(1),
-                blk:  +(base.blk  * minScale).toFixed(1),
+                ast:  +(base.ast  * minScale * usgScale).toFixed(1),
+                tov:  +(base.tov  * minScale * usgScale * 1.08).toFixed(1),
+                fg3m: +(base.fg3m * minScale * usgScale * effDecay).toFixed(1),
+                reb:  +(base.reb  * defScale).toFixed(1),
+                stl:  +(base.stl  * defScale).toFixed(1),
+                blk:  +(base.blk  * defScale).toFixed(1),
               }
 
               const changed = effMin !== baseMpg || effUsg !== baseUsg
@@ -2576,9 +2579,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    {changed && deltaUsg > 2 && (
+                    {changed && deltaUsg > 5 && (
                       <p className="usage-decay-note">
                         Efficiency decay: {((1 - effDecay) * 100).toFixed(1)}% on PTS &amp; 3PM
+                        · REB/STL/BLK scale at min^0.75
                         (USG +{deltaUsg.toFixed(1)}%)
                       </p>
                     )}
