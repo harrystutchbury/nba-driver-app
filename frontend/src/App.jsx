@@ -2509,15 +2509,13 @@ export default function App() {
               const effUsg  = usageUsg    ?? baseUsg
 
               const minScale = effMin / baseMpg
-              const usgScale = effUsg / baseUsg
-
               const deltaUsg = effUsg - baseUsg
+              const usgScale = effUsg / baseUsg
 
               // PTS/3PM: usage volume scale + small efficiency decay on FG%
               // Empirical: -0.045% FG% per +1% USG (Part 1 YoY analysis, n=1430)
               // Decay only when usage increases; no boost for lower usage
               const fgDecay  = deltaUsg > 0 ? Math.max(0.90, 1 - deltaUsg * 0.00045) : 1.0
-              const usgScale = effUsg / baseUsg
 
               // Defensive stats: sub-linear with minutes (α=0.75, Parts 2 confirmed)
               // Usage → defense: no penalty — YoY data shows no negative relationship
