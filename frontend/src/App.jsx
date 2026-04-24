@@ -451,13 +451,58 @@ function RankingsPage({ onSelectPlayer }) {
   }
 
   const PCT_KEYS = new Set(['fg_pct', 'ft_pct'])
+  const TOTALS_COUNTING = RANK_COLS.filter(c => !PCT_KEYS.has(c.key)).map(c => c.key)
   const isTotalsKey = (key) => viewMode === 'totals' && !PCT_KEYS.has(key) && !key.startsWith('z_') && key !== 'z_total' && key !== 'gp' && key !== 'min_pg'
   const totalsVal = (p, key) => {
     const v = p[key]
     if (v == null) return null
     return Math.round(v * (p.gp ?? 0))
   }
-  const getSortVal = (p, key) => isTotalsKey(key) ? (totalsVal(p, key) ?? -Infinity) : (p[key] ?? -Infinity)
+
+  // Compute totals Z-scores from the current player set
+  const totalsZStats = (() => {
+    if (!players || viewMode !== 'totals') return {}
+    const stats = {}
+    for (const key of TOTALS_COUNTING) {
+      const vals = players.map(p => totalsVal(p, key)).filter(v => v != null)
+      if (!vals.length) continue
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+      const std  = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1
+      stats[key] = { mean, std }
+    }
+    return stats
+  })()
+
+  const getTotalsZ = (p, key) => {
+    const s = totalsZStats[key]
+    if (!s) return null
+    const v = totalsVal(p, key)
+    if (v == null) return null
+    return +((v - s.mean) / s.std).toFixed(2)
+  }
+
+  const getTotalsZTotal = (p) => {
+    let sum = 0
+    for (const c of RANK_COLS) {
+      if (PCT_KEYS.has(c.key)) {
+        // use existing per-game Z for percentages
+        sum += p[`z_${c.key}`] ?? 0
+      } else {
+        const z = getTotalsZ(p, c.key)
+        if (z == null) continue
+        sum += c.lowerBetter ? -z : z
+      }
+    }
+    return +sum.toFixed(2)
+  }
+
+  const getSortVal = (p, key) => {
+    if (viewMode === 'totals') {
+      if (key === 'z_total') return getTotalsZTotal(p)
+      if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
+    }
+    return p[key] ?? -Infinity
+  }
 
   const sorted = players ? [...players].sort((a, b) => {
     const av = getSortVal(a, sortKey)
@@ -524,11 +569,9 @@ function RankingsPage({ onSelectPlayer }) {
                 {RANK_COLS.map(c => (
                   <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
                     {c.label} <SortIcon col={c.key} />
-                    {viewMode === 'pg' && (
-                      <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
-                        z <SortIcon col={`z_${c.key}`} />
-                      </div>
-                    )}
+                    <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
+                      z <SortIcon col={`z_${c.key}`} />
+                    </div>
                   </th>
                 ))}
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
@@ -553,22 +596,21 @@ function RankingsPage({ onSelectPlayer }) {
                     <td className="num mono">{p.gp ?? '—'}</td>
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {
-                      const z = p[`z_${c.key}`]
-                      const zAdj = (z != null && c.lowerBetter) ? -z : z
+                      const z     = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? getTotalsZ(p, c.key) : p[`z_${c.key}`]
+                      const zAdj  = (z != null && c.lowerBetter) ? -z : z
                       const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
-                      const displayVal = isTotalsKey(c.key) ? totalsVal(p, c.key) : p[c.key]
                       const displayFmt = isTotalsKey(c.key)
-                        ? (displayVal == null ? '—' : displayVal)
+                        ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                         : fmt(p[c.key], c.pct)
                       return (
                         <td key={c.key} className="num mono rank-stat-cell">
                           <div>{displayFmt}</div>
-                          {viewMode === 'pg' && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                          <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>
                         </td>
                       )
                     })}
                     <td className="num mono z-total-cell">
-                      {fmtZ(p.z_total)}
+                      {fmtZ(viewMode === 'totals' ? getTotalsZTotal(p) : p.z_total)}
                     </td>
                   </tr>
                 )
