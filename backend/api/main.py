@@ -182,8 +182,17 @@ def get_players(
 Z_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct', 'ft_pct']
 
 
-def _avg_row(rows):
-    """Aggregate a list of game_log rows into per-game averages."""
+def _avg_row(rows, team_game_map=None):
+    """
+    Aggregate a list of game_log rows into per-game averages.
+
+    team_game_map: optional dict keyed by game_date ->
+        {"team_fga": ..., "team_fta": ..., "team_tov": ...}
+    When provided, USG% uses the proper BR formula:
+        100 × [(FGA + 0.44×FTA + TOV) × (TeamMP/5)] / [MP × (TeamFGA + 0.44×TeamFTA + TeamTOV)]
+    where TeamMP = 240 (5 players × 48 min).
+    Falls back to simplified formula if team data is missing for a game.
+    """
     if not rows:
         return None
     gp        = len(rows)
@@ -201,23 +210,44 @@ def _avg_row(rows):
     total_fta = sum(r["fta"]  for r in rows)
     fg_pct    = sum(r["fgm"]  for r in rows) / total_fga if total_fga else None
     ft_pct    = sum(r["ftm"]  for r in rows) / total_fta if total_fta else None
-    # USG% (simplified): (FGA + 0.44×FTA + TOV) × 48 / MIN
-    # Assumes ~100 team possessions/48 min. Matches standard simplified formula.
-    usg_pct   = round((fga_pg + 0.44 * fta_pg + tov) * 48 / min_pg, 1) if min_pg > 0 else None
+
+    # USG% — proper BR formula when team data available, simplified fallback otherwise
+    usg_pct = None
+    if min_pg > 0:
+        if team_game_map:
+            usg_nums, usg_dens = [], []
+            for r in rows:
+                tg = team_game_map.get(r["game_date"])
+                player_poss = r["fga"] + 0.44 * r["fta"] + r["tov"]
+                if tg and tg["team_fga"] is not None:
+                    team_poss = tg["team_fga"] + 0.44 * tg["team_fta"] + tg["team_tov"]
+                    if team_poss > 0 and r["min"] > 0:
+                        usg_nums.append(player_poss * (240 / 5))
+                        usg_dens.append(r["min"] * team_poss)
+                else:
+                    # fallback: assume 100 team possessions
+                    if r["min"] > 0:
+                        usg_nums.append(player_poss * 48)
+                        usg_dens.append(r["min"] * 100)
+            if usg_dens:
+                usg_pct = round(100 * sum(usg_nums) / sum(usg_dens), 1)
+        else:
+            usg_pct = round((fga_pg + 0.44 * fta_pg + tov) * 48 / min_pg, 1)
+
     return {
-        "gp":     gp,
-        "min_pg": round(min_pg, 1),
-        "pts":    round(pts,  1),
-        "reb":    round(reb,  1),
-        "ast":    round(ast,  1),
-        "stl":    round(stl,  1),
-        "blk":    round(blk,  1),
-        "tov":    round(tov,  1),
-        "fg3m":   round(fg3m, 1),
-        "fg_pct": round(fg_pct * 100, 1) if fg_pct is not None else None,
-        "ft_pct": round(ft_pct * 100, 1) if ft_pct is not None else None,
-        "fga_pg": round(fga_pg, 1),
-        "fta_pg": round(fta_pg, 1),
+        "gp":      gp,
+        "min_pg":  round(min_pg, 1),
+        "pts":     round(pts,  1),
+        "reb":     round(reb,  1),
+        "ast":     round(ast,  1),
+        "stl":     round(stl,  1),
+        "blk":     round(blk,  1),
+        "tov":     round(tov,  1),
+        "fg3m":    round(fg3m, 1),
+        "fg_pct":  round(fg_pct * 100, 1) if fg_pct is not None else None,
+        "ft_pct":  round(ft_pct * 100, 1) if ft_pct is not None else None,
+        "fga_pg":  round(fga_pg, 1),
+        "fta_pg":  round(fta_pg, 1),
         "usg_pct": usg_pct,
     }
 
@@ -410,12 +440,30 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     }
 
     rows = conn.execute("""
-        SELECT season, min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, game_date
+        SELECT season, min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, game_date, team
         FROM game_logs
         WHERE player_slug = ? AND min > 0
         ORDER BY game_date DESC
     """, (player,)).fetchall()
     rows = [dict(r) for r in rows]
+
+    # Fetch team game totals for USG% calculation (BR formula)
+    dates = list({r["game_date"] for r in rows})
+    team_game_map = {}
+    if dates:
+        placeholders = ",".join("?" * len(dates))
+        tg_rows = conn.execute(f"""
+            SELECT gl.game_date, tg.team_fga, tg.team_fta, tg.team_tov
+            FROM game_logs gl
+            JOIN team_games tg ON tg.team = gl.team AND tg.game_date = gl.game_date
+            WHERE gl.player_slug = ? AND gl.game_date IN ({placeholders})
+        """, [player] + dates).fetchall()
+        for tg in tg_rows:
+            team_game_map[tg["game_date"]] = {
+                "team_fga": tg["team_fga"],
+                "team_fta": tg["team_fta"],
+                "team_tov": tg["team_tov"],
+            }
 
     from datetime import date, timedelta
     today     = date.today()
@@ -449,7 +497,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
         return {**_with_zscores(avg, league), "rank": rank, "rank_n": n}
 
     season_avgs = [
-        {"period": s, "team": team_by_season.get(s, ""), **with_rank(_avg_row(g), league_by_season.get(s), rows_by_season.get(s, []))}
+        {"period": s, "team": team_by_season.get(s, ""), **with_rank(_avg_row(g, team_game_map), league_by_season.get(s), rows_by_season.get(s, []))}
         for s, g in sorted(seasons.items(), reverse=True)
     ]
 
@@ -472,10 +520,10 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
             "position": player_row["position_group"],
             "injury":   injury_map.get(player),
         },
-        "career":  with_rank(_avg_row(rows),                                     league_career, rows_career),
+        "career":  with_rank(_avg_row(rows,                                      team_game_map), league_career, rows_career),
         "seasons": season_avgs,
-        "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30]), league_l30, rows_l30),
-        "l14":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_14]), league_l14, rows_l14),
+        "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30], team_game_map), league_l30, rows_l30),
+        "l14":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_14], team_game_map), league_l14, rows_l14),
     }
 
 
