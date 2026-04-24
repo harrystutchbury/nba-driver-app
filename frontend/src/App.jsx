@@ -713,7 +713,15 @@ function NewsSection() {
 
   useEffect(() => {
     fetch('/api/news')
-      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(async r => {
+        const text = await r.text()
+        if (!r.ok) {
+          try { return Promise.reject(JSON.parse(text).detail || text.slice(0, 120)) }
+          catch { return Promise.reject(`HTTP ${r.status}`) }
+        }
+        try { return JSON.parse(text) }
+        catch { return Promise.reject(`HTTP ${r.status}: unexpected response`) }
+      })
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [])
