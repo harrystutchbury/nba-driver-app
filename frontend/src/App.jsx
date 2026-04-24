@@ -434,6 +434,7 @@ function RankingsPage({ onSelectPlayer }) {
   const [sortKey,  setSortKey]  = useState('z_total')
   const [sortAsc,  setSortAsc]  = useState(false)
   const [viewMode, setViewMode] = useState('pg')  // 'pg' | 'totals'
+  const [puntedCats, setPuntedCats] = useState(new Set())
 
   useEffect(() => {
     setLoading(true)
@@ -484,8 +485,8 @@ function RankingsPage({ onSelectPlayer }) {
   const getTotalsZTotal = (p) => {
     let sum = 0
     for (const c of RANK_COLS) {
+      if (puntedCats.has(c.key)) continue
       if (PCT_KEYS.has(c.key)) {
-        // use existing per-game Z for percentages
         sum += p[`z_${c.key}`] ?? 0
       } else {
         const z = getTotalsZ(p, c.key)
@@ -496,11 +497,21 @@ function RankingsPage({ onSelectPlayer }) {
     return +sum.toFixed(2)
   }
 
-  const getSortVal = (p, key) => {
-    if (viewMode === 'totals') {
-      if (key === 'z_total') return getTotalsZTotal(p)
-      if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
+  const getEffectiveZTotal = (p) => {
+    if (viewMode === 'totals') return getTotalsZTotal(p)
+    let sum = 0
+    for (const c of RANK_COLS) {
+      if (puntedCats.has(c.key)) continue
+      const z = p[`z_${c.key}`]
+      if (z == null) continue
+      sum += c.lowerBetter ? -z : z
     }
+    return +sum.toFixed(2)
+  }
+
+  const getSortVal = (p, key) => {
+    if (key === 'z_total') return getEffectiveZTotal(p)
+    if (viewMode === 'totals' && isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
     return p[key] ?? -Infinity
   }
 
@@ -546,6 +557,25 @@ function RankingsPage({ onSelectPlayer }) {
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
           </div>
         </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Punt</span>
+          <div className="rank-pills">
+            {RANK_COLS.map(c => {
+              const punted = puntedCats.has(c.key)
+              return (
+                <button
+                  key={c.key}
+                  className={`rank-pill rank-pill-punt${punted ? ' punted' : ''}`}
+                  onClick={() => setPuntedCats(prev => {
+                    const next = new Set(prev)
+                    punted ? next.delete(c.key) : next.add(c.key)
+                    return next
+                  })}
+                >{c.label}</button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {loading && <p className="rankings-loading">Loading…</p>}
@@ -567,7 +597,8 @@ function RankingsPage({ onSelectPlayer }) {
                   MIN <SortIcon col="min_pg" />
                 </th>
                 {RANK_COLS.map(c => (
-                  <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
+                  <th key={c.key} className="num" onClick={() => handleSort(c.key)}
+                      style={{ cursor: 'pointer', opacity: puntedCats.has(c.key) ? 0.3 : 1 }}>
                     {c.label} <SortIcon col={c.key} />
                     <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
                       z <SortIcon col={`z_${c.key}`} />
@@ -596,21 +627,22 @@ function RankingsPage({ onSelectPlayer }) {
                     <td className="num mono">{p.gp ?? '—'}</td>
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {
+                      const punted = puntedCats.has(c.key)
                       const z     = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? getTotalsZ(p, c.key) : p[`z_${c.key}`]
                       const zAdj  = (z != null && c.lowerBetter) ? -z : z
-                      const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                      const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
                       const displayFmt = isTotalsKey(c.key)
                         ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                         : fmt(p[c.key], c.pct)
                       return (
-                        <td key={c.key} className="num mono rank-stat-cell">
+                        <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                           <div>{displayFmt}</div>
                           <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>
                         </td>
                       )
                     })}
                     <td className="num mono z-total-cell">
-                      {fmtZ(viewMode === 'totals' ? getTotalsZTotal(p) : p.z_total)}
+                      {fmtZ(getEffectiveZTotal(p))}
                     </td>
                   </tr>
                 )

@@ -1159,6 +1159,9 @@
 }
 .rank-pill:hover { color: var(--text); border-color: #555; }
 .rank-pill.active { color: #4dffb4; border-color: #4dffb4; }
+.rank-pill-punt { font-size: 11px; padding: 3px 10px; }
+.rank-pill-punt.punted { color: #444; border-color: #333; text-decoration: line-through; }
+.rank-pill-punt.punted:hover { color: #666; border-color: #444; }
 
 .rankings-loading,
 .rankings-empty {
