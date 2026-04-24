@@ -10,11 +10,12 @@ import {
   PointElement,
   Tooltip,
   Legend,
+  Filler,
 } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 import './App.css'
 
-ChartJS.register(CategoryScale, LinearScale, RadialLinearScale, BarElement, LineElement, PointElement, Tooltip, Legend, ChartDataLabels)
+ChartJS.register(CategoryScale, LinearScale, RadialLinearScale, BarElement, LineElement, PointElement, Tooltip, Legend, Filler, ChartDataLabels)
 
 const STAT_OPTIONS = [
   { value: 'pts', label: 'Points' },
@@ -1329,6 +1330,10 @@ export default function App() {
         mode: 'index',
         intersect: false,
         filter: (item) => item.parsed.y !== null,
+        itemSort: (a, b) => {
+          const order = ['Optimistic', 'Baseline', 'Pessimistic', 'Historical']
+          return order.indexOf(a.dataset.label) - order.indexOf(b.dataset.label)
+        },
         callbacks: {
           label: (ctx) => {
             const val = ctx.parsed.y
