@@ -1653,27 +1653,39 @@ def health():
 # -----------------------------------------------------------------------
 
 import time as _time
+import json as _json_mod
 
-_news_cache: dict = {}   # {"payload": [...], "ts": float}
-_NEWS_TTL = 600          # 10 minutes
+_NEWS_TTL = 600          # 10 minutes — only re-fetch if cache is this old
 
 @router.get("/news")
 def get_news():
     """
-    Fetch top NBA news from Tank01. Cached for 10 minutes.
-    Returns list of articles: title, description, player, team, link, pub_date.
+    Fetch top NBA news from Tank01. Cached in SQLite for 10 minutes so it
+    survives server restarts. Returns stale cache on Tank01 errors.
     """
-    if not os.environ.get("RAPIDAPI_KEY"):
-        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    now = int(_time.time())
+    conn = get_conn()
 
-    now = _time.time()
-    cached = _news_cache.get("data")
-    if cached and (now - cached["ts"]) < _NEWS_TTL:
-        return cached["payload"]
+    # Check DB cache first
+    row = conn.execute("SELECT payload, fetched_at FROM news_cache WHERE id = 1").fetchone()
+    if row and (now - row["fetched_at"]) < _NEWS_TTL:
+        conn.close()
+        return _json_mod.loads(row["payload"])
+
+    stale_payload = _json_mod.loads(row["payload"]) if row else None
+
+    if not os.environ.get("RAPIDAPI_KEY"):
+        conn.close()
+        if stale_payload:
+            return stale_payload
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
 
     try:
         data = _tank01_get("getNBANews", {"recentNews": "true", "maxItems": "50"})
     except Exception as e:
+        conn.close()
+        if stale_payload:
+            return stale_payload   # serve stale rather than error
         raise HTTPException(502, f"Tank01 news fetch failed: {e}")
 
     body = data.get("body", [])
@@ -1686,14 +1698,21 @@ def get_news():
         if not title:
             continue
         articles.append({
-            "title":      title,
-            "link":       item.get("link") or "",
-            "image":      item.get("image") or "",
-            "playerIDs":  item.get("playerIDs") or [],
+            "title":     title,
+            "link":      item.get("link") or "",
+            "image":     item.get("image") or "",
+            "playerIDs": item.get("playerIDs") or [],
         })
 
-    payload = {"articles": articles, "fetched_at": int(now)}
-    _news_cache["data"] = {"payload": payload, "ts": now}
+    payload = {"articles": articles, "fetched_at": now}
+    blob = _json_mod.dumps(payload)
+    conn.execute(
+        "INSERT INTO news_cache (id, payload, fetched_at) VALUES (1, ?, ?)"
+        " ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, fetched_at=excluded.fetched_at",
+        (blob, now)
+    )
+    conn.commit()
+    conn.close()
     return payload
 
 

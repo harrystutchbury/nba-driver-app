@@ -162,6 +162,14 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS news_cache (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            payload    TEXT,   -- JSON blob
+            fetched_at INTEGER -- Unix timestamp
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")
