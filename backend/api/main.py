@@ -1649,6 +1649,58 @@ def health():
 
 
 # -----------------------------------------------------------------------
+# News
+# -----------------------------------------------------------------------
+
+import time as _time
+
+_news_cache: dict = {}   # {"payload": [...], "ts": float}
+_NEWS_TTL = 600          # 10 minutes
+
+@router.get("/news")
+def get_news():
+    """
+    Fetch top NBA news from Tank01. Cached for 10 minutes.
+    Returns list of articles: title, description, player, team, link, pub_date.
+    """
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+
+    now = _time.time()
+    cached = _news_cache.get("data")
+    if cached and (now - cached["ts"]) < _NEWS_TTL:
+        return cached["payload"]
+
+    try:
+        data = _tank01_get("getNBANews", {"topNews": "true", "recentNews": "true"})
+    except Exception as e:
+        raise HTTPException(502, f"Tank01 news fetch failed: {e}")
+
+    body = data.get("body", [])
+    if isinstance(body, dict):
+        body = list(body.values())
+
+    articles = []
+    for item in body:
+        articles.append({
+            "title":       item.get("title") or item.get("headline") or "",
+            "description": item.get("description") or item.get("story") or "",
+            "player":      item.get("player") or "",
+            "playerID":    item.get("playerID") or "",
+            "team":        item.get("team") or "",
+            "link":        item.get("link") or item.get("url") or "",
+            "pub_date":    item.get("pubDate") or item.get("date") or "",
+        })
+
+    # Filter out empty titles
+    articles = [a for a in articles if a["title"]]
+
+    payload = {"articles": articles, "fetched_at": int(now)}
+    _news_cache["data"] = {"payload": payload, "ts": now}
+    return payload
+
+
+# -----------------------------------------------------------------------
 # Box Score
 # -----------------------------------------------------------------------
 

@@ -1643,9 +1643,10 @@ td.bs-name {
 
 .inj-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   margin-bottom: 28px;
+  flex-wrap: wrap;
 }
 
 .inj-title {
@@ -1730,4 +1731,99 @@ td.bs-name {
 
 @media (max-width: 600px) {
   .inj-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Injury/News tabs ── */
+.inj-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.inj-tab {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 14px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.inj-tab.active,
+.inj-tab:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+/* ── News feed ── */
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.news-item {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 4px;
+}
+
+.news-item:last-child {
+  border-bottom: none;
+}
+
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.news-player {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: var(--mono);
+}
+
+.news-team {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.news-date {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-left: auto;
+}
+
+.news-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.news-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.news-title a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.news-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  font-family: var(--mono);
 }

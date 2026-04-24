@@ -706,7 +706,54 @@ function InjuryBadge({ injury, compact }) {
 
 // ── Injuries page ────────────────────────────────────────────────────────────
 
+function NewsSection() {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
+
+  useEffect(() => {
+    fetch('/api/news')
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  if (loading) return <div className="inj-loading">Loading news…</div>
+  if (error)   return <div className="bs-error">News unavailable: {error}</div>
+  if (!data?.articles?.length) return <div className="bs-empty">No news articles found.</div>
+
+  function formatPubDate(raw) {
+    if (!raw) return ''
+    // Tank01 pubDate is often a timestamp string like "1714012800" or ISO
+    const ts = Number(raw)
+    const d = isNaN(ts) ? new Date(raw) : new Date(ts * 1000)
+    if (isNaN(d.getTime())) return raw
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  return (
+    <div className="news-list">
+      {data.articles.map((a, i) => (
+        <div key={i} className="news-item">
+          <div className="news-meta">
+            {a.player && <span className="news-player">{a.player}</span>}
+            {a.team   && <span className="news-team">{a.team}</span>}
+            {a.pub_date && <span className="news-date">{formatPubDate(a.pub_date)}</span>}
+          </div>
+          <div className="news-title">
+            {a.link
+              ? <a href={a.link} target="_blank" rel="noopener noreferrer">{a.title}</a>
+              : a.title}
+          </div>
+          {a.description && <div className="news-desc">{a.description}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function InjuriesPage({ onSelectPlayer }) {
+  const [tab, setTab]         = useState('injuries')
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
@@ -718,38 +765,48 @@ function InjuriesPage({ onSelectPlayer }) {
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [])
 
-  if (loading) return <div className="inj-loading">Loading injury report…</div>
-  if (error)   return <div className="bs-error">{error}</div>
-  if (!data || !Object.keys(data.teams).length) return <div className="bs-empty">No injuries on record.</div>
-
   const DES_ORDER = { 'Out': 0, 'Doubtful': 1, 'Questionable': 2, 'Day-To-Day': 3 }
 
   return (
     <div className="inj-page">
       <div className="inj-header">
-        <h2 className="inj-title">Injury Report</h2>
-        {data.updated_at && (
+        <h2 className="inj-title">{tab === 'injuries' ? 'Injury Report' : 'Player News'}</h2>
+        <div className="inj-tabs">
+          <button className={`inj-tab${tab === 'injuries' ? ' active' : ''}`} onClick={() => setTab('injuries')}>Injuries</button>
+          <button className={`inj-tab${tab === 'news' ? ' active' : ''}`} onClick={() => setTab('news')}>News</button>
+        </div>
+        {tab === 'injuries' && data?.updated_at && (
           <span className="inj-updated">Updated {data.updated_at.slice(0, 16).replace('T', ' ')} UTC</span>
         )}
       </div>
 
-      <div className="inj-grid">
-        {Object.entries(data.teams).sort(([a], [b]) => a.localeCompare(b)).map(([team, players]) => (
-          <div key={team} className="inj-team-card">
-            <div className="inj-team-name">{team}</div>
-            {[...players].sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9)).map((p, i) => (
-              <div key={i} className="inj-player-row">
-                <InjuryBadge injury={p} compact={false} />
-                <span
-                  className={`inj-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
-                  onClick={() => p.slug && onSelectPlayer && onSelectPlayer(p)}
-                >{p.name}</span>
-                {p.description && <span className="inj-desc">{p.description}</span>}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      {tab === 'news' ? (
+        <NewsSection />
+      ) : loading ? (
+        <div className="inj-loading">Loading injury report…</div>
+      ) : error ? (
+        <div className="bs-error">{error}</div>
+      ) : !data || !Object.keys(data.teams).length ? (
+        <div className="bs-empty">No injuries on record.</div>
+      ) : (
+        <div className="inj-grid">
+          {Object.entries(data.teams).sort(([a], [b]) => a.localeCompare(b)).map(([team, players]) => (
+            <div key={team} className="inj-team-card">
+              <div className="inj-team-name">{team}</div>
+              {[...players].sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9)).map((p, i) => (
+                <div key={i} className="inj-player-row">
+                  <InjuryBadge injury={p} compact={false} />
+                  <span
+                    className={`inj-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                    onClick={() => p.slug && onSelectPlayer && onSelectPlayer(p)}
+                  >{p.name}</span>
+                  {p.description && <span className="inj-desc">{p.description}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
