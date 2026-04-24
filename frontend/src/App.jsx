@@ -1017,6 +1017,7 @@ export default function App() {
   const [projStat, setProjStat]       = useState('pts')
   const [projYear, setProjYear]       = useState(1)
   const [projExpanded, setProjExpanded] = useState(false)
+  const [projScenario, setProjScenario] = useState('baseline')
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
@@ -1104,6 +1105,7 @@ export default function App() {
     setSchedProj(null)
     setMaLookback(20)
     setProjYear(1)
+    setProjScenario('baseline')
     fetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setPlayerStats(d) })
@@ -1198,18 +1200,21 @@ export default function App() {
   // Active projection year (from multi-year array)
   const activeProj = projection?.projections?.[projYear - 1] ?? null
 
-  // Projection row — recomputed whenever slider or year changes
+  // Projection row — recomputed whenever slider, year, or scenario changes
   const projScale = projMpg / 30.0
-  const projRowData = activeProj ? {
-    pts:    +(activeProj.projection_p30.pts    * projScale).toFixed(1),
-    reb:    +(activeProj.projection_p30.reb    * projScale).toFixed(1),
-    ast:    +(activeProj.projection_p30.ast    * projScale).toFixed(1),
-    stl:    +(activeProj.projection_p30.stl    * projScale).toFixed(1),
-    blk:    +(activeProj.projection_p30.blk    * projScale).toFixed(1),
-    tov:    +(activeProj.projection_p30.tov    * projScale).toFixed(1),
-    fg3m:   +(activeProj.projection_p30.fg3m   * projScale).toFixed(1),
-    fg_pct: +activeProj.projection_p30.fg_pct.toFixed(1),
-    ft_pct: activeProj.projection_p30.ft_pct ?? null,
+  const activeProjSrc = activeProj
+    ? (projScenario === 'baseline' ? activeProj : activeProj[projScenario] ?? activeProj)
+    : null
+  const projRowData = activeProjSrc ? {
+    pts:    +(activeProjSrc.projection_p30.pts    * projScale).toFixed(1),
+    reb:    +(activeProjSrc.projection_p30.reb    * projScale).toFixed(1),
+    ast:    +(activeProjSrc.projection_p30.ast    * projScale).toFixed(1),
+    stl:    +(activeProjSrc.projection_p30.stl    * projScale).toFixed(1),
+    blk:    +(activeProjSrc.projection_p30.blk    * projScale).toFixed(1),
+    tov:    +(activeProjSrc.projection_p30.tov    * projScale).toFixed(1),
+    fg3m:   +(activeProjSrc.projection_p30.fg3m   * projScale).toFixed(1),
+    fg_pct: +activeProjSrc.projection_p30.fg_pct.toFixed(1),
+    ft_pct: activeProjSrc.projection_p30.ft_pct ?? null,
   } : null
 
   // Trend chart — historical seasons + all projected years
@@ -1228,15 +1233,17 @@ export default function App() {
     }
     return s[key] ?? null
   }
-  const getProjVal = (proj) => {
-    if (projStat === 'z_sum')  return proj.z_sum ?? null
-    if (projStat === 'ft_pct') return proj.projection_p30.ft_pct ?? null
-    if (projStat === 'fg_pct') return +proj.projection_p30.fg_pct.toFixed(1)
-    return +(proj.projection_p30[projStat] * projScale).toFixed(1)
+  const getProjVal = (proj, scenario = 'baseline') => {
+    const src = scenario === 'baseline' ? proj : (proj[scenario] ?? proj)
+    if (projStat === 'z_sum')  return src.z_sum ?? null
+    if (projStat === 'ft_pct') return src.projection_p30.ft_pct ?? null
+    if (projStat === 'fg_pct') return +src.projection_p30.fg_pct.toFixed(1)
+    return +(src.projection_p30[projStat] * projScale).toFixed(1)
   }
 
   const projLabels  = projection?.projections?.map(p => p.season) ?? []
   const trendLabels = [...trendSeasons.map(s => s.period), ...projLabels]
+  const nHist = trendSeasons.length
 
   // Historical line: season values + nulls for projected slots
   const historicalVals = [
@@ -1244,11 +1251,11 @@ export default function App() {
     ...projLabels.map(() => null),
   ]
 
-  // Projection line: nulls for historical, then connect from last season value through all projected years
-  const lastHistVal = trendSeasons.length > 0 ? getStatVal(trendSeasons[trendSeasons.length - 1], projStat) : null
-  const projLineVals = [
-    ...trendSeasons.map((_, i) => i === trendSeasons.length - 1 ? lastHistVal : null),
-    ...(projection?.projections?.map(p => getProjVal(p)) ?? []),
+  // Helper: build a projection line anchored to the last historical value
+  const lastHistVal = nHist > 0 ? getStatVal(trendSeasons[nHist - 1], projStat) : null
+  const buildProjLine = (scenario) => [
+    ...trendSeasons.map((_, i) => i === nHist - 1 ? lastHistVal : null),
+    ...(projection?.projections?.map(p => getProjVal(p, scenario)) ?? []),
   ]
 
   const trendChartData = playerStats && projection ? {
@@ -1264,22 +1271,49 @@ export default function App() {
         tension: 0.2,
         spanGaps: false,
       },
+      // Optimistic band top (filled down to pessimistic)
       {
-        label: 'Projected',
-        data: projLineVals,
+        label: 'Optimistic',
+        data: buildProjLine('optimistic'),
+        borderColor: 'rgba(77,255,180,0.25)',
+        pointRadius: 0,
+        borderWidth: 1,
+        borderDash: [3, 5],
+        tension: 0.2,
+        spanGaps: false,
+        fill: '+1',  // fill down to next dataset (pessimistic)
+        backgroundColor: 'rgba(77,255,180,0.07)',
+      },
+      // Pessimistic band bottom
+      {
+        label: 'Pessimistic',
+        data: buildProjLine('pessimistic'),
+        borderColor: 'rgba(77,255,180,0.25)',
+        pointRadius: 0,
+        borderWidth: 1,
+        borderDash: [3, 5],
+        tension: 0.2,
+        spanGaps: false,
+        fill: false,
+      },
+      // Baseline — drawn last so it's on top
+      {
+        label: 'Baseline',
+        data: buildProjLine('baseline'),
         borderColor: '#4dffb4',
         pointBackgroundColor: (ctx) => {
-          const idx = ctx.dataIndex - trendSeasons.length + 1
+          const idx = ctx.dataIndex - nHist + 1
           return idx === projYear ? '#4dffb4' : 'rgba(77,255,180,0.4)'
         },
         pointRadius: (ctx) => {
-          const idx = ctx.dataIndex - trendSeasons.length + 1
+          const idx = ctx.dataIndex - nHist + 1
           return idx >= 1 ? (idx === projYear ? 6 : 4) : 0
         },
         borderWidth: 2,
         borderDash: [5, 4],
         tension: 0.2,
         spanGaps: false,
+        fill: false,
       },
     ],
   } : null
@@ -1546,13 +1580,15 @@ export default function App() {
     )
   }
 
-  function ProjectionRow({ label, data, note }) {
+  function ProjectionRow({ label, data, note, scenario }) {
     if (!data) return null
+    const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Baseline'
+    const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : '#4dffb4'
     return (
       <tr className="stats-row-projection">
         <td className="stats-period-cell">
           <div>{label}{note && <span className="archetype-transition" title={`Projected archetype: ${note}`}> ↓</span>}</div>
-          <div><span className="forecast-badge">Forecast</span></div>
+          <div><span className="forecast-badge" style={{ color: scenarioColor, borderColor: scenarioColor }}>{scenarioLabel}</span></div>
         </td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
         <td className="num mono stat-cell muted">—</td>
@@ -1565,7 +1601,7 @@ export default function App() {
           const display = (c.key === 'fg_pct' || c.key === 'ft_pct') ? `${val}%` : val.toFixed(1)
           return (
             <Fragment key={c.key}>
-              <td className="num mono stat-cell" style={{ color: '#4dffb4' }}>{display}</td>
+              <td className="num mono stat-cell" style={{ color: scenarioColor }}>{display}</td>
               {!c.noZ && <td className="num mono z-cell">—</td>}
             </Fragment>
           )
@@ -1683,6 +1719,7 @@ export default function App() {
                     label={activeProj ? activeProj.season : 'Projected'}
                     data={projRowData}
                     note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
+                    scenario={projScenario}
                   />
                   <StatsRow label="Career" data={{ ...playerStats.career, rank: null }} highlight="career" />
                 </tbody>
@@ -2215,6 +2252,17 @@ export default function App() {
                 </div>
 
                 {projExpanded && <>
+                <div className="proj-scenario-row">
+                  {['pessimistic', 'baseline', 'optimistic'].map(s => (
+                    <button
+                      key={s}
+                      className={`proj-scenario-btn${projScenario === s ? ' active' : ''} proj-scenario-${s}`}
+                      onClick={() => setProjScenario(s)}
+                    >
+                      {s === 'pessimistic' ? 'Pessimistic' : s === 'baseline' ? 'Baseline' : 'Optimistic'}
+                    </button>
+                  ))}
+                </div>
                 <div className="mpg-slider-row">
                   <span className="ctrl-label">Projected min/game</span>
                   <input

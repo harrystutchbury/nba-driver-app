@@ -288,6 +288,29 @@
   cursor: help;
 }
 
+.proj-scenario-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.proj-scenario-btn {
+  padding: 5px 16px;
+  border-radius: 20px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #888;
+  font-size: 12px;
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.proj-scenario-btn.active.proj-scenario-pessimistic { background: #3a1a1a; border-color: #ff6b6b; color: #ff6b6b; }
+.proj-scenario-btn.active.proj-scenario-baseline    { background: #1a2e22; border-color: #4dffb4; color: #4dffb4; }
+.proj-scenario-btn.active.proj-scenario-optimistic  { background: #1a2a3a; border-color: #7c8cff; color: #7c8cff; }
+.proj-scenario-btn:hover:not(.active) { border-color: #555; color: #aaa; }
+
 .mpg-slider-row {
   display: flex;
   align-items: center;

@@ -64,20 +64,24 @@ def build_aging_curves(df):
         # Filter extreme outliers (injuries, role explosions, sample noise)
         sub = sub[(sub['ratio'] >= 0.5) & (sub['ratio'] <= 2.0)]
 
-        obs_ages, obs_ratios = [], []
+        obs_ages, obs_ratios, obs_stds = [], [], []
         for age in AGE_RANGE:
             bucket = sub[sub['age'] == age]['ratio']
             if len(bucket) >= MIN_OBS:
                 obs_ages.append(age)
                 obs_ratios.append(float(bucket.mean()))
+                obs_stds.append(float(bucket.std()) if len(bucket) > 1 else 0.05)
 
         if len(obs_ages) < 4:
             continue
 
-        # Fit a quadratic to (age, mean_ratio) — no peak constraint needed here,
-        # the ratio naturally peaks at young ages and crosses 1.0 near the stat peak.
-        coeffs = np.polyfit(obs_ages, obs_ratios, 2)
-        curves[stat] = np.poly1d(coeffs)
+        # Fit quadratics to mean and std of ratios by age
+        mean_coeffs = np.polyfit(obs_ages, obs_ratios, 2)
+        std_coeffs  = np.polyfit(obs_ages, obs_stds,  2)
+        curves[stat] = {
+            'mean': np.poly1d(mean_coeffs),
+            'std':  np.poly1d(std_coeffs),
+        }
 
     return curves
 
@@ -91,9 +95,21 @@ def aging_ratio(curves, archetype, stat, current_age, next_age):
     next_season/current_season for players of that age and stat.
     Clamped to [RATIO_FLOOR, RATIO_CAP].
     """
-    curve = curves.get(stat)
-    if curve is None:
+    curve_obj = curves.get(stat)
+    if curve_obj is None:
         return 1.0
-
+    curve = curve_obj['mean'] if isinstance(curve_obj, dict) else curve_obj
     ratio = float(curve(current_age))
     return float(np.clip(ratio, RATIO_FLOOR, RATIO_CAP))
+
+
+def aging_ratio_std(curves, stat, current_age):
+    """
+    Return the historical SD of year-over-year ratios at the given age.
+    Used to generate optimistic/pessimistic projection scenarios.
+    """
+    curve_obj = curves.get(stat)
+    if not isinstance(curve_obj, dict):
+        return 0.05  # sensible fallback
+    std_val = float(curve_obj['std'](current_age))
+    return max(0.02, std_val)  # floor at 2% to avoid zero-width bands

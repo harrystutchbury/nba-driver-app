@@ -35,7 +35,7 @@ from engine.shots import decompose_shots
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
-from engine.aging import build_aging_curves, aging_ratio as _aging_ratio
+from engine.aging import build_aging_curves, aging_ratio as _aging_ratio, aging_ratio_std as _aging_ratio_std, RATIO_FLOOR, RATIO_CAP
 
 logger = logging.getLogger(__name__)
 
@@ -952,9 +952,11 @@ def get_projection(
     position_group = str(current.get('position_group', ''))
 
     # Anchor to current season's actual per-30 stats, then compound aging ratios each year.
-    # We avoid Ridge regression-to-mean in the loop — it suppresses young breakout players.
-    PROJ_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
-    prev_p30 = {
+    # Three scenarios compound independently: each year's ratio shifts by ±1 SD of
+    # historical year-over-year variance at that age, so uncertainty widens over time.
+    PROJ_STATS  = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
+    SCENARIO_K  = 1.0   # number of SDs for optimistic/pessimistic bands
+    base_p30 = {
         'pts':    float(current.get('p30_pts',  0) or 0),
         'reb':    float(current.get('p30_reb',  0) or 0),
         'ast':    float(current.get('p30_ast',  0) or 0),
@@ -964,38 +966,63 @@ def get_projection(
         'fg3m':   float(current.get('p30_fg3m', 0) or 0),
         'fg_pct': float(current.get('fg_pct',   0) or 0),
     }
+    prev_by_scenario = {'baseline': dict(base_p30), 'optimistic': dict(base_p30), 'pessimistic': dict(base_p30)}
+
+    def _apply_ratios(prev_p30, scenario_k):
+        p30 = {}
+        for stat in PROJ_STATS:
+            base  = prev_p30.get(stat, 0)
+            ratio = _aging_ratio(aging_curves, current_archetype, stat, current_age, next_age)
+            if scenario_k != 0:
+                std = _aging_ratio_std(aging_curves, stat, current_age)
+                ratio = float(np.clip(ratio + scenario_k * std, RATIO_FLOOR - 0.05, RATIO_CAP + 0.05))
+            p30[stat] = round(base * ratio, 2)
+        p30['ft_pct'] = proj_ft_pct
+        return p30
+
+    def _to_pg(p30):
+        pg = {s: round(p30[s] * scale, 1) for s in counting if s in p30}
+        pg['fg_pct'] = round(p30.get('fg_pct', 0), 1)
+        pg['ft_pct'] = proj_ft_pct
+        return pg
+
     projections = []
     current_archetype = archetype
     for yr in range(1, MAX_YEARS + 1):
         current_age = float(current.get('age', 25)) + (yr - 1)
         next_age    = current_age + 1
-        p30 = {}
-        for stat in PROJ_STATS:
-            base  = prev_p30.get(stat, 0)
-            ratio = _aging_ratio(aging_curves, current_archetype, stat, current_age, next_age)
-            p30[stat] = round(base * ratio, 2)
 
-        p30['ft_pct'] = proj_ft_pct
-        pg  = {s: round(p30[s] * scale, 1) for s in counting if s in p30}
-        pg['fg_pct'] = round(p30.get('fg_pct', 0), 1)
-        pg['ft_pct'] = proj_ft_pct
+        p30_base = _apply_ratios(prev_by_scenario['baseline'],    0)
+        p30_opt  = _apply_ratios(prev_by_scenario['optimistic'],  SCENARIO_K)
+        p30_pes  = _apply_ratios(prev_by_scenario['pessimistic'], -SCENARIO_K)
+
         projections.append({
             'year':      yr,
             'season':    _season_label(str(current['season']), yr),
             'archetype': current_archetype,
-            'projection_p30': p30,
-            'projection_pg':  pg,
-            'z_sum':     _proj_z_sum(p30, proj_ft_pct),
+            'projection_p30': p30_base,
+            'projection_pg':  _to_pg(p30_base),
+            'z_sum':     _proj_z_sum(p30_base, proj_ft_pct),
+            'optimistic': {
+                'projection_p30': p30_opt,
+                'projection_pg':  _to_pg(p30_opt),
+                'z_sum':          _proj_z_sum(p30_opt, proj_ft_pct),
+            },
+            'pessimistic': {
+                'projection_p30': p30_pes,
+                'projection_pg':  _to_pg(p30_pes),
+                'z_sum':          _proj_z_sum(p30_pes, proj_ft_pct),
+            },
         })
-        prev_p30 = p30
-        # Re-derive archetype from projected stats for next iteration
+        prev_by_scenario = {'baseline': p30_base, 'optimistic': p30_opt, 'pessimistic': p30_pes}
+        # Re-derive archetype from baseline projected stats for next iteration
         next_archetype = _assign_row(
             pos=position_group,
-            pts=p30['pts'],
-            ast=p30['ast'],
-            fg3m=p30['fg3m'],
-            blk=p30['blk'],
-            reb=p30['reb'],
+            pts=p30_base['pts'],
+            ast=p30_base['ast'],
+            fg3m=p30_base['fg3m'],
+            blk=p30_base['blk'],
+            reb=p30_base['reb'],
         )
         if next_archetype:
             current_archetype = next_archetype
