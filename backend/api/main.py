@@ -136,17 +136,22 @@ def get_players(
             params.append(f"%{q}%")
         sql += " ORDER BY full_name"
     else:
-        # Return one row per player — the most recent season
+        # Return one row per player — current team from most recent game log
         sql = """
-            SELECT slug, full_name, team, MAX(season) AS season
-            FROM players
+            SELECT p.slug, p.full_name,
+                   COALESCE(
+                       (SELECT g.team FROM game_logs g WHERE g.player_slug = p.slug ORDER BY g.game_date DESC LIMIT 1),
+                       p.team
+                   ) AS team,
+                   MAX(p.season) AS season
+            FROM players p
             WHERE 1=1
         """
         params = []
         if q:
-            sql += " AND full_name LIKE ?"
+            sql += " AND p.full_name LIKE ?"
             params.append(f"%{q}%")
-        sql += " GROUP BY slug ORDER BY full_name"
+        sql += " GROUP BY p.slug ORDER BY p.full_name"
 
     rows = conn.execute(sql, params).fetchall()
     injury_map = _get_injury_map(conn)
@@ -1032,7 +1037,8 @@ def get_rankings(
         if period == "season":
             cutoff    = None
             min_games = 10
-            season    = str(_current_season_end_year())
+            _yr       = _current_season_end_year()
+            season    = f"{_yr - 1}-{str(_yr)[2:]}"   # e.g. "2025-26"
         elif period == "l14":
             cutoff    = (date.today() - timedelta(days=14)).isoformat()
             min_games = 3
@@ -1047,9 +1053,14 @@ def get_rankings(
         if not player_rows:
             return []
 
-        # Build slug → position+name map (latest season per slug)
+        # Build slug → position+name map; use most recent game_log for current team
         bio_rows = conn.execute("""
-            SELECT p.slug, p.full_name AS name, p.team, b.position_group AS position
+            SELECT p.slug, p.full_name AS name,
+                   COALESCE(
+                       (SELECT g.team FROM game_logs g WHERE g.player_slug = p.slug ORDER BY g.game_date DESC LIMIT 1),
+                       p.team
+                   ) AS team,
+                   b.position_group AS position
             FROM players p
             LEFT JOIN player_bio b ON b.br_slug = p.slug
             WHERE (p.slug, p.season) IN (
@@ -1699,16 +1710,17 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     except ValueError:
         raise HTTPException(400, "date must be YYYY-MM-DD")
 
-    date_str = d.strftime("%Y%m%d")
-    today    = datetime.utcnow().date()
-    is_today = (d == today)
+    date_str  = d.strftime("%Y%m%d")
+    today     = datetime.utcnow().date()
+    from datetime import timedelta
+    is_recent = (d >= today - timedelta(days=1))  # TTL cache for today + yesterday (covers AEST/UTC offset)
 
-    # Return cache for completed past dates (indefinite) or today within TTL
+    # Return cache: TTL for recent dates, indefinite for older completed games
     import time as _time_mod
-    if not is_today and date_str in _box_score_cache:
+    if not is_recent and date_str in _box_score_cache:
         return _box_score_cache[date_str]
-    if is_today and _today_cache.get("payload") and (_time_mod.time() - _today_cache.get("ts", 0)) < _TODAY_TTL:
-        return _today_cache["payload"]
+    if is_recent and _today_cache.get(date_str) and (_time_mod.time() - _today_cache[date_str].get("ts", 0)) < _TODAY_TTL:
+        return _today_cache[date_str]["payload"]
 
     # Determine season
     season_end = d.year + 1 if d.month >= 10 else d.year
@@ -1716,11 +1728,16 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
 
     conn = get_conn()
     z_params   = _league_z_params(conn, season)
-    # Build injury lookup by Tank01 playerID (box score uses playerID not br_slug)
+    # Injury lookup by Tank01 playerID
     inj_rows = conn.execute(
         "SELECT tank01_id, designation, description FROM injuries WHERE tank01_id IS NOT NULL AND tank01_id != ''"
     ).fetchall()
     inj_by_t01 = {r["tank01_id"]: {"designation": r["designation"], "description": r["description"]} for r in inj_rows}
+    # Slug lookup by Tank01 playerID (for clickable player names)
+    slug_rows = conn.execute(
+        "SELECT tank01_id, br_slug FROM tank01_player_map WHERE tank01_id IS NOT NULL"
+    ).fetchall()
+    slug_by_t01 = {r["tank01_id"]: r["br_slug"] for r in slug_rows}
     conn.close()
 
     def zs(stat, val):
@@ -1776,6 +1793,7 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
 
             players.append({
                 "name":       p.get("longName", ""),
+                "slug":       slug_by_t01.get(pid),
                 "team":       p.get("teamAbv", ""),
                 "min":        int(mins),
                 "plus_minus": pm,
@@ -1819,9 +1837,8 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
 
     payload = {"date": date, "games": results}
 
-    if is_today:
-        _today_cache["payload"] = payload
-        _today_cache["ts"]      = _time_mod.time()
+    if is_recent:
+        _today_cache[date_str] = {"payload": payload, "ts": _time_mod.time()}
     else:
         _box_score_cache[date_str] = payload
 

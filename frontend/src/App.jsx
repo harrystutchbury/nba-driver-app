@@ -148,6 +148,12 @@ function teamAbbr(name) {
   return TEAM_ABBR[name.toUpperCase()] ?? name
 }
 
+const POS_SHORT = {
+  'Guard': 'G', 'Forward': 'F', 'Center': 'C',
+  'Guard-Forward': 'G/F', 'Forward-Center': 'F/C',
+}
+function posAbbr(pos) { return POS_SHORT[pos] || pos || '—' }
+
 const STAT_LABELS_SHORT = {
   pts: 'Pts/g', reb: 'Rebounds/g', ast: 'Ast/g',
   stl: 'Stl/g', blk: 'Blk/g', tov: 'Tov/g',
@@ -414,7 +420,7 @@ const RANK_COLS = [
 const POSITIONS = ['All', 'Guard', 'Forward', 'Center', 'Guard-Forward', 'Forward-Center']
 
 const PERIODS = [
-  { value: 'season', label: 'Full Season' },
+  { value: 'season', label: '2025-26 Season' },
   { value: 'l30',    label: 'Last 30 Days' },
   { value: 'l14',    label: 'Last 14 Days' },
 ]
@@ -523,7 +529,7 @@ function RankingsPage({ onSelectPlayer }) {
                       </div>
                       <div className="rank-player-team">{p.team}</div>
                     </td>
-                    <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
+                    <td className="muted" style={{ fontSize: '11px' }}>{posAbbr(p.position)}</td>
                     <td className="num mono">{p.gp ?? '—'}</td>
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {
@@ -602,7 +608,7 @@ function InjuryBadge({ injury, compact }) {
 
 // ── Injuries page ────────────────────────────────────────────────────────────
 
-function InjuriesPage() {
+function InjuriesPage({ onSelectPlayer }) {
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
@@ -627,7 +633,6 @@ function InjuriesPage() {
         {data.updated_at && (
           <span className="inj-updated">Updated {data.updated_at.slice(0, 16).replace('T', ' ')} UTC</span>
         )}
-        <span className="inj-count">{data.total} players affected</span>
       </div>
 
       <div className="inj-grid">
@@ -637,7 +642,10 @@ function InjuriesPage() {
             {[...players].sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9)).map((p, i) => (
               <div key={i} className="inj-player-row">
                 <InjuryBadge injury={p} compact={false} />
-                <span className="inj-player-name">{p.name}</span>
+                <span
+                  className={`inj-player-name${p.player_slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                  onClick={() => p.player_slug && onSelectPlayer && onSelectPlayer({ slug: p.player_slug, name: p.name })}
+                >{p.name}</span>
                 {p.description && <span className="inj-desc">{p.description}</span>}
               </div>
             ))}
@@ -648,7 +656,7 @@ function InjuriesPage() {
   )
 }
 
-function BoxScoreTable({ players }) {
+function BoxScoreTable({ players, onSelectPlayer }) {
   if (!players.length) return null
   return (
     <table className="bs-table">
@@ -675,7 +683,13 @@ function BoxScoreTable({ players }) {
       <tbody>
         {players.filter(p => p.min > 0).map((p, i) => (
           <tr key={i}>
-            <td className="bs-name">{p.name}{p.injury && <InjuryBadge injury={p.injury} compact />}</td>
+            <td className="bs-name">
+              <span
+                className={p.slug && onSelectPlayer ? 'rank-player-link' : undefined}
+                onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
+              >{p.name}</span>
+              {p.injury && <InjuryBadge injury={p.injury} compact />}
+            </td>
             <td className="bs-ctr">{p.min}</td>
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
             <td className="bs-ctr bs-muted">{p.pf}</td>
@@ -698,8 +712,8 @@ function BoxScoreTable({ players }) {
   )
 }
 
-function BoxScorePage() {
-  const todayStr = () => new Date().toISOString().slice(0, 10)
+function BoxScorePage({ onSelectPlayer }) {
+  const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
   const [date, setDate]     = useState(todayStr())
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
@@ -777,11 +791,11 @@ function BoxScorePage() {
           <div className="bs-teams-wrap">
             <div className="bs-team-section">
               <div className="bs-team-label">{game.away} <span className="bs-team-abbr">{game.away_abbr}</span></div>
-              <BoxScoreTable players={game.away_players} />
+              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} />
             </div>
             <div className="bs-team-section">
               <div className="bs-team-label">{game.home} <span className="bs-team-abbr">{game.home_abbr}</span></div>
-              <BoxScoreTable players={game.home_players} />
+              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} />
             </div>
           </div>
         </div>
@@ -954,7 +968,7 @@ function ProjectionsPage({ onSelectPlayer }) {
                     </div>
                     <div className="rank-player-team">{p.team}</div>
                   </td>
-                  <td className="muted" style={{ fontSize: '11px' }}>{p.position || '—'}</td>
+                  <td className="muted" style={{ fontSize: '11px' }}>{posAbbr(p.position)}</td>
                   <td className="num mono">{p.gp}</td>
                   {PROJ_COLS.map(c => {
                     const z    = p[`z_${c.key}`]
@@ -1002,7 +1016,7 @@ export default function App() {
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [projYear, setProjYear]       = useState(1)
-  const [projExpanded, setProjExpanded] = useState(true)
+  const [projExpanded, setProjExpanded] = useState(false)
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
@@ -1586,11 +1600,11 @@ export default function App() {
 
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
-      {page === 'boxscores' && <BoxScorePage />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
-      {page === 'injuries' && <InjuriesPage />}
+      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}
@@ -1627,7 +1641,7 @@ export default function App() {
               <h2 className="player-name">{playerStats.player.name}</h2>
               <span className="player-team">{teamAbbr(playerStats.player.team)}</span>
               {playerStats.player.position && (
-                <span className="player-age">{playerStats.player.position}</span>
+                <span className="player-age">{posAbbr(playerStats.player.position)}</span>
               )}
               {playerStats.player.age && (
                 <span className="player-age">Age {playerStats.player.age}</span>
