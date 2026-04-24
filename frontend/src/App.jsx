@@ -1257,8 +1257,8 @@ export default function App() {
   const [projExpanded, setProjExpanded] = useState(false)
   const [projScenario, setProjScenario] = useState('baseline')
   const [usageExpanded, setUsageExpanded] = useState(true)
-  const [usageMult, setUsageMult]         = useState(1.0)
-  const [usageMinutes, setUsageMinutes]   = useState(null)
+  const [usageUsg, setUsageUsg]           = useState(null)   // target USG% (null = use base)
+  const [usageMinutes, setUsageMinutes]   = useState(null)   // target min/g (null = use base)
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
@@ -1347,7 +1347,7 @@ export default function App() {
     setMaLookback(20)
     setProjYear(1)
     setProjScenario('baseline')
-    setUsageMult(1.0)
+    setUsageUsg(null)
     setUsageMinutes(null)
     fetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
@@ -2502,31 +2502,41 @@ export default function App() {
 
             {/* ── Usage / Minutes Projector ─────────────────── */}
             {playerStats?.seasons?.[0] && (() => {
-              const base = playerStats.seasons[0]
-              const baseMpg = base.min_pg ?? 30
-              const effMin = usageMinutes ?? baseMpg
+              const base    = playerStats.seasons[0]
+              const baseMpg = base.min_pg  ?? 30
+              const baseUsg = base.usg_pct ?? 20
+              const effMin  = usageMinutes ?? baseMpg
+              const effUsg  = usageUsg    ?? baseUsg
 
-              // Usage-sensitive: pts, ast, tov, fg3m scale with both minutes and usage
-              // Opportunity-based: reb, stl, blk scale with minutes only
               const minScale = effMin / baseMpg
+              const usgScale = effUsg / baseUsg
+
+              // Efficiency decay: each +1% USG above baseline costs ~0.7% scoring efficiency
+              // (based on empirical finding that ~0.5-1% TS% drops per +1% USG)
+              // Only applies when usage is increasing; no boost for lower usage.
+              const deltaUsg = effUsg - baseUsg
+              const effDecay = deltaUsg > 0 ? Math.max(0.80, 1 - deltaUsg * 0.007) : 1.0
+
               const proj = {
-                pts:   +(base.pts   * minScale * usageMult).toFixed(1),
-                ast:   +(base.ast   * minScale * usageMult).toFixed(1),
-                tov:   +(base.tov   * minScale * usageMult).toFixed(1),
-                fg3m:  +(base.fg3m  * minScale * usageMult).toFixed(1),
-                reb:   +(base.reb   * minScale).toFixed(1),
-                stl:   +(base.stl   * minScale).toFixed(1),
-                blk:   +(base.blk   * minScale).toFixed(1),
+                pts:  +(base.pts  * minScale * usgScale * effDecay).toFixed(1),
+                ast:  +(base.ast  * minScale * usgScale).toFixed(1),           // linear with usage
+                tov:  +(base.tov  * minScale * usgScale * 1.08).toFixed(1),    // slightly super-linear
+                fg3m: +(base.fg3m * minScale * usgScale * effDecay).toFixed(1),// shooting volume decays
+                reb:  +(base.reb  * minScale).toFixed(1),
+                stl:  +(base.stl  * minScale).toFixed(1),
+                blk:  +(base.blk  * minScale).toFixed(1),
               }
 
+              const changed = effMin !== baseMpg || effUsg !== baseUsg
+
               const USAGE_ROWS = [
-                { key: 'pts',  label: 'PTS',  usageSensitive: true },
-                { key: 'ast',  label: 'AST',  usageSensitive: true },
-                { key: 'tov',  label: 'TOV',  usageSensitive: true,  invert: true },
-                { key: 'fg3m', label: '3PM',  usageSensitive: true },
-                { key: 'reb',  label: 'REB',  usageSensitive: false },
-                { key: 'stl',  label: 'STL',  usageSensitive: false },
-                { key: 'blk',  label: 'BLK',  usageSensitive: false },
+                { key: 'pts',  label: 'PTS', tag: 'USG', invert: false },
+                { key: 'ast',  label: 'AST', tag: 'USG', invert: false },
+                { key: 'tov',  label: 'TOV', tag: 'USG', invert: true  },
+                { key: 'fg3m', label: '3PM', tag: 'USG', invert: false },
+                { key: 'reb',  label: 'REB', tag: 'MIN', invert: false },
+                { key: 'stl',  label: 'STL', tag: 'MIN', invert: false },
+                { key: 'blk',  label: 'BLK', tag: 'MIN', invert: false },
               ]
 
               return (
@@ -2547,24 +2557,31 @@ export default function App() {
                           className="mpg-slider"
                         />
                         <span className="mpg-value">{effMin.toFixed(1)}</span>
-                        {usageMinutes !== null && usageMinutes !== baseMpg && (
+                        {usageMinutes !== null && (
                           <button className="usage-reset-btn" onClick={() => setUsageMinutes(null)}>reset</button>
                         )}
                       </div>
                       <div className="mpg-slider-row">
-                        <span className="ctrl-label">Usage</span>
+                        <span className="ctrl-label">Usage%</span>
                         <input
-                          type="range" min={0.5} max={2.0} step={0.05}
-                          value={usageMult}
-                          onChange={e => setUsageMult(+e.target.value)}
+                          type="range" min={5} max={45} step={0.5}
+                          value={effUsg}
+                          onChange={e => setUsageUsg(+e.target.value)}
                           className="mpg-slider"
                         />
-                        <span className="mpg-value">{usageMult >= 1 ? '+' : ''}{((usageMult - 1) * 100).toFixed(0)}%</span>
-                        {usageMult !== 1.0 && (
-                          <button className="usage-reset-btn" onClick={() => setUsageMult(1.0)}>reset</button>
+                        <span className="mpg-value">{effUsg.toFixed(1)}%</span>
+                        {usageUsg !== null && (
+                          <button className="usage-reset-btn" onClick={() => setUsageUsg(null)}>reset</button>
                         )}
                       </div>
                     </div>
+
+                    {changed && deltaUsg > 2 && (
+                      <p className="usage-decay-note">
+                        Efficiency decay: {((1 - effDecay) * 100).toFixed(1)}% on PTS &amp; 3PM
+                        (USG +{deltaUsg.toFixed(1)}%)
+                      </p>
+                    )}
 
                     <table className="usage-table">
                       <thead>
@@ -2577,28 +2594,33 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {USAGE_ROWS.map(({ key, label, usageSensitive, invert }) => {
-                          const bv = base[key] ?? 0
-                          const pv = proj[key]
+                        {USAGE_ROWS.map(({ key, label, tag, invert }) => {
+                          const bv    = base[key] ?? 0
+                          const pv    = proj[key]
                           const delta = pv - bv
-                          const good = invert ? delta < -0.05 : delta > 0.05
-                          const bad  = invert ? delta > 0.05  : delta < -0.05
+                          const good  = invert ? delta < -0.05 : delta > 0.05
+                          const bad   = invert ? delta > 0.05  : delta < -0.05
                           const color = good ? '#4dffb4' : bad ? '#ff6b6b' : 'var(--muted)'
                           return (
                             <tr key={key}>
                               <td className="usage-td-stat">{label}</td>
                               <td className="usage-td-num muted">{bv.toFixed(1)}</td>
-                              <td className="usage-td-num" style={{ color: (minScale !== 1 || usageMult !== 1) ? color : 'inherit' }}>{pv.toFixed(1)}</td>
+                              <td className="usage-td-num" style={{ color: changed ? color : 'inherit' }}>{pv.toFixed(1)}</td>
                               <td className="usage-td-num usage-delta" style={{ color }}>
-                                {(minScale !== 1 || usageMult !== 1) ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}` : '—'}
+                                {changed ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}` : '—'}
                               </td>
-                              <td className="usage-td-tag">{usageSensitive ? <span className="usage-tag usage-tag">USG</span> : <span className="usage-tag usage-tag-min">MIN</span>}</td>
+                              <td className="usage-td-tag">
+                                <span className={`usage-tag${tag === 'MIN' ? ' usage-tag-min' : ''}`}>{tag}</span>
+                              </td>
                             </tr>
                           )
                         })}
                       </tbody>
                     </table>
-                    <p className="usage-note">Base = {base.period} season avg ({baseMpg.toFixed(1)} min/g). USG = scales with usage + minutes. MIN = scales with minutes only.</p>
+                    <p className="usage-note">
+                      Base: {base.period} avg · {baseMpg.toFixed(1)} min/g · {baseUsg.toFixed(1)}% USG
+                      {changed && effUsg !== baseUsg && ` → ${effUsg.toFixed(1)}% USG`}
+                    </p>
                     </>
                   )}
                 </div>

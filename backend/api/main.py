@@ -201,6 +201,9 @@ def _avg_row(rows):
     total_fta = sum(r["fta"]  for r in rows)
     fg_pct    = sum(r["fgm"]  for r in rows) / total_fga if total_fga else None
     ft_pct    = sum(r["ftm"]  for r in rows) / total_fta if total_fta else None
+    # USG% (simplified): (FGA + 0.44×FTA + TOV) × 48 / MIN
+    # Assumes ~100 team possessions/48 min. Matches standard simplified formula.
+    usg_pct   = round((fga_pg + 0.44 * fta_pg + tov) * 48 / min_pg, 1) if min_pg > 0 else None
     return {
         "gp":     gp,
         "min_pg": round(min_pg, 1),
@@ -215,6 +218,7 @@ def _avg_row(rows):
         "ft_pct": round(ft_pct * 100, 1) if ft_pct is not None else None,
         "fga_pg": round(fga_pg, 1),
         "fta_pg": round(fta_pg, 1),
+        "usg_pct": usg_pct,
     }
 
 
