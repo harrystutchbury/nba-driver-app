@@ -925,6 +925,10 @@ const PROJ_COLS = [
   { key: 'fg_pct', label: 'FG%', pct: true },
 ]
 
+const PROJ_PCT_KEYS   = new Set(['fg_pct'])
+const PROJ_PUNT_COLS  = PROJ_COLS.filter(c => !c.noZ)   // puntable = cols with Z-scores
+const PROJ_COUNTING   = PROJ_PUNT_COLS.filter(c => !PROJ_PCT_KEYS.has(c.key)).map(c => c.key)
+
 function ProjectionsPage({ onSelectPlayer }) {
   function todayStr() { return new Date().toISOString().slice(0, 10) }
   function addDays(n) {
@@ -933,14 +937,16 @@ function ProjectionsPage({ onSelectPlayer }) {
     return d.toISOString().slice(0, 10)
   }
 
-  const [start, setStart]       = useState(todayStr)
-  const [end, setEnd]           = useState(() => addDays(14))
-  const [position, setPosition] = useState('all')
-  const [sortKey, setSortKey]   = useState('period_value')
-  const [sortAsc, setSortAsc]   = useState(false)
-  const [players, setPlayers]   = useState(null)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
+  const [start, setStart]           = useState(todayStr)
+  const [end, setEnd]               = useState(() => addDays(14))
+  const [position, setPosition]     = useState('all')
+  const [sortKey, setSortKey]       = useState('period_value')
+  const [sortAsc, setSortAsc]       = useState(false)
+  const [players, setPlayers]       = useState(null)
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState(null)
+  const [viewMode, setViewMode]     = useState('pg')
+  const [puntedCats, setPuntedCats] = useState(new Set())
 
   useEffect(() => {
     if (!start || !end || start > end) return
@@ -973,9 +979,53 @@ function ProjectionsPage({ onSelectPlayer }) {
     ? players.filter(p => position === 'all' || p.position === position)
     : []
 
+  // Totals helpers
+  const isTotalsKey = (key) => viewMode === 'totals' && !PROJ_PCT_KEYS.has(key) && key !== 'min_pg' && key !== 'gp'
+  const totalsVal   = (p, key) => { const v = p[key]; return v == null ? null : Math.round(v * (p.gp ?? 0)) }
+
+  // Totals Z-stats from current filtered set
+  const totalsZStats = (() => {
+    if (viewMode !== 'totals' || !filtered.length) return {}
+    const stats = {}
+    for (const key of PROJ_COUNTING) {
+      const vals = filtered.map(p => totalsVal(p, key)).filter(v => v != null)
+      if (!vals.length) continue
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+      const std  = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1
+      stats[key] = { mean, std }
+    }
+    return stats
+  })()
+
+  const getTotalsZ = (p, key) => {
+    const s = totalsZStats[key]; if (!s) return null
+    const v = totalsVal(p, key); if (v == null) return null
+    return +((v - s.mean) / s.std).toFixed(2)
+  }
+
+  // Effective Value: per-game = Σ unpunted z × gp; totals = Σ unpunted totals-Z
+  const getEffectiveValue = (p) => {
+    let sum = 0
+    for (const c of PROJ_PUNT_COLS) {
+      if (puntedCats.has(c.key)) continue
+      const z = viewMode === 'totals' && !PROJ_PCT_KEYS.has(c.key)
+        ? getTotalsZ(p, c.key)
+        : p[`z_${c.key}`]
+      if (z == null) continue
+      sum += c.lowerBetter ? -z : z
+    }
+    return viewMode === 'totals' ? +sum.toFixed(2) : +(sum * (p.gp ?? 0)).toFixed(2)
+  }
+
+  const getSortVal = (p, key) => {
+    if (key === 'period_value') return getEffectiveValue(p)
+    if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
+    return p[key] ?? -Infinity
+  }
+
   const sorted = [...filtered].sort((a, b) => {
-    const av = a[sortKey] ?? -Infinity
-    const bv = b[sortKey] ?? -Infinity
+    const av = getSortVal(a, sortKey)
+    const bv = getSortVal(b, sortKey)
     if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
     return sortAsc ? av - bv : bv - av
   })
@@ -1018,6 +1068,32 @@ function ProjectionsPage({ onSelectPlayer }) {
             ))}
           </div>
         </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">View</span>
+          <div className="rank-pills">
+            <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
+            <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
+          </div>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Punt</span>
+          <div className="rank-pills">
+            {PROJ_PUNT_COLS.map(c => {
+              const punted = puntedCats.has(c.key)
+              return (
+                <button
+                  key={c.key}
+                  className={`rank-pill rank-pill-punt${punted ? ' punted' : ''}`}
+                  onClick={() => setPuntedCats(prev => {
+                    const next = new Set(prev)
+                    punted ? next.delete(c.key) : next.add(c.key)
+                    return next
+                  })}
+                >{c.label}</button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {loading && <p className="rankings-loading">Computing projections…</p>}
@@ -1041,7 +1117,8 @@ function ProjectionsPage({ onSelectPlayer }) {
                   GP <SortIcon col="gp" />
                 </th>
                 {PROJ_COLS.map(c => (
-                  <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
+                  <th key={c.key} className="num" onClick={() => handleSort(c.key)}
+                      style={{ cursor: 'pointer', opacity: puntedCats.has(c.key) ? 0.3 : 1 }}>
                     {c.label} <SortIcon col={c.key} />
                     {!c.noZ && (
                       <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
@@ -1069,18 +1146,25 @@ function ProjectionsPage({ onSelectPlayer }) {
                   <td className="muted" style={{ fontSize: '11px' }}>{posAbbr(p.position)}</td>
                   <td className="num mono">{p.gp}</td>
                   {PROJ_COLS.map(c => {
-                    const z    = p[`z_${c.key}`]
-                    const zAdj = (z != null && c.lowerBetter) ? -z : z
-                    const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                    const punted = puntedCats.has(c.key)
+                    const z = c.noZ ? null
+                      : viewMode === 'totals' && !PROJ_PCT_KEYS.has(c.key)
+                        ? getTotalsZ(p, c.key)
+                        : p[`z_${c.key}`]
+                    const zAdj   = (z != null && c.lowerBetter) ? -z : z
+                    const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                    const displayFmt = isTotalsKey(c.key)
+                      ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
+                      : fmt(p[c.key], c.pct)
                     return (
-                      <td key={c.key} className="num mono rank-stat-cell">
-                        <div>{fmt(p[c.key], c.pct)}</div>
+                      <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
+                        <div>{displayFmt}</div>
                         {!c.noZ && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
                       </td>
                     )
                   })}
                   <td className="num mono z-total-cell">
-                    {p.period_value != null ? (p.period_value > 0 ? '+' : '') + p.period_value.toFixed(1) : '—'}
+                    {(() => { const v = getEffectiveValue(p); return v != null ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
                   </td>
                 </tr>
               ))}
