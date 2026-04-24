@@ -2511,35 +2511,51 @@ export default function App() {
               const minScale = effMin / baseMpg
               const usgScale = effUsg / baseUsg
 
-              // Efficiency decay: empirically ~0.3% FG% per +1% USG (from within-player YoY analysis)
-              // Only applies when usage is increasing; no boost for lower usage.
               const deltaUsg = effUsg - baseUsg
-              const effDecay = deltaUsg > 0 ? Math.max(0.85, 1 - deltaUsg * 0.003) : 1.0
 
-              // Defensive stats scale sub-linearly with minutes (α=0.75 from YoY regression)
-              // BLK shows strongest degradation (r=-0.136), REB/STL also confirmed negative
+              // PTS/3PM: usage volume scale + small efficiency decay on FG%
+              // Empirical: -0.045% FG% per +1% USG (Part 1 YoY analysis, n=1430)
+              // Decay only when usage increases; no boost for lower usage
+              const fgDecay  = deltaUsg > 0 ? Math.max(0.90, 1 - deltaUsg * 0.00045) : 1.0
+              const usgScale = effUsg / baseUsg
+
+              // Defensive stats: sub-linear with minutes (α=0.75, Parts 2 confirmed)
+              // Usage → defense: no penalty — YoY data shows no negative relationship
               const defScale = Math.pow(minScale, 0.75)
 
+              // FG%/FT%: apply usage decay to FG% only; FT% has no meaningful causal signal
+              // Minutes → shooting: positive in data but selection effect, not applied causally
+              const projFgPct = base.fg_pct != null
+                ? +(base.fg_pct + deltaUsg * (-0.045)).toFixed(1)
+                : null
+              const projFtPct = base.ft_pct != null
+                ? +base.ft_pct.toFixed(1)   // unchanged — no causal relationship found
+                : null
+
               const proj = {
-                pts:  +(base.pts  * minScale * usgScale * effDecay).toFixed(1),
-                ast:  +(base.ast  * minScale * usgScale).toFixed(1),
-                tov:  +(base.tov  * minScale * usgScale * 1.08).toFixed(1),
-                fg3m: +(base.fg3m * minScale * usgScale * effDecay).toFixed(1),
-                reb:  +(base.reb  * defScale).toFixed(1),
-                stl:  +(base.stl  * defScale).toFixed(1),
-                blk:  +(base.blk  * defScale).toFixed(1),
+                pts:    +(base.pts  * minScale * usgScale * fgDecay).toFixed(1),
+                ast:    +(base.ast  * minScale * usgScale).toFixed(1),
+                tov:    +(base.tov  * minScale * usgScale * 1.08).toFixed(1),
+                fg3m:   +(base.fg3m * minScale * usgScale * fgDecay).toFixed(1),
+                reb:    +(base.reb  * defScale).toFixed(1),
+                stl:    +(base.stl  * defScale).toFixed(1),
+                blk:    +(base.blk  * defScale).toFixed(1),
+                fg_pct: projFgPct,
+                ft_pct: projFtPct,
               }
 
               const changed = effMin !== baseMpg || effUsg !== baseUsg
 
               const USAGE_ROWS = [
-                { key: 'pts',  label: 'PTS', tag: 'USG', invert: false },
-                { key: 'ast',  label: 'AST', tag: 'USG', invert: false },
-                { key: 'tov',  label: 'TOV', tag: 'USG', invert: true  },
-                { key: 'fg3m', label: '3PM', tag: 'USG', invert: false },
-                { key: 'reb',  label: 'REB', tag: 'MIN', invert: false },
-                { key: 'stl',  label: 'STL', tag: 'MIN', invert: false },
-                { key: 'blk',  label: 'BLK', tag: 'MIN', invert: false },
+                { key: 'pts',    label: 'PTS',  tag: 'USG', pct: false },
+                { key: 'ast',    label: 'AST',  tag: 'USG', pct: false },
+                { key: 'tov',    label: 'TOV',  tag: 'USG', pct: false },
+                { key: 'fg3m',   label: '3PM',  tag: 'USG', pct: false },
+                { key: 'fg_pct', label: 'FG%',  tag: 'USG', pct: true  },
+                { key: 'ft_pct', label: 'FT%',  tag: '—',   pct: true  },
+                { key: 'reb',    label: 'REB',  tag: 'MIN', pct: false },
+                { key: 'stl',    label: 'STL',  tag: 'MIN', pct: false },
+                { key: 'blk',    label: 'BLK',  tag: 'MIN', pct: false },
               ]
 
               return (
@@ -2579,11 +2595,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    {changed && deltaUsg > 5 && (
+                    {changed && defScale !== minScale && (
                       <p className="usage-decay-note">
-                        Efficiency decay: {((1 - effDecay) * 100).toFixed(1)}% on PTS &amp; 3PM
-                        · REB/STL/BLK scale at min^0.75
-                        (USG +{deltaUsg.toFixed(1)}%)
+                        REB/STL/BLK scaled at min^0.75 (sub-linear — empirically confirmed).
+                        {deltaUsg > 5 ? ` FG% adjusted ${(deltaUsg * -0.045).toFixed(2)}% for USG increase.` : ''}
                       </p>
                     )}
 
@@ -2598,23 +2613,23 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {USAGE_ROWS.map(({ key, label, tag, invert }) => {
-                          const bv    = base[key] ?? 0
-                          const pv    = proj[key]
+                        {USAGE_ROWS.map(({ key, label, tag, pct }) => {
+                          const bv  = base[key] ?? null
+                          const pv  = proj[key] ?? null
+                          if (bv === null || pv === null) return null
                           const delta = pv - bv
-                          const good  = invert ? delta < -0.05 : delta > 0.05
-                          const bad   = invert ? delta > 0.05  : delta < -0.05
-                          const color = good ? '#4dffb4' : bad ? '#ff6b6b' : 'var(--muted)'
+                          const fmt = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
+                          const fmtD = d => `${d >= 0 ? '+' : ''}${pct ? d.toFixed(1) + '%' : d.toFixed(1)}`
                           return (
                             <tr key={key}>
                               <td className="usage-td-stat">{label}</td>
-                              <td className="usage-td-num muted">{bv.toFixed(1)}</td>
-                              <td className="usage-td-num" style={{ color: changed ? color : 'inherit' }}>{pv.toFixed(1)}</td>
-                              <td className="usage-td-num usage-delta" style={{ color }}>
-                                {changed ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}` : '—'}
+                              <td className="usage-td-num muted">{fmt(bv)}</td>
+                              <td className="usage-td-num">{fmt(pv)}</td>
+                              <td className="usage-td-num usage-delta">
+                                {changed ? fmtD(delta) : '—'}
                               </td>
                               <td className="usage-td-tag">
-                                <span className={`usage-tag${tag === 'MIN' ? ' usage-tag-min' : ''}`}>{tag}</span>
+                                <span className={`usage-tag${tag === 'MIN' ? ' usage-tag-min' : tag === '—' ? ' usage-tag-min' : ''}`}>{tag}</span>
                               </td>
                             </tr>
                           )
