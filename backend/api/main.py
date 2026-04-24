@@ -796,8 +796,8 @@ def get_aging_curves():
     conn.close()
 
     df = assign_archetypes(df)
-    df = df.dropna(subset=['archetype'])
-    df['age_int'] = df['age'].apply(lambda a: int(a))
+    df = df.dropna(subset=['archetype', 'age'])
+    df['age_int'] = df['age'].astype(int)
 
     result = {}
     for archetype in ARCHETYPES:
