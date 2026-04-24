@@ -1734,10 +1734,20 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     ).fetchall()
     inj_by_t01 = {r["tank01_id"]: {"designation": r["designation"], "description": r["description"]} for r in inj_rows}
     # Slug lookup by Tank01 playerID (for clickable player names)
-    slug_rows = conn.execute(
-        "SELECT tank01_id, br_slug FROM tank01_player_map WHERE tank01_id IS NOT NULL"
+    try:
+        slug_rows = conn.execute(
+            "SELECT tank01_id, br_slug FROM tank01_player_map WHERE tank01_id IS NOT NULL"
+        ).fetchall()
+        slug_by_t01 = {r["tank01_id"]: r["br_slug"] for r in slug_rows}
+    except Exception:
+        slug_by_t01 = {}
+    # Fallback: name → slug from players table (covers when tank01_player_map is empty)
+    name_rows = conn.execute(
+        "SELECT slug, full_name FROM players WHERE season = (SELECT MAX(season) FROM players)"
     ).fetchall()
-    slug_by_t01 = {r["tank01_id"]: r["br_slug"] for r in slug_rows}
+    slug_by_name = {}
+    for r in name_rows:
+        slug_by_name[r["full_name"].lower()] = r["slug"]
     conn.close()
 
     def zs(stat, val):
@@ -1793,7 +1803,7 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
 
             players.append({
                 "name":       p.get("longName", ""),
-                "slug":       slug_by_t01.get(pid),
+                "slug":       slug_by_t01.get(pid) or slug_by_name.get(p.get("longName", "").lower()),
                 "team":       p.get("teamAbv", ""),
                 "min":        int(mins),
                 "plus_minus": pm,
