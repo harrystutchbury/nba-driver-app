@@ -643,8 +643,8 @@ function InjuriesPage({ onSelectPlayer }) {
               <div key={i} className="inj-player-row">
                 <InjuryBadge injury={p} compact={false} />
                 <span
-                  className={`inj-player-name${p.player_slug && onSelectPlayer ? ' rank-player-link' : ''}`}
-                  onClick={() => p.player_slug && onSelectPlayer && onSelectPlayer({ slug: p.player_slug, name: p.name })}
+                  className={`inj-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                  onClick={() => p.slug && onSelectPlayer && onSelectPlayer(p)}
                 >{p.name}</span>
                 {p.description && <span className="inj-desc">{p.description}</span>}
               </div>
