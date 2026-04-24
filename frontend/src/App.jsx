@@ -433,6 +433,7 @@ function RankingsPage({ onSelectPlayer }) {
   const [loading,  setLoading]  = useState(false)
   const [sortKey,  setSortKey]  = useState('z_total')
   const [sortAsc,  setSortAsc]  = useState(false)
+  const [viewMode, setViewMode] = useState('pg')  // 'pg' | 'totals'
 
   useEffect(() => {
     setLoading(true)
@@ -449,9 +450,18 @@ function RankingsPage({ onSelectPlayer }) {
     else { setSortKey(key); setSortAsc(key === 'tov') }
   }
 
+  const PCT_KEYS = new Set(['fg_pct', 'ft_pct'])
+  const isTotalsKey = (key) => viewMode === 'totals' && !PCT_KEYS.has(key) && !key.startsWith('z_') && key !== 'z_total' && key !== 'gp' && key !== 'min_pg'
+  const totalsVal = (p, key) => {
+    const v = p[key]
+    if (v == null) return null
+    return Math.round(v * (p.gp ?? 0))
+  }
+  const getSortVal = (p, key) => isTotalsKey(key) ? (totalsVal(p, key) ?? -Infinity) : (p[key] ?? -Infinity)
+
   const sorted = players ? [...players].sort((a, b) => {
-    const av = a[sortKey] ?? -Infinity
-    const bv = b[sortKey] ?? -Infinity
+    const av = getSortVal(a, sortKey)
+    const bv = getSortVal(b, sortKey)
     return sortAsc ? av - bv : bv - av
   }) : []
 
@@ -484,6 +494,13 @@ function RankingsPage({ onSelectPlayer }) {
             ))}
           </div>
         </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">View</span>
+          <div className="rank-pills">
+            <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
+            <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
+          </div>
+        </div>
       </div>
 
       {loading && <p className="rankings-loading">Loading…</p>}
@@ -507,9 +524,11 @@ function RankingsPage({ onSelectPlayer }) {
                 {RANK_COLS.map(c => (
                   <th key={c.key} className="num" onClick={() => handleSort(c.key)} style={{ cursor: 'pointer' }}>
                     {c.label} <SortIcon col={c.key} />
-                    <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
-                      z <SortIcon col={`z_${c.key}`} />
-                    </div>
+                    {viewMode === 'pg' && (
+                      <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
+                        z <SortIcon col={`z_${c.key}`} />
+                      </div>
+                    )}
                   </th>
                 ))}
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
@@ -537,10 +556,14 @@ function RankingsPage({ onSelectPlayer }) {
                       const z = p[`z_${c.key}`]
                       const zAdj = (z != null && c.lowerBetter) ? -z : z
                       const zColor = zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                      const displayVal = isTotalsKey(c.key) ? totalsVal(p, c.key) : p[c.key]
+                      const displayFmt = isTotalsKey(c.key)
+                        ? (displayVal == null ? '—' : displayVal)
+                        : fmt(p[c.key], c.pct)
                       return (
                         <td key={c.key} className="num mono rank-stat-cell">
-                          <div>{fmt(p[c.key], c.pct)}</div>
-                          <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>
+                          <div>{displayFmt}</div>
+                          {viewMode === 'pg' && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
                         </td>
                       )
                     })}
