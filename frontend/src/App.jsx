@@ -1282,7 +1282,7 @@ export default function App() {
         tension: 0.2,
         spanGaps: false,
         fill: '+1',  // fill down to next dataset (pessimistic)
-        backgroundColor: 'rgba(124,140,255,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
       },
       // Pessimistic band bottom
       {
@@ -1321,20 +1321,30 @@ export default function App() {
   const trendChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       datalabels: { display: false },
       legend: { display: false },
       tooltip: {
+        mode: 'index',
+        intersect: false,
+        filter: (item) => item.parsed.y !== null,
         callbacks: {
           label: (ctx) => {
             const val = ctx.parsed.y
-            return (projStat === 'fg_pct' || projStat === 'ft_pct') ? ` ${val}%` : ` ${val}`
+            if (val === null || val === undefined) return null
+            const formatted = (projStat === 'fg_pct' || projStat === 'ft_pct') ? `${val}%` : val
+            return ` ${ctx.dataset.label}: ${formatted}`
           },
+          labelColor: (ctx) => ({
+            borderColor: ctx.dataset.borderColor,
+            backgroundColor: ctx.dataset.borderColor,
+          }),
         },
         backgroundColor: '#1c1c1c',
-        borderColor: '#2a2a2a',
+        borderColor: '#333',
         borderWidth: 1,
-        titleColor: '#555',
+        titleColor: '#888',
         bodyColor: '#e8e8e8',
         titleFont: { family: "'DM Mono', monospace", size: 10 },
         bodyFont:  { family: "'DM Mono', monospace", size: 12 },
