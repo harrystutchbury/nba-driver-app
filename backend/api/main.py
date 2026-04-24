@@ -91,8 +91,14 @@ async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
     scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
+    # Injury sync every 3 hours so status stays fresh throughout the day
+    scheduler.add_job(
+        lambda: __import__('sync_injuries').sync(),
+        'interval', hours=3,
+        id='injury_sync',
+    )
     scheduler.start()
-    logger.info("Scheduler started — daily refresh at 08:00 UTC, schedule sync Mondays 09:00 UTC")
+    logger.info("Scheduler started — daily refresh 08:00 UTC, injury sync every 3h, schedule sync Mondays 09:00 UTC")
     yield
     scheduler.shutdown()
 
