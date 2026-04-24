@@ -1672,7 +1672,7 @@ def get_news():
         return cached["payload"]
 
     try:
-        data = _tank01_get("getNBANews", {"topNews": "true", "recentNews": "true"})
+        data = _tank01_get("getNBANews", {"recentNews": "true", "maxItems": "50"})
     except Exception as e:
         raise HTTPException(502, f"Tank01 news fetch failed: {e}")
 
@@ -1682,18 +1682,15 @@ def get_news():
 
     articles = []
     for item in body:
+        title = item.get("title") or ""
+        if not title:
+            continue
         articles.append({
-            "title":       item.get("title") or item.get("headline") or "",
-            "description": item.get("description") or item.get("story") or "",
-            "player":      item.get("player") or "",
-            "playerID":    item.get("playerID") or "",
-            "team":        item.get("team") or "",
-            "link":        item.get("link") or item.get("url") or "",
-            "pub_date":    item.get("pubDate") or item.get("date") or "",
+            "title":      title,
+            "link":       item.get("link") or "",
+            "image":      item.get("image") or "",
+            "playerIDs":  item.get("playerIDs") or [],
         })
-
-    # Filter out empty titles
-    articles = [a for a in articles if a["title"]]
 
     payload = {"articles": articles, "fetched_at": int(now)}
     _news_cache["data"] = {"payload": payload, "ts": now}

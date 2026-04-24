@@ -722,30 +722,21 @@ function NewsSection() {
   if (error)   return <div className="bs-error">News unavailable: {error}</div>
   if (!data?.articles?.length) return <div className="bs-empty">No news articles found.</div>
 
-  function formatPubDate(raw) {
-    if (!raw) return ''
-    // Tank01 pubDate is often a timestamp string like "1714012800" or ISO
-    const ts = Number(raw)
-    const d = isNaN(ts) ? new Date(raw) : new Date(ts * 1000)
-    if (isNaN(d.getTime())) return raw
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
+  // ESPN generic headshot URL — skip it, only show real player images
+  const isGenericImage = url => !url || url.includes('nophoto')
 
   return (
     <div className="news-list">
       {data.articles.map((a, i) => (
         <div key={i} className="news-item">
-          <div className="news-meta">
-            {a.player && <span className="news-player">{a.player}</span>}
-            {a.team   && <span className="news-team">{a.team}</span>}
-            {a.pub_date && <span className="news-date">{formatPubDate(a.pub_date)}</span>}
-          </div>
+          {!isGenericImage(a.image) && (
+            <img className="news-img" src={a.image} alt="" />
+          )}
           <div className="news-title">
             {a.link
               ? <a href={a.link} target="_blank" rel="noopener noreferrer">{a.title}</a>
               : a.title}
           </div>
-          {a.description && <div className="news-desc">{a.description}</div>}
         </div>
       ))}
     </div>
