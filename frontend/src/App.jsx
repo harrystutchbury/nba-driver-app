@@ -811,7 +811,7 @@ function BoxScoreTable({ players, onSelectPlayer }) {
 }
 
 function BoxScorePage({ onSelectPlayer }) {
-  const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
+  const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
   const [date, setDate]     = useState(todayStr())
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
