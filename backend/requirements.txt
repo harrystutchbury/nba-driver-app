@@ -11,3 +11,4 @@ rapidfuzz==3.9.3
 apscheduler==3.10.4
 python-jose[cryptography]==3.3.0
 requests==2.32.3
+espn-api

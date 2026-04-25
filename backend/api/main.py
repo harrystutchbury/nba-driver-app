@@ -2550,14 +2550,22 @@ def yahoo_callback(code: str = Query(...), state: str = Query(...)):
 @fantasy_router.get("/status")
 def fantasy_status(current_user: str = Depends(get_current_user)):
     conn = get_conn()
-    row = conn.execute(
-        "SELECT provider, league_key, team_key, updated_at FROM fantasy_connections WHERE username=?",
+    rows = conn.execute(
+        "SELECT provider, league_key, team_key FROM fantasy_connections WHERE username=?",
         [current_user]
-    ).fetchone()
+    ).fetchall()
     conn.close()
-    if not row:
-        return {"connected": False}
-    return {"connected": True, "provider": row["provider"], "league_key": row["league_key"], "team_key": row["team_key"]}
+    result = {}
+    for row in rows:
+        result[row["provider"]] = {
+            "connected": True,
+            "league_key": row["league_key"],
+            "team_key": row["team_key"],
+        }
+    for p in ("yahoo", "espn"):
+        if p not in result:
+            result[p] = {"connected": False}
+    return result
 
 
 @fantasy_router.get("/leagues")
@@ -2765,6 +2773,160 @@ def get_roster(current_user: str = Depends(get_current_user)):
 def disconnect_fantasy(current_user: str = Depends(get_current_user)):
     conn = get_conn()
     conn.execute("DELETE FROM fantasy_connections WHERE username=? AND provider='yahoo'", [current_user])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+# ── ESPN endpoints ─────────────────────────────────────────────────────────────
+
+def _espn_league(conn, username: str):
+    """Return an initialised espn_api League object for the user."""
+    from espn_api.basketball import League as EspnLeague
+    row = conn.execute(
+        "SELECT access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [username]
+    ).fetchone()
+    if not row or not row["league_key"]:
+        raise HTTPException(status_code=400, detail="ESPN not connected or no league selected")
+    try:
+        league = EspnLeague(
+            league_id=int(row["league_key"]),
+            year=2026,
+            espn_s2=row["access_token"],
+            swid=row["refresh_token"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"ESPN API error: {e}")
+    return league
+
+
+@fantasy_router.post("/espn/connect")
+def espn_connect(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """Save ESPN cookies and league ID. Validates by loading the league."""
+    from espn_api.basketball import League as EspnLeague
+    espn_s2  = (body.get("espn_s2") or "").strip()
+    swid     = (body.get("swid") or "").strip()
+    league_id = str(body.get("league_id") or "").strip()
+    if not espn_s2 or not swid or not league_id:
+        raise HTTPException(status_code=422, detail="espn_s2, swid and league_id are required")
+    # Validate credentials by loading the league
+    try:
+        EspnLeague(league_id=int(league_id), year=2026, espn_s2=espn_s2, swid=swid)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not connect to ESPN league: {e}")
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO fantasy_connections (username, provider, access_token, refresh_token, league_key)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(username, provider) DO UPDATE SET
+            access_token=excluded.access_token,
+            refresh_token=excluded.refresh_token,
+            league_key=excluded.league_key,
+            team_key=NULL,
+            updated_at=datetime('now')
+    """, [current_user, "espn", espn_s2, swid, league_id])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@fantasy_router.get("/espn/teams")
+def espn_teams(current_user: str = Depends(get_current_user)):
+    """List all teams in the ESPN league so the user can identify theirs."""
+    conn = get_conn()
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+    teams = []
+    for t in league.teams:
+        teams.append({
+            "team_id": str(t.team_id),
+            "name": t.team_name,
+            "owner": f"{getattr(t, 'owner', '')}".strip(),
+            "wins": t.wins,
+            "losses": t.losses,
+        })
+    return {"teams": teams}
+
+
+@fantasy_router.post("/espn/select-team")
+def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    team_id = str(body.get("team_id") or "").strip()
+    if not team_id:
+        raise HTTPException(status_code=422, detail="team_id required")
+    conn = get_conn()
+    conn.execute(
+        "UPDATE fantasy_connections SET team_key=?, updated_at=datetime('now') WHERE username=? AND provider='espn'",
+        [team_id, current_user]
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@fantasy_router.get("/espn/league")
+def espn_league(current_user: str = Depends(get_current_user)):
+    """Return ESPN league standings."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    my_team_id = fc["team_key"] if fc else None
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+    standings = []
+    for t in sorted(league.teams, key=lambda x: x.standing):
+        standings.append({
+            "team_id": str(t.team_id),
+            "name": t.team_name,
+            "wins": t.wins,
+            "losses": t.losses,
+            "ties": getattr(t, "ties", 0),
+            "points_for": round(t.points_for, 1) if hasattr(t, "points_for") else None,
+            "is_my_team": str(t.team_id) == str(my_team_id),
+        })
+    return {"standings": standings, "league_name": league.settings.name}
+
+
+@fantasy_router.get("/espn/roster")
+def espn_roster(current_user: str = Depends(get_current_user)):
+    """Return the user's ESPN roster."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No team selected")
+    my_team_id = fc["team_key"]
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+    my_team = next((t for t in league.teams if str(t.team_id) == str(my_team_id)), None)
+    if not my_team:
+        raise HTTPException(status_code=404, detail="Team not found in league")
+    players = []
+    for p in my_team.roster:
+        players.append({
+            "name": p.name,
+            "position": getattr(p, "position", None),
+            "team": getattr(p, "proTeam", None),
+            "injury_status": getattr(p, "injuryStatus", "Active"),
+        })
+    return {"players": players, "team_name": my_team.team_name}
+
+
+@fantasy_router.delete("/espn/disconnect")
+def espn_disconnect(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    conn.execute("DELETE FROM fantasy_connections WHERE username=? AND provider='espn'", [current_user])
     conn.commit()
     conn.close()
     return {"ok": True}
