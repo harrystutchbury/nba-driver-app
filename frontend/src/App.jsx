@@ -123,35 +123,58 @@ function AccountModal({ onClose, onTokenRefresh }) {
 // ── Login page ────────────────────────────────────────────────────────────────
 
 function LoginPage({ onLogin }) {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error,    setError]    = useState(null)
-  const [loading,  setLoading]  = useState(false)
-  const [mode,     setMode]     = useState('login') // 'login' | 'register'
+  const resetToken = new URLSearchParams(window.location.search).get('reset_token')
+  const [username,  setUsername]  = useState('')
+  const [password,  setPassword]  = useState('')
+  const [error,     setError]     = useState(null)
+  const [info,      setInfo]      = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [mode,      setMode]      = useState(resetToken ? 'reset' : 'login')
+
+  function setModeClean(m) { setMode(m); setError(null); setInfo(null) }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(data.detail || (mode === 'register' ? 'Registration failed — please try again' : 'Invalid email or password'))
-        setLoading(false)
-        return
+    setLoading(true); setError(null); setInfo(null)
+
+    if (mode === 'forgot') {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: username }),
+      }).catch(() => null)
+      setLoading(false)
+      setInfo('If that email is registered you\'ll receive a reset link shortly.')
+      return
+    }
+
+    if (mode === 'reset') {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, password }),
+      }).catch(() => null)
+      if (!res?.ok) {
+        const data = await res?.json().catch(() => ({}))
+        setError(data?.detail || 'Reset failed — the link may have expired')
+        setLoading(false); return
       }
       const { token } = await res.json()
+      window.history.replaceState({}, '', '/')
       onLogin(token)
-    } catch {
-      setError('Request failed — please try again')
-      setLoading(false)
+      return
     }
+
+    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
+    const res = await fetch(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).catch(() => null)
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => ({}))
+      setError(data?.detail || (mode === 'register' ? 'Registration failed — please try again' : 'Invalid email or password'))
+      setLoading(false); return
+    }
+    const { token } = await res.json()
+    onLogin(token)
   }
 
   return (
@@ -160,34 +183,33 @@ function LoginPage({ onLogin }) {
         <h1 className="login-title">NBA Driver</h1>
         <p className="login-subtitle">Fantasy basketball intelligence</p>
         <form onSubmit={handleSubmit} className="login-form">
-          <input
-            className="login-input"
-            type="email"
-            placeholder="Email"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            autoFocus
-            autoComplete="email"
-          />
-          <input
-            className="login-input"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+          {mode === 'reset' ? <>
+            <p className="login-reset-hint">Enter your new password below.</p>
+            <input className="login-input" type="password" placeholder="New password"
+              value={password} onChange={e => setPassword(e.target.value)} autoFocus autoComplete="new-password" />
+          </> : <>
+            <input className="login-input" type="email" placeholder="Email"
+              value={username} onChange={e => setUsername(e.target.value)} autoFocus autoComplete="email" />
+            {mode !== 'forgot' && (
+              <input className="login-input" type="password" placeholder="Password"
+                value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+            )}
+          </>}
           {error && <div className="login-error">{error}</div>}
+          {info  && <div className="acct-ok">{info}</div>}
           <button className="login-btn" type="submit" disabled={loading}>
-            {loading ? (mode === 'register' ? 'Creating…' : 'Signing in…') : (mode === 'register' ? 'Create account' : 'Sign in')}
+            {loading ? '…' : mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Set new password' : 'Sign in'}
           </button>
         </form>
-        <button
-          className="login-toggle"
-          onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(null) }}
-        >
-          {mode === 'login' ? 'Create an account' : '← Back to sign in'}
-        </button>
+        <div className="login-footer">
+          {mode === 'login' && <>
+            <button className="login-toggle" onClick={() => setModeClean('forgot')}>Forgot password?</button>
+            <button className="login-toggle" onClick={() => setModeClean('register')}>Create an account</button>
+          </>}
+          {mode !== 'login' && mode !== 'reset' && (
+            <button className="login-toggle" onClick={() => setModeClean('login')}>← Back to sign in</button>
+          )}
+        </div>
       </div>
     </div>
   )

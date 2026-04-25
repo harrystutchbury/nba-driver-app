@@ -186,6 +186,14 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token      TEXT PRIMARY KEY,
+            username   TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

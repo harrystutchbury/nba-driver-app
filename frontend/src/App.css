@@ -198,6 +198,19 @@
   color: var(--accent);
 }
 
+.login-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.login-reset-hint {
+  color: #888;
+  font-size: 0.82rem;
+  margin: 0 0 4px;
+}
+
 /* ── Logout button ───────────────────────────────────────── */
 
 .logout-btn {

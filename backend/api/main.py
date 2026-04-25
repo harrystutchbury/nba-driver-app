@@ -28,6 +28,10 @@ from datetime import datetime
 from jose import JWTError, jwt
 import hashlib
 import secrets as _secrets
+import smtplib
+import ssl
+from email.message import EmailMessage
+from datetime import timedelta
 
 import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -69,6 +73,32 @@ def _verify_password(password: str, stored: str) -> bool:
         return _secrets.compare_digest(_hash_password(password, salt), hashed)
     except Exception:
         return False
+
+
+def _send_reset_email(to_email: str, reset_link: str):
+    host    = os.environ.get("SMTP_HOST", "")
+    port    = int(os.environ.get("SMTP_PORT", "587"))
+    user    = os.environ.get("SMTP_USER", "")
+    pw      = os.environ.get("SMTP_PASS", "")
+    sender  = os.environ.get("SMTP_FROM", user)
+    if not all([host, user, pw]):
+        logger.warning("SMTP not configured — reset link: %s", reset_link)
+        return
+    msg = EmailMessage()
+    msg["Subject"] = "Reset your NBA Driver password"
+    msg["From"]    = sender
+    msg["To"]      = to_email
+    msg.set_content(
+        f"Hi,\n\nClick the link below to reset your password. "
+        f"It expires in 1 hour.\n\n{reset_link}\n\n"
+        f"If you didn't request this, you can ignore this email.\n"
+    )
+    ctx = ssl.create_default_context()
+    with smtplib.SMTP(host, port) as smtp:
+        smtp.ehlo()
+        smtp.starttls(context=ctx)
+        smtp.login(user, pw)
+        smtp.send_message(msg)
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)) -> str:
@@ -2326,6 +2356,61 @@ def update_me(body: dict = Body(...), current_user: str = Depends(get_current_us
     updated_email = new_email or current_user
     token = jwt.encode({"sub": updated_email}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
+
+
+@auth_router.post("/forgot-password")
+def forgot_password(body: dict = Body(...)):
+    email = (body.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+    conn = get_conn()
+    row = conn.execute("SELECT username FROM users WHERE username = ?", [email]).fetchone()
+    if row:
+        token = _secrets.token_urlsafe(32)
+        expires = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO password_reset_tokens (token, username, expires_at) VALUES (?,?,?)",
+            [token, email, expires],
+        )
+        conn.commit()
+        app_url = os.environ.get("APP_URL", "https://nba-driver-app.onrender.com").rstrip("/")
+        try:
+            _send_reset_email(email, f"{app_url}?reset_token={token}")
+        except Exception:
+            logger.exception("Failed to send reset email to %s", email)
+    conn.close()
+    # Always return 200 — don't reveal whether the email exists
+    return {"ok": True}
+
+
+@auth_router.post("/reset-password")
+def reset_password(body: dict = Body(...)):
+    token    = (body.get("token") or "").strip()
+    new_pass = (body.get("password") or "").strip()
+    if not token or not new_pass:
+        raise HTTPException(status_code=400, detail="Token and new password required")
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT username, expires_at FROM password_reset_tokens WHERE token = ?", [token]
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    if datetime.utcnow().isoformat() > row["expires_at"]:
+        conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", [token])
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Reset link has expired — please request a new one")
+    username = row["username"]
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE username = ?",
+        [_make_password_hash(new_pass), username],
+    )
+    conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", [token])
+    conn.commit()
+    conn.close()
+    jwt_token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"token": jwt_token}
 
 
 @auth_router.post("/login")
