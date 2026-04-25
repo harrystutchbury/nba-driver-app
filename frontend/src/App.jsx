@@ -765,7 +765,7 @@ function DepthChartsPage({ onSelectPlayer }) {
   useEffect(() => {
     setLoading(true)
     fetch('/api/depth-charts')
-      .then(r => r.ok ? r.json() : Promise.reject('Failed to load'))
+      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Failed to load')))
       .then(d => { setTeams(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [])
