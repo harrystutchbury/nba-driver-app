@@ -3018,6 +3018,91 @@ def espn_disconnect(current_user: str = Depends(get_current_user)):
     return {"ok": True}
 
 
+@fantasy_router.get("/espn/matchup")
+def espn_matchup(current_user: str = Depends(get_current_user)):
+    """Return user's current matchup from ESPN."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No team selected")
+    my_team_id = str(fc["team_key"])
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+
+    try:
+        scores = league.box_scores()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not load matchup: {e}")
+
+    my_matchup = next(
+        (m for m in scores
+         if str(getattr(m.home_team, 'team_id', '')) == my_team_id
+         or str(getattr(m.away_team, 'team_id', '')) == my_team_id),
+        None
+    )
+    if not my_matchup:
+        return {"matchup": None, "message": "No active matchup found"}
+
+    home_id = str(getattr(my_matchup.home_team, 'team_id', ''))
+    i_am_home = home_id == my_team_id
+
+    my_team   = my_matchup.home_team if i_am_home else my_matchup.away_team
+    opp_team  = my_matchup.away_team if i_am_home else my_matchup.home_team
+    my_score  = getattr(my_matchup, 'home_score' if i_am_home else 'away_score', 0)
+    opp_score = getattr(my_matchup, 'away_score' if i_am_home else 'home_score', 0)
+
+    # Category breakdown if available (H2H_CATEGORY leagues)
+    categories = []
+    scoring_type = getattr(league.settings, 'scoring_type', '')
+    if 'CATEGORY' in scoring_type:
+        try:
+            # espn-api exposes per-category stats on each team's lineup
+            home_lineup = getattr(my_matchup, 'home_lineup', [])
+            away_lineup = getattr(my_matchup, 'away_lineup', [])
+            cat_names = [ESPN_STAT_MAP.get(c.category_id, f"stat_{c.category_id}")
+                         for c in getattr(my_matchup, 'winner', {}) and [] or []]
+            # Simpler: aggregate lineup stats per category
+            def sum_lineup(lineup, stat):
+                return sum(getattr(p, stat, 0) or 0 for p in lineup)
+
+            tracked_stats = ["points", "rebounds", "assists", "steals", "blocks", "turnovers",
+                             "field_goal_percentage", "free_throw_percentage", "made_threes"]
+            stat_labels   = ["PTS", "REB", "AST", "STL", "BLK", "TO", "FG%", "FT%", "3PM"]
+            neg_stats     = {"turnovers"}
+
+            my_lineup  = home_lineup if i_am_home else away_lineup
+            opp_lineup = away_lineup if i_am_home else home_lineup
+
+            for stat, label in zip(tracked_stats, stat_labels):
+                my_val  = round(sum_lineup(my_lineup, stat), 2)
+                opp_val = round(sum_lineup(opp_lineup, stat), 2)
+                winning = (my_val > opp_val) if stat not in neg_stats else (my_val < opp_val)
+                categories.append({
+                    "stat": label, "my_val": my_val, "opp_val": opp_val,
+                    "winning": winning, "tied": my_val == opp_val,
+                })
+        except Exception:
+            logger.exception("Could not parse category breakdown")
+
+    return {
+        "matchup": {
+            "my_team":   getattr(my_team,  'team_name', ''),
+            "opp_team":  getattr(opp_team, 'team_name', ''),
+            "my_score":  my_score,
+            "opp_score": opp_score,
+            "scoring_type": scoring_type,
+            "categories": categories,
+            "matchup_period": getattr(league, 'current_matchup_period', None),
+        }
+    }
+
+
 app.include_router(fantasy_router)
 app.include_router(auth_router)
 

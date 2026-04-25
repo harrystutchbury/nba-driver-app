@@ -34,6 +34,114 @@ function apiFetch(url, opts = {}) {
 
 // ── Account settings modal ────────────────────────────────────────────────────
 
+// ── Fantasy connections section (inside Account modal) ─────────────────────────
+
+function FantasyConnectionsSection() {
+  const [status,   setStatus]   = useState(null)
+  const [espnS2,   setEspnS2]   = useState('')
+  const [swid,     setSwid]     = useState('')
+  const [leagueId, setLeagueId] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [msg,      setMsg]      = useState(null)
+
+  useEffect(() => { loadStatus() }, [])
+
+  function loadStatus() {
+    apiFetch('/api/fantasy/status').then(r => r.ok ? r.json() : null).then(d => { if (d) setStatus(d) }).catch(() => {})
+  }
+
+  async function handleEspnConnect(e) {
+    e.preventDefault(); setLoading(true); setMsg(null)
+    try {
+      const res = await apiFetch('/api/fantasy/espn/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ espn_s2: espnS2, swid, league_id: leagueId }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      setShowForm(false); setEspnS2(''); setSwid(''); setLeagueId('')
+      setMsg({ type: 'ok', text: 'ESPN connected! Visit the Fantasy tab to select your team.' })
+      loadStatus()
+    } catch (e) { setMsg({ type: 'err', text: e.message }) }
+    setLoading(false)
+  }
+
+  async function handleEspnDisconnect() {
+    if (!confirm('Disconnect ESPN Fantasy?')) return
+    await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
+    loadStatus()
+  }
+
+  async function handleYahooConnect() {
+    setLoading(true)
+    try {
+      const res = await apiFetch('/api/fantasy/yahoo/auth-url')
+      if (!res.ok) throw new Error()
+      const { url } = await res.json()
+      window.location.href = url
+    } catch { setMsg({ type: 'err', text: 'Could not start Yahoo auth' }); setLoading(false) }
+  }
+
+  async function handleYahooDisconnect() {
+    if (!confirm('Disconnect Yahoo Fantasy?')) return
+    await apiFetch('/api/fantasy/disconnect', { method: 'DELETE' })
+    loadStatus()
+  }
+
+  if (!status) return <p className="modal-loading">Loading…</p>
+
+  const espn  = status.espn  || {}
+  const yahoo = status.yahoo || {}
+
+  return (
+    <div className="acct-fantasy-section">
+      <div className="acct-section-title">Fantasy Connections</div>
+      {msg && <div className={msg.type === 'ok' ? 'acct-ok' : 'login-error'} style={{marginBottom:8}}>{msg.text}</div>}
+
+      {/* ESPN */}
+      <div className="acct-provider-row">
+        <span className="acct-provider-name">ESPN</span>
+        {espn.connected ? (
+          <div className="acct-provider-connected">
+            <span className="acct-connected-badge">Connected ✓</span>
+            <button className="acct-disconnect-btn" onClick={handleEspnDisconnect}>Disconnect</button>
+          </div>
+        ) : (
+          <button className="acct-connect-btn" onClick={() => setShowForm(s => !s)}>
+            {showForm ? 'Cancel' : 'Connect ESPN'}
+          </button>
+        )}
+      </div>
+      {showForm && !espn.connected && (
+        <form onSubmit={handleEspnConnect} className="acct-espn-form">
+          <p className="fantasy-connect-sub">In Chrome on espn.com: DevTools → Application → Cookies → copy <code>espn_s2</code> and <code>SWID</code>.</p>
+          <input className="login-input" type="text" placeholder="espn_s2 cookie" value={espnS2} onChange={e => setEspnS2(e.target.value)} />
+          <input className="login-input" type="text" placeholder="SWID cookie  {xxxx-...}" value={swid} onChange={e => setSwid(e.target.value)} />
+          <input className="login-input" type="text" placeholder="League ID (from URL)" value={leagueId} onChange={e => setLeagueId(e.target.value)} />
+          <button className="login-btn" type="submit" disabled={loading || !espnS2 || !swid || !leagueId}>
+            {loading ? 'Connecting…' : 'Connect'}
+          </button>
+        </form>
+      )}
+
+      {/* Yahoo */}
+      <div className="acct-provider-row">
+        <span className="acct-provider-name">Yahoo</span>
+        {yahoo.connected ? (
+          <div className="acct-provider-connected">
+            <span className="acct-connected-badge">Connected ✓</span>
+            <button className="acct-disconnect-btn" onClick={handleYahooDisconnect}>Disconnect</button>
+          </div>
+        ) : (
+          <button className="acct-connect-btn" onClick={handleYahooConnect} disabled={loading}>
+            Connect Yahoo
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AccountModal({ onClose, onTokenRefresh }) {
   const [me,          setMe]          = useState(null)
   const [displayName, setDisplayName] = useState('')
@@ -115,6 +223,7 @@ function AccountModal({ onClose, onTokenRefresh }) {
             </button>
           </form>
         )}
+        <FantasyConnectionsSection />
       </div>
     </div>
   )
@@ -1757,6 +1866,9 @@ function CommentsSection({ playerSlug }) {
 
 // ── Shared standings + roster display ─────────────────────────────────────────
 
+
+// ── Scoring card ───────────────────────────────────────────────────────────────
+
 const SCORING_TYPE_LABEL = {
   H2H_CATEGORY: 'Head-to-Head Categories',
   H2H_POINTS:   'Head-to-Head Points',
@@ -1769,10 +1881,10 @@ function ScoringCard({ scoring }) {
   const items = (scoring.items || []).filter(it => it.points !== 0)
   return (
     <div className="dash-card">
-      <div className="dash-card-title">Scoring System — {label}</div>
+      <div className="dash-card-title">Scoring — {label}</div>
       {scoring.scoring_type === 'H2H_CATEGORY' ? (
         <div className="scoring-cats">
-          {(scoring.categories || items.map(i => i.stat)).map(cat => (
+          {(scoring.categories?.length ? scoring.categories : items.map(i => i.stat)).map(cat => (
             <span key={cat} className="scoring-cat">{cat}</span>
           ))}
         </div>
@@ -1793,334 +1905,197 @@ function ScoringCard({ scoring }) {
   )
 }
 
-function FantasyLeagueView({ league, roster, scoring, leagueName, onChangeTeam, onDisconnect, loading, msg, provider }) {
-  return (
-    <div className="fantasy-wrap">
-      <div className="fantasy-header">
-        <h2 className="fantasy-title">{leagueName || 'My League'}</h2>
-        <div className="fantasy-header-actions">
-          {onChangeTeam && <button className="fantasy-change-btn" onClick={onChangeTeam}>Change team</button>}
-          <button className="logout-btn" onClick={onDisconnect}>Disconnect {provider}</button>
-        </div>
-      </div>
-      {msg && <div className="login-error" style={{ margin: '0 0 12px' }}>{msg}</div>}
-      {loading && <div className="dash-empty">Loading…</div>}
-      {league && (
-        <div className="fantasy-grid">
-          <div className="dash-card">
-            <div className="dash-card-title">Standings</div>
-            <table className="dash-table">
-              <thead><tr><th>#</th><th>Team</th><th>W</th><th>L</th><th>Pts</th></tr></thead>
-              <tbody>
-                {(league.standings || []).map((t, i) => (
-                  <tr key={t.team_id || t.team_key} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                    <td>{i + 1}</td><td>{t.name}</td><td>{t.wins}</td><td>{t.losses}</td>
-                    <td>{t.points_for != null ? (+t.points_for).toFixed(1) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {roster && (
-            <div className="dash-card">
-              <div className="dash-card-title">My Roster{roster.team_name ? ` — ${roster.team_name}` : ''}</div>
-              <table className="dash-table">
-                <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Status</th></tr></thead>
-                <tbody>
-                  {(roster.players || roster).map((p, i) => (
-                    <tr key={p.name + i}>
-                      <td>{p.name}</td>
-                      <td>{p.team || p.proTeam || '—'}</td>
-                      <td>{p.position || (p.positions || []).join(', ') || '—'}</td>
-                      <td className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>{p.injury_status || 'Active'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <ScoringCard scoring={scoring} />
-        </div>
-      )}
-    </div>
-  )
-}
+// ── Team picker ────────────────────────────────────────────────────────────────
 
-// ── ESPN tab ───────────────────────────────────────────────────────────────────
+function EspnTeamPicker({ onPicked, onDisconnect }) {
+  const [teams,   setTeams]   = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [msg,     setMsg]     = useState(null)
 
-function EspnTab({ espnStatus, onStatusChange }) {
-  const connected  = espnStatus?.connected
-  const hasTeam    = connected && espnStatus?.team_key
+  useEffect(() => {
+    setLoading(true)
+    apiFetch('/api/fantasy/espn/teams')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setTeams(d.teams || []))
+      .catch(() => setMsg('Could not load teams'))
+      .finally(() => setLoading(false))
+  }, [])
 
-  const [espnS2,    setEspnS2]    = useState('')
-  const [swid,      setSwid]      = useState('')
-  const [leagueId,  setLeagueId]  = useState('')
-  const [teams,     setTeams]     = useState(null)
-  const [league,    setLeague]    = useState(null)
-  const [roster,    setRoster]    = useState(null)
-  const [scoring,   setScoring]   = useState(null)
-  const [loading,   setLoading]   = useState(false)
-  const [msg,       setMsg]       = useState(null)
-
-  async function handleConnect(e) {
-    e.preventDefault(); setLoading(true); setMsg(null)
-    try {
-      const res = await apiFetch('/api/fantasy/espn/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ espn_s2: espnS2, swid, league_id: leagueId }),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Connection failed') }
-      onStatusChange()
-    } catch (e) {
-      setMsg(e.message)
-    }
-    setLoading(false)
-  }
-
-  async function handleLoadTeams() {
-    setLoading(true); setMsg(null)
-    try {
-      const res = await apiFetch('/api/fantasy/espn/teams')
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
-      const d = await res.json()
-      setTeams(d.teams || [])
-    } catch (e) { setMsg(e.message) }
-    setLoading(false)
-  }
-
-  async function handleSelectTeam(teamId) {
-    setLoading(true); setMsg(null)
+  async function handleSelect(teamId) {
+    setLoading(true)
     try {
       const res = await apiFetch('/api/fantasy/espn/select-team', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ team_id: teamId }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
-      setTeams(null)
-      onStatusChange()
+      onPicked()
     } catch (e) { setMsg(e.message) }
     setLoading(false)
   }
 
-  async function handleLoadLeague() {
-    setLoading(true); setMsg(null)
-    try {
-      const [lRes, rRes, sRes] = await Promise.all([
-        apiFetch('/api/fantasy/espn/league'),
-        apiFetch('/api/fantasy/espn/roster'),
-        apiFetch('/api/fantasy/espn/scoring'),
-      ])
-      if (!lRes.ok || !rRes.ok) throw new Error('Failed to load ESPN data')
-      setLeague(await lRes.json())
-      setRoster(await rRes.json())
-      if (sRes.ok) setScoring(await sRes.json())
-    } catch (e) { setMsg(e.message) }
-    setLoading(false)
-  }
-
-  async function handleDisconnect() {
-    if (!confirm('Disconnect ESPN Fantasy?')) return
-    await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
-    setLeague(null); setRoster(null); setTeams(null); setScoring(null)
-    onStatusChange()
-  }
-
-  useEffect(() => {
-    if (hasTeam && !league && !loading) handleLoadLeague()
-  }, [espnStatus])
-
-  // Not connected — show cookie form
-  if (!connected) return (
-    <div className="fantasy-wrap">
-      <div className="fantasy-connect-card">
-        <h2 className="fantasy-connect-title">Connect ESPN Fantasy</h2>
-        <p className="fantasy-connect-sub">
-          ESPN requires two cookies from your browser. In Chrome, go to <strong>espn.com</strong>, open DevTools → Application → Cookies and copy <code>espn_s2</code> and <code>SWID</code>.
-        </p>
-        {msg && <div className="login-error">{msg}</div>}
-        <form onSubmit={handleConnect} className="acct-form">
-          <label className="acct-label">espn_s2 cookie</label>
-          <input className="login-input" type="text" value={espnS2} onChange={e => setEspnS2(e.target.value)} placeholder="AEB..." />
-          <label className="acct-label">SWID cookie</label>
-          <input className="login-input" type="text" value={swid} onChange={e => setSwid(e.target.value)} placeholder="{xxxxxxxx-...}" />
-          <label className="acct-label">League ID</label>
-          <input className="login-input" type="text" value={leagueId} onChange={e => setLeagueId(e.target.value)} placeholder="123456789" />
-          <p className="fantasy-connect-sub" style={{marginTop: 4}}>Find your League ID in the URL: fantasy.espn.com/basketball/league?leagueId=<strong>123456</strong></p>
-          <button className="login-btn" type="submit" disabled={loading || !espnS2 || !swid || !leagueId}>
-            {loading ? 'Connecting…' : 'Connect ESPN'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
-
-  // Connected, no team selected — show team picker
-  if (connected && !hasTeam) return (
+  return (
     <div className="fantasy-wrap">
       <div className="fantasy-connect-card">
         <h2 className="fantasy-connect-title">Select your team</h2>
-        <p className="fantasy-connect-sub">League connected. Which team is yours?</p>
+        <p className="fantasy-connect-sub">Which team is yours?</p>
         {msg && <div className="login-error">{msg}</div>}
-        {!teams ? (
-          <button className="login-btn" onClick={handleLoadTeams} disabled={loading}>
-            {loading ? 'Loading…' : 'Load teams'}
-          </button>
-        ) : (
+        {loading && <div className="dash-empty">Loading…</div>}
+        {teams && (
           <ul className="fantasy-league-list">
             {teams.map(t => (
               <li key={t.team_id} className="fantasy-league-item">
                 <span className="fantasy-league-name">{t.name}</span>
                 <span className="fantasy-league-meta">{t.owner || ''} · {t.wins}–{t.losses}</span>
-                <button className="fantasy-league-btn" onClick={() => handleSelectTeam(t.team_id)} disabled={loading}>Select</button>
+                <button className="fantasy-league-btn" onClick={() => handleSelect(t.team_id)} disabled={loading}>Select</button>
               </li>
             ))}
           </ul>
         )}
-        <button className="logout-btn" style={{ marginTop: 12 }} onClick={handleDisconnect}>Disconnect ESPN</button>
+        <button className="logout-btn" style={{ marginTop: 12 }} onClick={onDisconnect}>Disconnect ESPN</button>
       </div>
     </div>
-  )
-
-  // Connected + team selected
-  return (
-    <FantasyLeagueView
-      league={league}
-      roster={roster}
-      scoring={scoring}
-      leagueName={league?.league_name}
-      onChangeTeam={() => { onStatusChange({ ...espnStatus, team_key: null }); setLeague(null); setRoster(null); setScoring(null) }}
-      onDisconnect={handleDisconnect}
-      loading={loading}
-      msg={msg}
-      provider="ESPN"
-    />
   )
 }
 
-// ── Yahoo tab ──────────────────────────────────────────────────────────────────
+// ── Manager Dashboard ──────────────────────────────────────────────────────────
 
-function YahooTab({ yahooStatus, onStatusChange }) {
-  const connected = yahooStatus?.connected
-  const hasLeague = connected && yahooStatus?.league_key
-
-  const [leagues,  setLeagues]  = useState(null)
-  const [league,   setLeague]   = useState(null)
-  const [roster,   setRoster]   = useState(null)
-  const [loading,  setLoading]  = useState(false)
-  const [msg,      setMsg]      = useState(null)
-
-  async function handleConnect() {
-    setLoading(true)
-    try {
-      const res = await apiFetch('/api/fantasy/yahoo/auth-url')
-      if (!res.ok) throw new Error()
-      const { url } = await res.json()
-      window.location.href = url
-    } catch {
-      setMsg('Could not start Yahoo auth — please try again.')
-      setLoading(false)
-    }
-  }
-
-  async function handleLoadLeagues() {
-    setLoading(true); setMsg(null)
-    try {
-      const res = await apiFetch('/api/fantasy/leagues')
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
-      setLeagues((await res.json()).leagues || [])
-    } catch (e) { setMsg(e.message) }
-    setLoading(false)
-  }
-
-  async function handleSelectLeague(leagueKey) {
-    setLoading(true); setMsg(null)
-    try {
-      const res = await apiFetch('/api/fantasy/select-league', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ league_key: leagueKey }),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
-      setLeagues(null); onStatusChange()
-    } catch (e) { setMsg(e.message) }
-    setLoading(false)
-  }
-
-  async function handleLoadLeague() {
-    setLoading(true); setMsg(null)
-    try {
-      const [lRes, rRes] = await Promise.all([
-        apiFetch('/api/fantasy/league'),
-        apiFetch('/api/fantasy/roster'),
-      ])
-      if (!lRes.ok || !rRes.ok) throw new Error('Failed to load Yahoo data')
-      setLeague(await lRes.json())
-      setRoster(await rRes.json())
-    } catch (e) { setMsg(e.message) }
-    setLoading(false)
-  }
-
-  async function handleDisconnect() {
-    if (!confirm('Disconnect Yahoo Fantasy?')) return
-    await apiFetch('/api/fantasy/disconnect', { method: 'DELETE' })
-    setLeague(null); setRoster(null); setLeagues(null); onStatusChange()
-  }
+function ManagerDashboard() {
+  const [league,  setLeague]  = useState(null)
+  const [roster,  setRoster]  = useState(null)
+  const [scoring, setScoring] = useState(null)
+  const [matchup, setMatchup] = useState(undefined)
+  const [loading, setLoading] = useState(true)
+  const [msg,     setMsg]     = useState(null)
 
   useEffect(() => {
-    if (hasLeague && !league && !loading) handleLoadLeague()
-  }, [yahooStatus])
+    setLoading(true)
+    Promise.all([
+      apiFetch('/api/fantasy/espn/league').then(r => r.ok ? r.json() : null),
+      apiFetch('/api/fantasy/espn/roster').then(r => r.ok ? r.json() : null),
+      apiFetch('/api/fantasy/espn/scoring').then(r => r.ok ? r.json() : null),
+      apiFetch('/api/fantasy/espn/matchup').then(r => r.ok ? r.json() : null),
+    ]).then(([l, r, s, m]) => {
+      setLeague(l); setRoster(r); setScoring(s)
+      setMatchup(m?.matchup ?? null)
+    }).catch(() => setMsg('Failed to load fantasy data'))
+    .finally(() => setLoading(false))
+  }, [])
 
-  if (!connected) return (
-    <div className="fantasy-wrap">
-      <div className="fantasy-connect-card">
-        <h2 className="fantasy-connect-title">Connect Yahoo Fantasy</h2>
-        <p className="fantasy-connect-sub">Connect your Yahoo account via OAuth to see your league standings and roster.</p>
-        {msg && <div className="login-error">{msg}</div>}
-        <button className="login-btn" onClick={handleConnect} disabled={loading}>
-          {loading ? 'Redirecting…' : 'Connect Yahoo account'}
-        </button>
-      </div>
-    </div>
-  )
-
-  if (connected && !hasLeague) return (
-    <div className="fantasy-wrap">
-      <div className="fantasy-connect-card">
-        <h2 className="fantasy-connect-title">Select your league</h2>
-        {msg && <div className="login-error">{msg}</div>}
-        {!leagues ? (
-          <button className="login-btn" onClick={handleLoadLeagues} disabled={loading}>
-            {loading ? 'Loading…' : 'Load my leagues'}
-          </button>
-        ) : (
-          <ul className="fantasy-league-list">
-            {leagues.length === 0 && <li className="fantasy-league-empty">No active leagues found.</li>}
-            {leagues.map(lg => (
-              <li key={lg.league_key} className="fantasy-league-item">
-                <span className="fantasy-league-name">{lg.name}</span>
-                <span className="fantasy-league-meta">{lg.num_teams} teams · {lg.season}</span>
-                <button className="fantasy-league-btn" onClick={() => handleSelectLeague(lg.league_key)} disabled={loading}>Select</button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <button className="logout-btn" style={{ marginTop: 12 }} onClick={handleDisconnect}>Disconnect Yahoo</button>
-      </div>
-    </div>
-  )
+  if (loading) return <div className="dash-empty">Loading…</div>
+  if (msg) return <div className="login-error" style={{margin:24}}>{msg}</div>
 
   return (
-    <FantasyLeagueView
-      league={league ? { standings: league.teams?.map(t => ({ ...t, team_id: t.team_key, is_my_team: t.is_mine })) } : null}
-      roster={roster ? { players: roster, team_name: null } : null}
-      leagueName={league?.league_name}
-      onChangeTeam={() => { onStatusChange({ ...yahooStatus, league_key: null }); setLeague(null); setRoster(null) }}
-      onDisconnect={handleDisconnect}
-      loading={loading}
-      msg={msg}
-      provider="Yahoo"
-    />
+    <div className="fantasy-wrap">
+      <div className="fantasy-grid fantasy-grid-3">
+
+        {/* Standings */}
+        {league && (
+          <div className="dash-card">
+            <div className="dash-card-title">Standings — {league.league_name || 'My League'}</div>
+            <table className="dash-table">
+              <thead><tr><th>#</th><th>Team</th><th>W</th><th>L</th></tr></thead>
+              <tbody>
+                {(league.standings || []).map((t, i) => (
+                  <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                    <td>{i + 1}</td><td>{t.name}</td><td>{t.wins}</td><td>{t.losses}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Roster */}
+        {roster && (
+          <div className="dash-card">
+            <div className="dash-card-title">My Roster{roster.team_name ? ` — ${roster.team_name}` : ''}</div>
+            <table className="dash-table">
+              <thead><tr><th>Player</th><th>Pos</th><th>Status</th></tr></thead>
+              <tbody>
+                {(roster.players || []).map((p, i) => (
+                  <tr key={p.name + i}>
+                    <td>{p.name}</td>
+                    <td>{p.position || '—'}</td>
+                    <td className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>
+                      {p.injury_status || 'Active'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Current matchup */}
+        <div className="dash-card">
+          <div className="dash-card-title">Current Matchup</div>
+          {!matchup ? (
+            <div className="dash-empty" style={{padding:'16px 0'}}>No active matchup</div>
+          ) : (
+            <div className="fantasy-matchup">
+              <div className="fantasy-matchup-teams">
+                <span className="fantasy-matchup-my">{matchup.my_team}</span>
+                <span className="fantasy-matchup-vs">vs</span>
+                <span className="fantasy-matchup-opp">{matchup.opp_team}</span>
+              </div>
+              <div className="fantasy-matchup-score">
+                <span className={matchup.my_score > matchup.opp_score ? 'score-winning' : matchup.my_score < matchup.opp_score ? 'score-losing' : ''}>
+                  {matchup.my_score}
+                </span>
+                <span className="score-sep">–</span>
+                <span className={matchup.opp_score > matchup.my_score ? 'score-winning' : matchup.opp_score < matchup.my_score ? 'score-losing' : ''}>
+                  {matchup.opp_score}
+                </span>
+              </div>
+              {matchup.categories?.length > 0 && (
+                <table className="dash-table" style={{marginTop:8}}>
+                  <thead><tr><th>Cat</th><th>Mine</th><th>Opp</th></tr></thead>
+                  <tbody>
+                    {matchup.categories.map(c => (
+                      <tr key={c.stat} className={c.winning ? 'fantasy-cat-win' : c.tied ? '' : 'fantasy-cat-loss'}>
+                        <td>{c.stat}</td><td>{c.my_val}</td><td>{c.opp_val}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Scoring */}
+        <ScoringCard scoring={scoring} />
+      </div>
+    </div>
+  )
+}
+
+// ── Projected Standings stub ───────────────────────────────────────────────────
+
+function ProjectedStandings() {
+  return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-coming-soon">
+        <div className="fantasy-cs-icon">📊</div>
+        <h3>Projected Standings</h3>
+        <p>Coming soon — we'll simulate your remaining matchups using our projections engine to forecast where each team finishes.</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Roster Analyser stub ───────────────────────────────────────────────────────
+
+function RosterAnalyser() {
+  return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-coming-soon">
+        <div className="fantasy-cs-icon">🔄</div>
+        <h3>Roster Change Analyser</h3>
+        <p>Coming soon — model trades and free agent pickups to see how your roster strength changes across each scoring category.</p>
+      </div>
+    </div>
   )
 }
 
@@ -2128,7 +2103,7 @@ function YahooTab({ yahooStatus, onStatusChange }) {
 
 function FantasyPage() {
   const [status,  setStatus]  = useState(null)
-  const [tab,     setTab]     = useState('espn')
+  const [tab,     setTab]     = useState('dashboard')
 
   function loadStatus() {
     apiFetch('/api/fantasy/status')
@@ -2141,21 +2116,41 @@ function FantasyPage() {
 
   if (!status) return <div className="dash-empty">Loading…</div>
 
+  const espn = status.espn || {}
+
+  if (!espn.connected) return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-connect-card">
+        <h2 className="fantasy-connect-title">Connect your fantasy league</h2>
+        <p className="fantasy-connect-sub">Go to <strong>Account</strong> (top right) to connect your ESPN or Yahoo league, then come back here.</p>
+      </div>
+    </div>
+  )
+
+  if (!espn.team_key) return (
+    <EspnTeamPicker
+      onPicked={loadStatus}
+      onDisconnect={async () => {
+        await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
+        loadStatus()
+      }}
+    />
+  )
+
   return (
     <div>
       <div className="fantasy-tabs">
-        <button className={`fantasy-tab${tab === 'espn' ? ' active' : ''}`} onClick={() => setTab('espn')}>
-          ESPN {status.espn?.connected ? '✓' : ''}
-        </button>
-        <button className={`fantasy-tab${tab === 'yahoo' ? ' active' : ''}`} onClick={() => setTab('yahoo')}>
-          Yahoo {status.yahoo?.connected ? '✓' : ''}
-        </button>
+        <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
+        <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
+        <button className={`fantasy-tab${tab === 'analyser'  ? ' active' : ''}`} onClick={() => setTab('analyser')}>Roster Analyser</button>
       </div>
-      {tab === 'espn'  && <EspnTab  espnStatus={status.espn}   onStatusChange={loadStatus} />}
-      {tab === 'yahoo' && <YahooTab yahooStatus={status.yahoo} onStatusChange={loadStatus} />}
+      {tab === 'dashboard' && <ManagerDashboard />}
+      {tab === 'standings' && <ProjectedStandings />}
+      {tab === 'analyser'  && <RosterAnalyser />}
     </div>
   )
 }
+
 
 function AppMain({ onLogout, onOpenAccount }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')

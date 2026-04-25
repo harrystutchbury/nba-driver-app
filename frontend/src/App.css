@@ -2788,3 +2788,140 @@ td.bs-name {
 
 .scoring-pos { color: #4caf86; font-weight: 600; }
 .scoring-neg { color: #e05; font-weight: 600; }
+
+/* Account modal — fantasy connections */
+.acct-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #888;
+  margin: 20px 0 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.acct-fantasy-section { margin-top: 4px; }
+
+.acct-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.acct-provider-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.acct-provider-connected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.acct-connected-badge {
+  font-size: 12px;
+  color: #4caf86;
+  font-weight: 600;
+}
+
+.acct-connect-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.acct-connect-btn:hover { opacity: 0.85; }
+.acct-connect-btn:disabled { opacity: 0.5; cursor: default; }
+
+.acct-disconnect-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: #888;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.acct-disconnect-btn:hover { border-color: #e05; color: #e05; }
+
+.acct-espn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+/* Fantasy dashboard — 3-col grid */
+.fantasy-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+@media (max-width: 900px) {
+  .fantasy-grid-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .fantasy-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* Matchup card */
+.fantasy-matchup { padding: 4px 0; }
+
+.fantasy-matchup-teams {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.fantasy-matchup-my  { font-weight: 700; color: var(--accent); }
+.fantasy-matchup-vs  { font-size: 11px; color: #888; }
+.fantasy-matchup-opp { font-weight: 600; color: var(--text); }
+
+.fantasy-matchup-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.score-winning { color: #4caf86; }
+.score-losing  { color: #e05; }
+.score-sep     { color: #888; font-weight: 400; font-size: 18px; }
+
+.fantasy-cat-win  td { color: #4caf86; }
+.fantasy-cat-loss td { color: #888; }
+
+/* Coming soon stubs */
+.fantasy-coming-soon {
+  text-align: center;
+  padding: 60px 24px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.fantasy-cs-icon { font-size: 36px; margin-bottom: 12px; }
+
+.fantasy-coming-soon h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.fantasy-coming-soon p {
+  font-size: 13px;
+  color: #888;
+  line-height: 1.6;
+  margin: 0;
+}
