@@ -751,6 +751,86 @@ function NewsSection() {
   )
 }
 
+// ─── Depth Charts Page ────────────────────────────────────────────────────────
+
+const DEPTH_POS_ORDER = ['PG', 'SG', 'SF', 'PF', 'C']
+const DEPTH_SHOW = 3   // starters + first two backups per position
+
+function DepthChartsPage({ onSelectPlayer }) {
+  const [teams, setTeams]         = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const [conference, setConference] = useState('all')
+
+  useEffect(() => {
+    setLoading(true)
+    fetch('/api/depth-charts')
+      .then(r => r.ok ? r.json() : Promise.reject('Failed to load'))
+      .then(d => { setTeams(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  const filtered = teams
+    ? teams.filter(t => conference === 'all' || t.conference === conference)
+    : []
+
+  return (
+    <div className="rankings-page">
+      <div className="rankings-controls">
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Conference</span>
+          <div className="rank-pills">
+            {['all', 'East', 'West'].map(c => (
+              <button key={c} className={`rank-pill${conference === c ? ' active' : ''}`}
+                onClick={() => setConference(c)}>
+                {c === 'all' ? 'All' : c}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading && <p className="rankings-loading">Loading depth charts…</p>}
+      {error   && <div className="bs-error">{error}</div>}
+
+      {!loading && filtered.length > 0 && (
+        <div className="depth-grid">
+          {filtered.map(team => (
+            <div key={team.team} className="depth-card">
+              <div className="depth-card-header">
+                <span className="depth-team-abv">{team.team}</span>
+                <span className="depth-team-name">{team.team_name}</span>
+              </div>
+              <div className="depth-positions">
+                {DEPTH_POS_ORDER.map(pos => {
+                  const players = (team.positions[pos] || []).slice(0, DEPTH_SHOW)
+                  if (!players.length) return null
+                  return (
+                    <div key={pos} className="depth-pos-row">
+                      <span className="depth-pos-label">{pos}</span>
+                      <div className="depth-pos-players">
+                        {players.map((p, i) => (
+                          <div key={i} className={`depth-player${i === 0 ? ' depth-starter' : ''}`}>
+                            {p.slug
+                              ? <span className="rank-player-link" onClick={() => onSelectPlayer({ slug: p.slug, name: p.name })}>{p.name}</span>
+                              : <span>{p.name}</span>
+                            }
+                            {p.injury && <InjuryBadge injury={p.injury} compact />}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function InjuriesPage({ onSelectPlayer }) {
   const [tab, setTab]         = useState('injuries')
   const [data, setData]       = useState(null)
@@ -1896,6 +1976,7 @@ export default function App() {
             <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
             <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
+            <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
           </nav>
         </div>
       </header>
@@ -1910,6 +1991,8 @@ export default function App() {
       {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+
+      {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
 
       {page === 'home' && <>
         {/* ── Player search ────────────────────────────────── */}

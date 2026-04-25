@@ -2112,6 +2112,84 @@ app.include_router(router)
 
 # -----------------------------------------------------------------------
 # Serve React frontend (production build)
+# -----------------------------------------------------------------------
+# GET /depth-charts
+# -----------------------------------------------------------------------
+
+_depth_cache: dict = {}
+_DEPTH_CACHE_TTL = 10800   # 3 hours
+
+_POSITION_ORDER = ["PG", "SG", "SF", "PF", "C"]
+
+@router.get("/depth-charts")
+def get_depth_charts():
+    import time as _t
+
+    cached = _depth_cache.get("all")
+    if cached and (_t.time() - cached[0]) < _DEPTH_CACHE_TTL:
+        return cached[1]
+
+    # 1. Depth chart data — ordered positions per team
+    dc_data  = _tank01_get("getNBADepthCharts", {})
+    dc_teams = dc_data.get("body", [])
+
+    # 2. Roster data — playerID → bRefID + injury + team conference
+    roster_data = _tank01_get("getNBATeams", {"rosters": "true"})
+    roster_body = roster_data.get("body", {})
+    roster_teams = list(roster_body.values()) if isinstance(roster_body, dict) else roster_body
+
+    player_map: dict = {}   # playerID → {slug, injury}
+    team_meta:  dict = {}   # teamAbv  → {conference, name}
+    for team in roster_teams:
+        tabv = team.get("teamAbv", "")
+        team_meta[tabv] = {
+            "conference": team.get("conferenceAbv", ""),
+            "name":       f"{team.get('teamCity','')} {team.get('teamName','')}".strip(),
+        }
+        roster = team.get("Roster", {})
+        players = list(roster.values()) if isinstance(roster, dict) else roster
+        for p in players:
+            pid = (p.get("playerID") or "").strip()
+            if not pid:
+                continue
+            inj = p.get("injury") or {}
+            designation = (inj.get("designation") or "").strip() or None
+            player_map[pid] = {
+                "slug":   (p.get("bRefID") or "").strip() or None,
+                "injury": designation,
+            }
+
+    # 3. Build result
+    result = []
+    for team in dc_teams:
+        tabv = team.get("teamAbv", "")
+        dc   = team.get("depthChart", {})
+        meta = team_meta.get(tabv, {"conference": "", "name": tabv})
+        positions = {}
+        for pos in _POSITION_ORDER:
+            enriched = []
+            for p in dc.get(pos, []):
+                pid = (p.get("playerID") or "").strip()
+                pm  = player_map.get(pid, {})
+                enriched.append({
+                    "name":   p.get("longName", ""),
+                    "depth":  p.get("depthPosition", ""),
+                    "slug":   pm.get("slug"),
+                    "injury": pm.get("injury"),
+                })
+            positions[pos] = enriched
+        result.append({
+            "team":       tabv,
+            "team_name":  meta["name"],
+            "conference": meta["conference"],
+            "positions":  positions,
+        })
+
+    result.sort(key=lambda t: t["team"])
+    _depth_cache["all"] = (_t.time(), result)
+    return result
+
+
 # Must come AFTER all API routes so /api/* is never caught here.
 # -----------------------------------------------------------------------
 
