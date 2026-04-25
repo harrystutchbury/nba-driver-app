@@ -2431,6 +2431,85 @@ def login(body: dict = Body(...)):
 
 
 app.include_router(auth_router)
+
+# -----------------------------------------------------------------------
+# Comments (on the protected router so auth is required)
+# -----------------------------------------------------------------------
+
+@router.get("/comments")
+def get_comments(player: str = Query(...), current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT c.id, c.body, c.created_at, c.username,
+               COALESCE(u.display_name, c.username) AS author,
+               COALESCE(SUM(CASE WHEN v.vote = 1  THEN 1 ELSE 0 END), 0) AS thumbs_up,
+               COALESCE(SUM(CASE WHEN v.vote = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
+               MAX(CASE WHEN v.username = ? THEN v.vote ELSE 0 END) AS my_vote
+        FROM comments c
+        LEFT JOIN users u ON u.username = c.username
+        LEFT JOIN comment_votes v ON v.comment_id = c.id
+        WHERE c.player_slug = ?
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+    """, [current_user, player]).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/comments")
+def post_comment(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    player_slug = (body.get("player_slug") or "").strip()
+    text = (body.get("body") or "").strip()
+    if not player_slug or not text:
+        raise HTTPException(status_code=400, detail="player_slug and body required")
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO comments (player_slug, username, body) VALUES (?,?,?)",
+        [player_slug, current_user, text],
+    )
+    comment_id = cur.lastrowid
+    row = conn.execute("""
+        SELECT c.id, c.body, c.created_at, c.username,
+               COALESCE(u.display_name, c.username) AS author,
+               0 AS thumbs_up, 0 AS thumbs_down, 0 AS my_vote
+        FROM comments c
+        LEFT JOIN users u ON u.username = c.username
+        WHERE c.id = ?
+    """, [comment_id]).fetchone()
+    conn.commit()
+    conn.close()
+    return dict(row)
+
+
+@router.post("/comments/{comment_id}/vote")
+def vote_comment(comment_id: int, body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    vote = body.get("vote")  # 1 or -1
+    if vote not in (1, -1):
+        raise HTTPException(status_code=400, detail="vote must be 1 or -1")
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT vote FROM comment_votes WHERE comment_id=? AND username=?",
+        [comment_id, current_user]
+    ).fetchone()
+    if existing and existing["vote"] == vote:
+        # Toggle off
+        conn.execute("DELETE FROM comment_votes WHERE comment_id=? AND username=?", [comment_id, current_user])
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO comment_votes (comment_id, username, vote) VALUES (?,?,?)",
+            [comment_id, current_user, vote],
+        )
+    conn.commit()
+    row = conn.execute("""
+        SELECT COALESCE(SUM(CASE WHEN vote=1  THEN 1 ELSE 0 END),0) AS thumbs_up,
+               COALESCE(SUM(CASE WHEN vote=-1 THEN 1 ELSE 0 END),0) AS thumbs_down,
+               MAX(CASE WHEN username=? THEN vote ELSE 0 END) AS my_vote
+        FROM comment_votes WHERE comment_id=?
+    """, [current_user, comment_id]).fetchone()
+    conn.close()
+    return dict(row)
+
+
 app.include_router(router)
 
 

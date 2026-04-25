@@ -1520,6 +1520,106 @@ function ProjectionsPage({ onSelectPlayer }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
+// ── Comments section ─────────────────────────────────────────────────────────
+
+function timeAgo(iso) {
+  const secs = Math.floor((Date.now() - new Date(iso + 'Z')) / 1000)
+  if (secs < 60)  return 'just now'
+  if (secs < 3600) return `${Math.floor(secs/60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs/3600)}h ago`
+  return `${Math.floor(secs/86400)}d ago`
+}
+
+function CommentsSection({ playerSlug }) {
+  const [comments, setComments] = useState([])
+  const [draft,    setDraft]    = useState('')
+  const [posting,  setPosting]  = useState(false)
+
+  useEffect(() => {
+    if (!playerSlug) return
+    setComments([])
+    apiFetch(`/api/comments?player=${encodeURIComponent(playerSlug)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setComments(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [playerSlug])
+
+  async function handlePost(e) {
+    e.preventDefault()
+    if (!draft.trim()) return
+    setPosting(true)
+    const res = await apiFetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_slug: playerSlug, body: draft.trim() }),
+    }).catch(() => null)
+    if (res?.ok) {
+      const c = await res.json()
+      setComments(prev => [c, ...prev])
+      setDraft('')
+    }
+    setPosting(false)
+  }
+
+  async function handleVote(commentId, vote) {
+    const res = await apiFetch(`/api/comments/${commentId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote }),
+    }).catch(() => null)
+    if (res?.ok) {
+      const updated = await res.json()
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, ...updated } : c
+      ))
+    }
+  }
+
+  return (
+    <div className="comments-section">
+      <h3 className="panel-title" style={{ marginBottom: 12 }}>Comments</h3>
+
+      <form onSubmit={handlePost} className="comment-form">
+        <textarea
+          className="comment-input"
+          placeholder="Add a comment…"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={2}
+        />
+        <button className="comment-post-btn" type="submit" disabled={posting || !draft.trim()}>
+          {posting ? '…' : 'Post'}
+        </button>
+      </form>
+
+      {comments.length === 0
+        ? <p className="comment-empty">No comments yet. Be the first!</p>
+        : comments.map(c => (
+          <div key={c.id} className="comment-row">
+            <div className="comment-meta">
+              <span className="comment-author">{c.author}</span>
+              <span className="comment-time">{timeAgo(c.created_at)}</span>
+            </div>
+            <p className="comment-body">{c.body}</p>
+            <div className="comment-votes">
+              <button
+                className={`vote-btn${c.my_vote === 1 ? ' active-up' : ''}`}
+                onClick={() => handleVote(c.id, 1)}
+                title="Thumbs up"
+              >👍 {c.thumbs_up > 0 ? c.thumbs_up : ''}</button>
+              <button
+                className={`vote-btn${c.my_vote === -1 ? ' active-down' : ''}`}
+                onClick={() => handleVote(c.id, -1)}
+                title="Thumbs down"
+              >👎 {c.thumbs_down > 0 ? c.thumbs_down : ''}</button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  )
+}
+
 function AppMain({ onLogout, onOpenAccount }) {
   const [page, setPage]               = useState('home')
   const [query, setQuery]             = useState('')
@@ -2279,6 +2379,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </tbody>
               </table>
             </div>
+
+            {/* ── Comments ──────────────────────────────────────── */}
+            <CommentsSection playerSlug={selectedPlayer?.slug} />
 
             {/* ── Compare ───────────────────────────────────────── */}
             <div className="projection-section">

@@ -1,3 +1,107 @@
+/* ── Comments ────────────────────────────────────────────── */
+
+.comments-section {
+  padding: 20px 0 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.comment-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+
+.comment-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  padding: 8px 12px;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.comment-input:focus { border-color: var(--accent); }
+
+.comment-post-btn {
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #141828;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  transition: opacity 0.15s;
+}
+
+.comment-post-btn:disabled { opacity: 0.5; cursor: default; }
+.comment-post-btn:hover:not(:disabled) { opacity: 0.85; }
+
+.comment-empty {
+  color: #555;
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.comment-row {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.comment-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.comment-author {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.comment-time {
+  font-size: 0.72rem;
+  color: #555;
+}
+
+.comment-body {
+  font-size: 0.88rem;
+  color: var(--text);
+  margin: 0 0 8px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.comment-votes {
+  display: flex;
+  gap: 6px;
+}
+
+.vote-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.vote-btn:hover { border-color: #666; color: var(--text); }
+.vote-btn.active-up   { border-color: var(--accent); color: var(--accent); }
+.vote-btn.active-down { border-color: #f87171; color: #f87171; }
+
 /* ── Modal ───────────────────────────────────────────────── */
 
 .modal-backdrop {

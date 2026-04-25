@@ -187,6 +187,25 @@ def init_db():
         pass  # column already exists
 
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS comments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_slug TEXT NOT NULL,
+            username    TEXT NOT NULL,
+            body        TEXT NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS comment_votes (
+            comment_id  INTEGER NOT NULL,
+            username    TEXT NOT NULL,
+            vote        INTEGER NOT NULL,
+            PRIMARY KEY (comment_id, username)
+        )
+    """)
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             token      TEXT PRIMARY KEY,
             username   TEXT NOT NULL,
