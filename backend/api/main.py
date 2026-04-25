@@ -2780,6 +2780,62 @@ def disconnect_fantasy(current_user: str = Depends(get_current_user)):
 
 # ── ESPN endpoints ─────────────────────────────────────────────────────────────
 
+# ESPN basketball stat ID → human-readable name
+ESPN_STAT_MAP = {
+    0:  "PTS",   1:  "BLK",   2:  "STL",   3:  "AST",
+    4:  "OREB",  5:  "DREB",  6:  "REB",   8:  "PF",
+    9:  "TO",    11: "FGA",   12: "FGM",   13: "FTA",
+    14: "FTM",   15: "3PA",   16: "3PM",   17: "FG%",
+    18: "FT%",   19: "MIN",   21: "GP",    22: "DD",
+    23: "TD",
+}
+
+
+def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
+    """Fetch scoring settings directly from ESPN Fantasy API."""
+    import json as _json
+    url = f"https://fantasy.espn.com/apis/v3/games/fba/seasons/2026/segments/0/leagues/{league_id}"
+    try:
+        resp = _requests.get(
+            url,
+            params={"view": "mSettings"},
+            cookies={"espn_s2": espn_s2, "SWID": swid},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.warning(f"Could not fetch ESPN scoring settings: {e}")
+        return {}
+
+    settings = data.get("settings", {})
+    scoring  = settings.get("scoringSettings", {})
+    scoring_type = scoring.get("scoringType", "UNKNOWN")  # H2H_CATEGORY / H2H_POINTS / ROTISSERIE
+
+    items = []
+    for item in scoring.get("scoringItems", []):
+        stat_id = item.get("statId")
+        stat_name = ESPN_STAT_MAP.get(stat_id, f"stat_{stat_id}")
+        pts = item.get("points", item.get("pointsModifier", 0))
+        is_reverse = item.get("isReverseItem", False)  # True for TO (negative)
+        items.append({
+            "stat_id":    stat_id,
+            "stat":       stat_name,
+            "points":     pts,
+            "is_reverse": is_reverse,
+        })
+
+    # For category leagues, also capture which cats are active
+    cat_ids = [it["stat"] for it in items] if scoring_type == "H2H_CATEGORY" else []
+
+    return {
+        "scoring_type": scoring_type,
+        "items": items,
+        "categories": cat_ids,  # meaningful for H2H_CATEGORY
+        "league_name": settings.get("name", ""),
+    }
+
+
 def _espn_league(conn, username: str):
     """Return an initialised espn_api League object for the user."""
     from espn_api.basketball import League as EspnLeague
@@ -2803,32 +2859,34 @@ def _espn_league(conn, username: str):
 
 @fantasy_router.post("/espn/connect")
 def espn_connect(body: dict = Body(...), current_user: str = Depends(get_current_user)):
-    """Save ESPN cookies and league ID. Validates by loading the league."""
+    """Save ESPN cookies and league ID. Validates by loading the league and fetches scoring settings."""
+    import json as _json
     from espn_api.basketball import League as EspnLeague
-    espn_s2  = (body.get("espn_s2") or "").strip()
-    swid     = (body.get("swid") or "").strip()
+    espn_s2   = (body.get("espn_s2") or "").strip()
+    swid      = (body.get("swid") or "").strip()
     league_id = str(body.get("league_id") or "").strip()
     if not espn_s2 or not swid or not league_id:
         raise HTTPException(status_code=422, detail="espn_s2, swid and league_id are required")
-    # Validate credentials by loading the league
     try:
         EspnLeague(league_id=int(league_id), year=2026, espn_s2=espn_s2, swid=swid)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not connect to ESPN league: {e}")
+    scoring = _fetch_espn_scoring(league_id, espn_s2, swid)
     conn = get_conn()
     conn.execute("""
-        INSERT INTO fantasy_connections (username, provider, access_token, refresh_token, league_key)
-        VALUES (?,?,?,?,?)
+        INSERT INTO fantasy_connections (username, provider, access_token, refresh_token, league_key, scoring_settings)
+        VALUES (?,?,?,?,?,?)
         ON CONFLICT(username, provider) DO UPDATE SET
             access_token=excluded.access_token,
             refresh_token=excluded.refresh_token,
             league_key=excluded.league_key,
             team_key=NULL,
+            scoring_settings=excluded.scoring_settings,
             updated_at=datetime('now')
-    """, [current_user, "espn", espn_s2, swid, league_id])
+    """, [current_user, "espn", espn_s2, swid, league_id, _json.dumps(scoring)])
     conn.commit()
     conn.close()
-    return {"ok": True}
+    return {"ok": True, "scoring_type": scoring.get("scoring_type")}
 
 
 @fantasy_router.get("/espn/teams")
@@ -2853,17 +2911,45 @@ def espn_teams(current_user: str = Depends(get_current_user)):
 
 @fantasy_router.post("/espn/select-team")
 def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    import json as _json
     team_id = str(body.get("team_id") or "").strip()
     if not team_id:
         raise HTTPException(status_code=422, detail="team_id required")
     conn = get_conn()
+    # Also refresh scoring settings if not already stored
+    row = conn.execute(
+        "SELECT access_token, refresh_token, league_key, scoring_settings FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    scoring_json = row["scoring_settings"] if row and row["scoring_settings"] else None
+    if not scoring_json and row:
+        scoring = _fetch_espn_scoring(row["league_key"], row["access_token"], row["refresh_token"])
+        scoring_json = _json.dumps(scoring)
     conn.execute(
-        "UPDATE fantasy_connections SET team_key=?, updated_at=datetime('now') WHERE username=? AND provider='espn'",
-        [team_id, current_user]
+        "UPDATE fantasy_connections SET team_key=?, scoring_settings=?, updated_at=datetime('now') WHERE username=? AND provider='espn'",
+        [team_id, scoring_json, current_user]
     )
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@fantasy_router.get("/espn/scoring")
+def espn_scoring(current_user: str = Depends(get_current_user)):
+    """Return the stored scoring settings for the user's ESPN league."""
+    import json as _json
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT scoring_settings, access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="ESPN not connected")
+    if row["scoring_settings"]:
+        return _json.loads(row["scoring_settings"])
+    # Fallback: fetch live if not cached
+    return _fetch_espn_scoring(row["league_key"], row["access_token"], row["refresh_token"])
 
 
 @fantasy_router.get("/espn/league")

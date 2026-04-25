@@ -1757,7 +1757,43 @@ function CommentsSection({ playerSlug }) {
 
 // ── Shared standings + roster display ─────────────────────────────────────────
 
-function FantasyLeagueView({ league, roster, leagueName, onChangeTeam, onDisconnect, loading, msg, provider }) {
+const SCORING_TYPE_LABEL = {
+  H2H_CATEGORY: 'Head-to-Head Categories',
+  H2H_POINTS:   'Head-to-Head Points',
+  ROTISSERIE:   'Rotisserie',
+}
+
+function ScoringCard({ scoring }) {
+  if (!scoring) return null
+  const label = SCORING_TYPE_LABEL[scoring.scoring_type] || scoring.scoring_type
+  const items = (scoring.items || []).filter(it => it.points !== 0)
+  return (
+    <div className="dash-card">
+      <div className="dash-card-title">Scoring System — {label}</div>
+      {scoring.scoring_type === 'H2H_CATEGORY' ? (
+        <div className="scoring-cats">
+          {(scoring.categories || items.map(i => i.stat)).map(cat => (
+            <span key={cat} className="scoring-cat">{cat}</span>
+          ))}
+        </div>
+      ) : (
+        <table className="dash-table">
+          <thead><tr><th>Stat</th><th>Pts</th></tr></thead>
+          <tbody>
+            {items.map(it => (
+              <tr key={it.stat_id}>
+                <td>{it.stat}</td>
+                <td className={it.is_reverse ? 'scoring-neg' : 'scoring-pos'}>{it.points > 0 && !it.is_reverse ? '+' : ''}{it.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function FantasyLeagueView({ league, roster, scoring, leagueName, onChangeTeam, onDisconnect, loading, msg, provider }) {
   return (
     <div className="fantasy-wrap">
       <div className="fantasy-header">
@@ -1803,6 +1839,7 @@ function FantasyLeagueView({ league, roster, leagueName, onChangeTeam, onDisconn
               </table>
             </div>
           )}
+          <ScoringCard scoring={scoring} />
         </div>
       )}
     </div>
@@ -1821,6 +1858,7 @@ function EspnTab({ espnStatus, onStatusChange }) {
   const [teams,     setTeams]     = useState(null)
   const [league,    setLeague]    = useState(null)
   const [roster,    setRoster]    = useState(null)
+  const [scoring,   setScoring]   = useState(null)
   const [loading,   setLoading]   = useState(false)
   const [msg,       setMsg]       = useState(null)
 
@@ -1869,13 +1907,15 @@ function EspnTab({ espnStatus, onStatusChange }) {
   async function handleLoadLeague() {
     setLoading(true); setMsg(null)
     try {
-      const [lRes, rRes] = await Promise.all([
+      const [lRes, rRes, sRes] = await Promise.all([
         apiFetch('/api/fantasy/espn/league'),
         apiFetch('/api/fantasy/espn/roster'),
+        apiFetch('/api/fantasy/espn/scoring'),
       ])
       if (!lRes.ok || !rRes.ok) throw new Error('Failed to load ESPN data')
       setLeague(await lRes.json())
       setRoster(await rRes.json())
+      if (sRes.ok) setScoring(await sRes.json())
     } catch (e) { setMsg(e.message) }
     setLoading(false)
   }
@@ -1883,7 +1923,7 @@ function EspnTab({ espnStatus, onStatusChange }) {
   async function handleDisconnect() {
     if (!confirm('Disconnect ESPN Fantasy?')) return
     await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
-    setLeague(null); setRoster(null); setTeams(null)
+    setLeague(null); setRoster(null); setTeams(null); setScoring(null)
     onStatusChange()
   }
 
@@ -1948,8 +1988,9 @@ function EspnTab({ espnStatus, onStatusChange }) {
     <FantasyLeagueView
       league={league}
       roster={roster}
+      scoring={scoring}
       leagueName={league?.league_name}
-      onChangeTeam={() => { onStatusChange({ ...espnStatus, team_key: null }); setLeague(null); setRoster(null) }}
+      onChangeTeam={() => { onStatusChange({ ...espnStatus, team_key: null }); setLeague(null); setRoster(null); setScoring(null) }}
       onDisconnect={handleDisconnect}
       loading={loading}
       msg={msg}

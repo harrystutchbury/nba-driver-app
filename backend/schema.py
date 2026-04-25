@@ -186,6 +186,12 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    # Migration: add scoring_settings to fantasy_connections
+    try:
+        conn.execute("ALTER TABLE fantasy_connections ADD COLUMN scoring_settings TEXT")
+    except Exception:
+        pass  # column already exists
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS comments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
