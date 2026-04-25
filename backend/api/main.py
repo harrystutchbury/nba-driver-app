@@ -2436,6 +2436,25 @@ app.include_router(auth_router)
 # Comments (on the protected router so auth is required)
 # -----------------------------------------------------------------------
 
+@router.get("/comments/recent")
+def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT c.id, c.player_slug, c.body, c.created_at,
+               COALESCE(u.display_name, c.username) AS author,
+               COALESCE(
+                   (SELECT full_name FROM players WHERE slug = c.player_slug ORDER BY season DESC LIMIT 1),
+                   c.player_slug
+               ) AS player_name
+        FROM comments c
+        LEFT JOIN users u ON u.username = c.username
+        ORDER BY c.created_at DESC
+        LIMIT ?
+    """, [limit]).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @router.get("/comments")
 def get_comments(player: str = Query(...), current_user: str = Depends(get_current_user)):
     conn = get_conn()

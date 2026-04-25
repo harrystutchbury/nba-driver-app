@@ -1520,6 +1520,146 @@ function ProjectionsPage({ onSelectPlayer }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
+// ── Dashboard page ────────────────────────────────────────────────────────────
+
+function DashboardPage({ onSelectPlayer }) {
+  const [top10,    setTop10]    = useState(null)
+  const [injuries, setInjuries] = useState(null)
+  const [news,     setNews]     = useState(null)
+  const [comments, setComments] = useState(null)
+
+  useEffect(() => {
+    apiFetch('/api/rankings?period=season&position=all')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setTop10(Array.isArray(d) ? d.slice(0, 10) : []))
+      .catch(() => setTop10([]))
+
+    apiFetch('/api/injuries')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setInjuries(d))
+      .catch(() => setInjuries(null))
+
+    apiFetch('/api/news')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setNews(d))
+      .catch(() => setNews(null))
+
+    apiFetch('/api/comments/recent?limit=15')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setComments(Array.isArray(d) ? d : []))
+      .catch(() => setComments([]))
+  }, [])
+
+  const DES_ORDER = { 'Out': 0, 'Doubtful': 1, 'Questionable': 2, 'Day-To-Day': 3 }
+  const isGenericImage = url => !url || url.includes('nophoto')
+
+  // Flatten injuries to a sorted list
+  const injList = injuries
+    ? Object.values(injuries.teams).flat()
+        .sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9))
+    : null
+
+  return (
+    <div className="dash-grid">
+
+      {/* ── Top 10 Players ─────────────────────────────────── */}
+      <div className="dash-card">
+        <h2 className="dash-card-title">Top 10 Players — Season</h2>
+        {!top10 ? <div className="dash-loading">Loading…</div> : (
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="dash-th rank-col">#</th>
+                <th className="dash-th">Player</th>
+                <th className="dash-th num-col">PTS</th>
+                <th className="dash-th num-col">REB</th>
+                <th className="dash-th num-col">AST</th>
+                <th className="dash-th num-col">3PM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top10.map((p, i) => (
+                <tr key={p.slug} className="dash-tr" onClick={() => onSelectPlayer(p)}>
+                  <td className="dash-td rank-col">{i + 1}</td>
+                  <td className="dash-td">
+                    <span className="rank-player-link">{p.full_name}</span>
+                    <span className="dash-team">{p.team}</span>
+                  </td>
+                  <td className="dash-td num-col">{p.pts?.toFixed(1)}</td>
+                  <td className="dash-td num-col">{p.reb?.toFixed(1)}</td>
+                  <td className="dash-td num-col">{p.ast?.toFixed(1)}</td>
+                  <td className="dash-td num-col">{p.fg3m?.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Latest Comments ────────────────────────────────── */}
+      <div className="dash-card">
+        <h2 className="dash-card-title">Latest Comments</h2>
+        {!comments ? <div className="dash-loading">Loading…</div>
+          : comments.length === 0 ? <div className="dash-empty">No comments yet.</div>
+          : comments.map(c => (
+            <div key={c.id} className="dash-comment">
+              <div className="dash-comment-header">
+                <span className="dash-comment-player rank-player-link"
+                  onClick={() => onSelectPlayer({ slug: c.player_slug, name: c.player_name })}>
+                  {c.player_name}
+                </span>
+                <span className="dash-comment-meta">{c.author} · {timeAgo(c.created_at)}</span>
+              </div>
+              <p className="dash-comment-body">{c.body}</p>
+            </div>
+          ))
+        }
+      </div>
+
+      {/* ── Injuries ───────────────────────────────────────── */}
+      <div className="dash-card">
+        <h2 className="dash-card-title">Injury Report</h2>
+        {!injList ? <div className="dash-loading">Loading…</div>
+          : injList.length === 0 ? <div className="dash-empty">No injuries on record.</div>
+          : injList.map((p, i) => (
+            <div key={i} className="dash-inj-row">
+              <InjuryBadge injury={p} compact />
+              <span
+                className={`dash-inj-name${p.slug ? ' rank-player-link' : ''}`}
+                onClick={() => p.slug && onSelectPlayer(p)}
+              >{p.name}</span>
+              <span className="dash-inj-team">{p.team}</span>
+              {p.description && <span className="dash-inj-desc">{p.description}</span>}
+            </div>
+          ))
+        }
+      </div>
+
+      {/* ── Player News ────────────────────────────────────── */}
+      <div className="dash-card">
+        <h2 className="dash-card-title">Player News</h2>
+        {!news ? <div className="dash-loading">Loading…</div>
+          : !news.articles?.length ? <div className="dash-empty">No news available.</div>
+          : news.articles.slice(0, 15).map((a, i) => (
+            <div key={i} className="dash-news-item">
+              {!isGenericImage(a.image) && <img className="dash-news-img" src={a.image} alt="" />}
+              <div>
+                <div className="dash-news-title">
+                  {a.link
+                    ? <a href={a.link} target="_blank" rel="noopener noreferrer">{a.title}</a>
+                    : a.title}
+                </div>
+                {a.description && <div className="dash-news-desc">{a.description}</div>}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+    </div>
+  )
+}
+
 // ── Comments section ─────────────────────────────────────────────────────────
 
 function timeAgo(iso) {
@@ -1621,7 +1761,7 @@ function CommentsSection({ playerSlug }) {
 }
 
 function AppMain({ onLogout, onOpenAccount }) {
-  const [page, setPage]               = useState('home')
+  const [page, setPage]               = useState('dashboard')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -2269,7 +2409,8 @@ function AppMain({ onLogout, onOpenAccount }) {
             </div>
           </div>
           <nav className="site-nav">
-            <button className={`nav-btn${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>Player</button>
+            <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>Home</button>
+            <button className={`nav-btn${page === 'player' ? ' active' : ''}`} onClick={() => setPage('player')}>Player</button>
             <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
             <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
             <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
@@ -2286,17 +2427,19 @@ function AppMain({ onLogout, onOpenAccount }) {
       {/* ── Page body ──────────────────────────────────────── */}
       <main className="page-body">
 
-      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+      {page === 'dashboard' && <DashboardPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('home') }} />}
+      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'home' && <>
+      {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+
+      {page === 'player' && <>
         {/* ── Player search ────────────────────────────────── */}
         <div className="player-search-section" ref={searchRef}>
           <div className="typeahead player-typeahead">
