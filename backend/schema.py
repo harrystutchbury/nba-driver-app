@@ -175,9 +175,16 @@ def init_db():
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             username      TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
+            display_name  TEXT,
             created_at    TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    # Migration: add display_name to existing users tables
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+    except Exception:
+        pass  # column already exists
 
     conn.commit()
     conn.close()

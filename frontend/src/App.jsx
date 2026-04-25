@@ -32,6 +32,94 @@ function apiFetch(url, opts = {}) {
   })
 }
 
+// ── Account settings modal ────────────────────────────────────────────────────
+
+function AccountModal({ onClose, onTokenRefresh }) {
+  const [me,          setMe]          = useState(null)
+  const [displayName, setDisplayName] = useState('')
+  const [email,       setEmail]       = useState('')
+  const [curPw,       setCurPw]       = useState('')
+  const [newPw,       setNewPw]       = useState('')
+  const [saving,      setSaving]      = useState(false)
+  const [msg,         setMsg]         = useState(null) // {type:'ok'|'err', text}
+
+  useEffect(() => {
+    apiFetch('/api/auth/me').then(r => r.json()).then(d => {
+      setMe(d)
+      setEmail(d.email)
+      setDisplayName(d.display_name || '')
+    }).catch(() => {})
+  }, [])
+
+  async function handleSave(e) {
+    e.preventDefault()
+    setSaving(true)
+    setMsg(null)
+    const body = {}
+    if (displayName !== (me?.display_name || '')) body.display_name = displayName
+    if (email !== me?.email) { body.email = email; body.current_password = curPw }
+    if (newPw) { body.new_password = newPw; body.current_password = curPw }
+    if (!Object.keys(body).length) { setSaving(false); setMsg({ type: 'ok', text: 'Nothing to change' }); return }
+
+    try {
+      const res = await apiFetch('/api/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'err', text: data.detail || 'Save failed' }); setSaving(false); return }
+      onTokenRefresh(data.token)
+      setCurPw(''); setNewPw('')
+      setMe(prev => ({ ...prev, email: email, display_name: displayName }))
+      setMsg({ type: 'ok', text: 'Saved' })
+    } catch {
+      setMsg({ type: 'err', text: 'Request failed — please try again' })
+    }
+    setSaving(false)
+  }
+
+  const needsCurPw = email !== (me?.email || '') || !!newPw
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Account</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        {!me ? <p className="modal-loading">Loading…</p> : (
+          <form onSubmit={handleSave} className="acct-form">
+            <label className="acct-label">Display name</label>
+            <input className="login-input" type="text" value={displayName}
+              onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
+
+            <label className="acct-label">Email</label>
+            <input className="login-input" type="email" value={email}
+              onChange={e => setEmail(e.target.value)} autoComplete="email" />
+
+            <label className="acct-label">New password <span className="acct-optional">(leave blank to keep)</span></label>
+            <input className="login-input" type="password" value={newPw}
+              onChange={e => setNewPw(e.target.value)} autoComplete="new-password" placeholder="New password" />
+
+            {needsCurPw && <>
+              <label className="acct-label">Current password <span className="acct-required">required</span></label>
+              <input className="login-input" type="password" value={curPw}
+                onChange={e => setCurPw(e.target.value)} autoComplete="current-password" placeholder="Current password" />
+            </>}
+
+            {msg && <div className={msg.type === 'ok' ? 'acct-ok' : 'login-error'}>{msg.text}</div>}
+
+            <button className="login-btn" type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Login page ────────────────────────────────────────────────────────────────
 
 function LoginPage({ onLogin }) {
@@ -1410,7 +1498,7 @@ function ProjectionsPage({ onSelectPlayer }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
-function AppMain({ onLogout }) {
+function AppMain({ onLogout, onOpenAccount }) {
   const [page, setPage]               = useState('home')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
@@ -2066,7 +2154,10 @@ function AppMain({ onLogout }) {
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
           </nav>
-          <button className="logout-btn" onClick={onLogout}>Sign out</button>
+          <div className="nav-account">
+            <button className="acct-btn" onClick={onOpenAccount}>Account</button>
+            <button className="logout-btn" onClick={onLogout}>Sign out</button>
+          </div>
         </div>
       </header>
 
@@ -3551,9 +3642,21 @@ function AppMain({ onLogout }) {
 }
 
 export default function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('nba_token'))
-  function handleLogin(t) { localStorage.setItem('nba_token', t); setToken(t) }
-  function handleLogout() { localStorage.removeItem('nba_token'); setToken(null) }
+  const [token,       setToken]       = useState(() => localStorage.getItem('nba_token'))
+  const [showAccount, setShowAccount] = useState(false)
+
+  function handleLogin(t)      { localStorage.setItem('nba_token', t); setToken(t) }
+  function handleLogout()      { localStorage.removeItem('nba_token'); setToken(null) }
+  function handleTokenRefresh(t) { localStorage.setItem('nba_token', t); setToken(t) }
+
   if (!token) return <LoginPage onLogin={handleLogin} />
-  return <AppMain onLogout={handleLogout} />
+  return <>
+    <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} />
+    {showAccount && (
+      <AccountModal
+        onClose={() => setShowAccount(false)}
+        onTokenRefresh={t => { handleTokenRefresh(t); setShowAccount(false) }}
+      />
+    )}
+  </>
 }

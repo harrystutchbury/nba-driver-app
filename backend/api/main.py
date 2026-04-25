@@ -71,11 +71,16 @@ def _verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)) -> str:
     try:
-        jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except JWTError:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload["sub"]
+    except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)):
+    get_current_user(credentials)
 
 
 def _get_injury_map(conn):
@@ -2258,6 +2263,68 @@ def register(body: dict = Body(...)):
     conn.commit()
     conn.close()
     token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"token": token}
+
+
+@auth_router.get("/me")
+def get_me(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT username, display_name FROM users WHERE username = ?", [current_user]
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"email": row["username"], "display_name": row["display_name"] or ""}
+
+
+@auth_router.patch("/me")
+def update_me(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    new_email       = (body.get("email") or "").strip() or None
+    new_display     = body.get("display_name")  # None means "don't change"
+    current_password = body.get("current_password") or ""
+    new_password    = (body.get("new_password") or "").strip() or None
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT username, password_hash FROM users WHERE username = ?", [current_user]
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Any sensitive change requires current password
+    if (new_email or new_password) and not _verify_password(current_password, row["password_hash"]):
+        conn.close()
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    if new_email and new_email != current_user:
+        conflict = conn.execute(
+            "SELECT id FROM users WHERE username = ? AND username != ?", [new_email, current_user]
+        ).fetchone()
+        if conflict:
+            conn.close()
+            raise HTTPException(status_code=409, detail="An account with that email already exists")
+        conn.execute("UPDATE users SET username = ? WHERE username = ?", [new_email, current_user])
+
+    if new_password:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            [_make_password_hash(new_password), new_email or current_user],
+        )
+
+    if new_display is not None:
+        conn.execute(
+            "UPDATE users SET display_name = ? WHERE username = ?",
+            [new_display.strip() or None, new_email or current_user],
+        )
+
+    conn.commit()
+    conn.close()
+
+    # Issue a fresh token (email may have changed)
+    updated_email = new_email or current_user
+    token = jwt.encode({"sub": updated_email}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
