@@ -2925,3 +2925,86 @@ td.bs-name {
   line-height: 1.6;
   margin: 0;
 }
+
+/* Projected standings */
+.proj-header { margin-bottom: 16px; }
+
+.proj-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.proj-meta {
+  font-size: 12px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.proj-meta-sep { color: #444; }
+
+.proj-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.proj-table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: #888;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.proj-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.proj-table tr:hover td { background: var(--surface); }
+
+.proj-rank {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.proj-up   { font-size: 10px; color: #4caf86; font-weight: 700; }
+.proj-down { font-size: 10px; color: #e05;    font-weight: 700; }
+
+.proj-team { font-weight: 500; }
+.proj-now  { color: #888; }
+
+.proj-match-col { text-align: right; }
+.proj-match-ok   { color: #4caf86; font-size: 11px; }
+.proj-match-warn { color: #f90;    font-size: 11px; }
+
+.proj-note {
+  font-size: 11px;
+  color: #666;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.proj-strength { margin-top: 8px; }
+
+.proj-strength-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.proj-strength-scroll { overflow-x: auto; }

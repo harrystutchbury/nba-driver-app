@@ -2074,13 +2074,110 @@ function ManagerDashboard() {
 // ── Projected Standings stub ───────────────────────────────────────────────────
 
 function ProjectedStandings() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [msg,     setMsg]     = useState(null)
+
+  useEffect(() => {
+    apiFetch('/api/fantasy/espn/projected-standings')
+      .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || 'Failed')))
+      .then(d => setData(d))
+      .catch(e => setMsg(typeof e === 'string' ? e : 'Failed to load projections'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="dash-empty">Simulating standings… this may take a moment</div>
+  if (msg)     return <div className="login-error" style={{margin:24}}>{msg}</div>
+  if (!data)   return null
+
+  const { projected_standings: standings, remaining_matchups, scoring_type, tracked_cats } = data
+  const isCat = scoring_type === 'H2H_CATEGORY'
+  const statMap = { PTS:'pts', REB:'reb', AST:'ast', STL:'stl', BLK:'blk', TO:'tov', TOV:'tov', '3PM':'fg3m', 'FG%':'fg_pct', 'FT%':'ft_pct' }
+
   return (
     <div className="fantasy-wrap">
-      <div className="fantasy-coming-soon">
-        <div className="fantasy-cs-icon">📊</div>
-        <h3>Projected Standings</h3>
-        <p>Coming soon — we'll simulate your remaining matchups using our projections engine to forecast where each team finishes.</p>
+      <div className="proj-header">
+        <h3 className="proj-title">Projected Final Standings</h3>
+        <div className="proj-meta">
+          {remaining_matchups > 0
+            ? <span>{remaining_matchups} remaining matchup{remaining_matchups !== 1 ? 's' : ''} simulated</span>
+            : <span>No remaining matchups — season complete</span>}
+          <span className="proj-meta-sep">·</span>
+          <span>{isCat ? 'H2H Categories' : scoring_type === 'H2H_POINTS' ? 'H2H Points' : scoring_type}</span>
+        </div>
+        {isCat && tracked_cats?.length > 0 && (
+          <div className="scoring-cats" style={{marginTop:6}}>
+            {tracked_cats.map(c => <span key={c} className="scoring-cat">{c}</span>)}
+          </div>
+        )}
       </div>
+
+      <table className="proj-table">
+        <thead>
+          <tr>
+            <th>Proj</th><th>Team</th><th>Current</th>
+            <th>+W</th><th>+L</th><th>Proj W-L</th>
+            <th className="proj-match-col">Match</th>
+          </tr>
+        </thead>
+        <tbody>
+          {standings.map(t => {
+            const moved = t.actual_standing - t.proj_standing
+            return (
+              <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                <td className="proj-rank">
+                  <span>{t.proj_standing}</span>
+                  {moved !== 0 && (
+                    <span className={moved > 0 ? 'proj-up' : 'proj-down'}>
+                      {moved > 0 ? `▲${moved}` : `▼${Math.abs(moved)}`}
+                    </span>
+                  )}
+                </td>
+                <td className="proj-team">{t.name}</td>
+                <td className="proj-now">{t.actual_wins}–{t.actual_losses}</td>
+                <td className="scoring-pos">+{t.proj_wins}</td>
+                <td className="scoring-neg">+{t.proj_losses}</td>
+                <td><strong>{t.proj_total_wins}–{t.proj_total_losses}</strong></td>
+                <td className="proj-match-col">
+                  <span className={+t.match_rate.split('/')[0] / +t.match_rate.split('/')[1] < 0.6 ? 'proj-match-warn' : 'proj-match-ok'}>
+                    {t.match_rate}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      <p className="proj-note">
+        Based on 2025–26 season averages for matched players. "Match" = players found in our database — lower coverage means less reliable projection.
+      </p>
+
+      {isCat && tracked_cats?.length > 0 && standings.length > 0 && (
+        <div className="proj-strength">
+          <div className="proj-strength-title">Projected team strengths (per game totals)</div>
+          <div className="proj-strength-scroll">
+            <table className="proj-table">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  {tracked_cats.map(c => <th key={c}>{c}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {standings.map(t => (
+                  <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                    <td>{t.name}</td>
+                    {tracked_cats.map(c => (
+                      <td key={c}>{t.team_stats[statMap[c]] ?? '—'}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

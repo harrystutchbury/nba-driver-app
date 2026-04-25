@@ -3018,6 +3018,227 @@ def espn_disconnect(current_user: str = Depends(get_current_user)):
     return {"ok": True}
 
 
+@fantasy_router.get("/espn/projected-standings")
+def espn_projected_standings(current_user: str = Depends(get_current_user)):
+    """
+    Project final standings by simulating each remaining matchup using
+    season-average stats for every team's current roster.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+
+    # ── 1. Load scoring settings ────────────────────────────────────────────────
+    fc = conn.execute(
+        "SELECT scoring_settings, team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    scoring    = _json.loads(fc["scoring_settings"]) if fc and fc["scoring_settings"] else {}
+    my_team_id = fc["team_key"] if fc else None
+    scoring_type = scoring.get("scoring_type", "H2H_CATEGORY")
+
+    # Tracked stat names + whether lower is better (e.g. TO)
+    NEG_CATS = {"TO", "TOV"}
+    stat_name_map = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+        "BLK": "blk", "TO": "tov", "TOV": "tov", "3PM": "fg3m",
+        "FG%": "fg_pct", "FT%": "ft_pct",
+    }
+
+    if scoring_type == "H2H_CATEGORY":
+        items = scoring.get("items", [])
+        tracked_cats = [it["stat"] for it in items if it.get("points", 0) != 0] if items else \
+                       ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+    else:
+        tracked_cats = [it["stat"] for it in scoring.get("items", []) if it.get("points", 0) != 0]
+
+    # ── 2. Pull season averages for all players in one query ────────────────────
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT
+            player_slug,
+            AVG(pts)  AS pts,  AVG(reb) AS reb, AVG(ast) AS ast,
+            AVG(stl)  AS stl,  AVG(blk) AS blk, AVG(tov) AS tov,
+            AVG(fg3m) AS fg3m,
+            SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+            SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
+            AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs
+        WHERE season = ? AND min > 5
+        GROUP BY player_slug
+        HAVING COUNT(*) >= 5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    # ── 3. Build name → slug lookup ─────────────────────────────────────────────
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    # ── 4. Load ESPN league + rosters ───────────────────────────────────────────
+    conn = get_conn()
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+
+    def _team_stats(team):
+        """Sum season-average stats across a team's roster."""
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        matched = total = 0
+
+        for player in team.roster:
+            total += 1
+            match = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if not match:
+                continue
+            slug = name_to_slug[match[0]]
+            avg  = player_avgs.get(slug)
+            if not avg:
+                continue
+            matched += 1
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            # For % stats: accumulate attempts
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fg_pct = (avg["fg_pct"] or 0) / 100
+            ft_pct = (avg["ft_pct"] or 0) / 100
+            fgm_sum += fga_pg * fg_pct
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * ft_pct
+            fta_sum += fta_pg
+
+        return {
+            "pts": pts, "reb": reb, "ast": ast, "stl": stl,
+            "blk": blk, "tov": tov, "fg3m": fg3m,
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0,
+            "matched": matched, "total": total,
+        }
+
+    team_data = {}
+    for t in league.teams:
+        tid = str(t.team_id)
+        stats = _team_stats(t)
+        team_data[tid] = {
+            "name":            t.team_name,
+            "actual_wins":     t.wins,
+            "actual_losses":   t.losses,
+            "actual_standing": t.standing,
+            "is_my_team":      tid == str(my_team_id),
+            "proj_wins":       0,
+            "proj_losses":     0,
+            "proj_ties":       0,
+            "matched":         stats.pop("matched"),
+            "total":           stats.pop("total"),
+            "stats":           stats,
+        }
+
+    # ── 5. Simulate remaining matchups ──────────────────────────────────────────
+    def _wins_cats(s1, s2):
+        """Return (w1, w2) category wins for scoring system."""
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key:
+                continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            neg = cat in NEG_CATS
+            if abs(v1 - v2) < 1e-6:
+                continue  # tie
+            winner1 = (v1 > v2) if not neg else (v1 < v2)
+            if winner1:
+                w1 += 1
+            else:
+                w2 += 1
+        return w1, w2
+
+    def _wins_points(s1, s2):
+        total1 = total2 = 0
+        for it in scoring.get("items", []):
+            key = stat_name_map.get(it["stat"])
+            if not key:
+                continue
+            pts_val = it.get("points", 0)
+            total1 += s1.get(key, 0) * pts_val
+            total2 += s2.get(key, 0) * pts_val
+        return total1, total2
+
+    remaining = 0
+    try:
+        for matchup in league.schedule:
+            winner = getattr(matchup, 'winner', None)
+            if winner and str(winner).upper() not in ('UNDECIDED', 'NONE', ''):
+                continue  # already played
+            home_id = str(getattr(matchup.home_team, 'team_id', ''))
+            away_id = str(getattr(matchup.away_team, 'team_id', ''))
+            if home_id not in team_data or away_id not in team_data:
+                continue
+            remaining += 1
+            hs = team_data[home_id]["stats"]
+            as_ = team_data[away_id]["stats"]
+
+            if scoring_type == "H2H_CATEGORY":
+                hw, aw = _wins_cats(hs, as_)
+            else:
+                hpts, apts = _wins_points(hs, as_)
+                hw, aw = (1, 0) if hpts > apts else (0, 1) if apts > hpts else (0, 0)
+
+            if hw > aw:
+                team_data[home_id]["proj_wins"]   += 1
+                team_data[away_id]["proj_losses"]  += 1
+            elif aw > hw:
+                team_data[away_id]["proj_wins"]    += 1
+                team_data[home_id]["proj_losses"]  += 1
+            else:
+                team_data[home_id]["proj_ties"]  += 1
+                team_data[away_id]["proj_ties"]  += 1
+    except Exception:
+        logger.exception("Could not iterate league schedule")
+
+    # ── 6. Build result ─────────────────────────────────────────────────────────
+    result = []
+    for tid, d in team_data.items():
+        proj_total_wins   = d["actual_wins"]   + d["proj_wins"]
+        proj_total_losses = d["actual_losses"]  + d["proj_losses"]
+        result.append({
+            "team_id":            tid,
+            "name":               d["name"],
+            "is_my_team":         d["is_my_team"],
+            "actual_wins":        d["actual_wins"],
+            "actual_losses":      d["actual_losses"],
+            "actual_standing":    d["actual_standing"],
+            "proj_wins":          d["proj_wins"],
+            "proj_losses":        d["proj_losses"],
+            "proj_total_wins":    proj_total_wins,
+            "proj_total_losses":  proj_total_losses,
+            "match_rate":         f"{d['matched']}/{d['total']}",
+            "team_stats":         {k: round(v, 1) for k, v in d["stats"].items()},
+        })
+
+    result.sort(key=lambda x: (-x["proj_total_wins"], x["proj_total_losses"]))
+    for i, r in enumerate(result):
+        r["proj_standing"] = i + 1
+
+    return {
+        "projected_standings": result,
+        "remaining_matchups":  remaining,
+        "scoring_type":        scoring_type,
+        "tracked_cats":        tracked_cats if scoring_type == "H2H_CATEGORY" else None,
+    }
+
+
 @fantasy_router.get("/espn/matchup")
 def espn_matchup(current_user: str = Depends(get_current_user)):
     """Return user's current matchup from ESPN."""
