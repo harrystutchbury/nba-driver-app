@@ -126,6 +126,8 @@ def _weekly_schedule_sync():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from schema import init_db
+    init_db()
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
     scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
@@ -2248,7 +2250,7 @@ def register(body: dict = Body(...)):
     existing = conn.execute("SELECT id FROM users WHERE username = ?", [username]).fetchone()
     if existing:
         conn.close()
-        raise HTTPException(status_code=409, detail="Username already taken")
+        raise HTTPException(status_code=409, detail="An account with that email already exists")
     hashed = _make_password_hash(password)
     conn.execute(
         "INSERT INTO users (username, password_hash) VALUES (?, ?)", [username, hashed]

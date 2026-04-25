@@ -54,7 +54,7 @@ function LoginPage({ onLogin }) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data.detail || (mode === 'register' ? 'Username already taken' : 'Invalid username or password'))
+        setError(data.detail || (mode === 'register' ? 'Registration failed — please try again' : 'Invalid email or password'))
         setLoading(false)
         return
       }
@@ -74,12 +74,12 @@ function LoginPage({ onLogin }) {
         <form onSubmit={handleSubmit} className="login-form">
           <input
             className="login-input"
-            type="text"
-            placeholder="Username"
+            type="email"
+            placeholder="Email"
             value={username}
             onChange={e => setUsername(e.target.value)}
             autoFocus
-            autoComplete="username"
+            autoComplete="email"
           />
           <input
             className="login-input"
