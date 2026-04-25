@@ -12,10 +12,11 @@ Run locally:
   uvicorn main:app --reload
 """
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 from typing import Optional
 import sys
@@ -23,6 +24,10 @@ import os
 import math
 import logging
 from datetime import datetime
+
+from jose import JWTError, jwt
+import hashlib
+import secrets as _secrets
 
 import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -38,6 +43,39 @@ from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict
 from engine.aging import build_aging_curves, aging_ratio as _aging_ratio, aging_ratio_std as _aging_ratio_std, RATIO_FLOOR, RATIO_CAP
 
 logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------
+# Auth
+# -----------------------------------------------------------------------
+
+JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
+JWT_ALGORITHM = "HS256"
+_http_bearer  = HTTPBearer()
+
+
+def _hash_password(password: str, salt: str) -> str:
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+    return dk.hex()
+
+
+def _make_password_hash(password: str) -> str:
+    salt = _secrets.token_hex(16)
+    return f"{salt}${_hash_password(password, salt)}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, hashed = stored.split("$", 1)
+        return _secrets.compare_digest(_hash_password(password, salt), hashed)
+    except Exception:
+        return False
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)):
+    try:
+        jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def _get_injury_map(conn):
@@ -104,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="NBA Stat Driver API", lifespan=lifespan)
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 
 # Allow the React dev server to talk to this API
 app.add_middleware(
@@ -2193,6 +2231,54 @@ def get_depth_charts():
         raise HTTPException(status_code=502, detail=f"Depth chart fetch failed: {e}")
 
 
+# -----------------------------------------------------------------------
+# Auth routes (no token required)
+# -----------------------------------------------------------------------
+
+auth_router = APIRouter(prefix="/api/auth")
+
+
+@auth_router.post("/setup")
+def setup_first_user(body: dict = Body(...)):
+    """Create the first user — only works when no users exist yet."""
+    conn = get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if count > 0:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Setup already complete")
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    if not username or not password:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Username and password required")
+    hashed = _make_password_hash(password)
+    conn.execute(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?)", [username, hashed]
+    )
+    conn.commit()
+    conn.close()
+    token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"token": token}
+
+
+@auth_router.post("/login")
+def login(body: dict = Body(...)):
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT password_hash FROM users WHERE username = ?", [username]
+    ).fetchone()
+    conn.close()
+    if not row or not _verify_password(password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"token": token}
+
+
+app.include_router(auth_router)
 app.include_router(router)
 
 

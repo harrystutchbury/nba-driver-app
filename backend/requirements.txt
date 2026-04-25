@@ -9,3 +9,4 @@ basketball_reference_web_scraper
 python-dotenv==1.0.1
 rapidfuzz==3.9.3
 apscheduler==3.10.4
+python-jose[cryptography]==3.3.0

@@ -1,3 +1,124 @@
+/* ── Login page ──────────────────────────────────────────── */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0;
+  text-align: center;
+}
+
+.login-subtitle {
+  color: #888;
+  font-size: 0.82rem;
+  text-align: center;
+  margin: 0 0 16px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.login-input:focus {
+  border-color: var(--accent);
+}
+
+.login-error {
+  color: #f87171;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.login-btn {
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #141828;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px;
+  margin-top: 4px;
+  transition: opacity 0.15s;
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.login-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.login-toggle {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.78rem;
+  margin-top: 8px;
+  padding: 4px 0;
+  text-align: center;
+  transition: color 0.15s;
+}
+
+.login-toggle:hover {
+  color: var(--accent);
+}
+
+/* ── Logout button ───────────────────────────────────────── */
+
+.logout-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 5px 12px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.logout-btn:hover {
+  color: var(--text);
+  border-color: #666;
+}
+
 /* ── Site header ─────────────────────────────────────────── */
 .site-header {
   background: var(--surface);

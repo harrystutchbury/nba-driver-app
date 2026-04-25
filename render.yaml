@@ -16,3 +16,5 @@ services:
         value: /data/nba.db
       - key: MODELS_DIR
         value: /data/models
+      - key: JWT_SECRET
+        generateValue: true

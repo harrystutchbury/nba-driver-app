@@ -17,6 +17,94 @@ import './App.css'
 
 ChartJS.register(CategoryScale, LinearScale, RadialLinearScale, BarElement, LineElement, PointElement, Tooltip, Legend, Filler, ChartDataLabels)
 
+// ── Auth helper ───────────────────────────────────────────────────────────────
+
+function apiFetch(url, opts = {}) {
+  const token = localStorage.getItem('nba_token')
+  const headers = { ...(opts.headers || {}) }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return fetch(url, { ...opts, headers }).then(res => {
+    if (res.status === 401) {
+      localStorage.removeItem('nba_token')
+      window.location.reload()
+    }
+    return res
+  })
+}
+
+// ── Login page ────────────────────────────────────────────────────────────────
+
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error,    setError]    = useState(null)
+  const [loading,  setLoading]  = useState(false)
+  const [mode,     setMode]     = useState('login') // 'login' | 'setup'
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const endpoint = mode === 'setup' ? '/api/auth/setup' : '/api/auth/login'
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.detail || (mode === 'setup' ? 'Setup failed — account already exists?' : 'Invalid username or password'))
+        setLoading(false)
+        return
+      }
+      const { token } = await res.json()
+      onLogin(token)
+    } catch {
+      setError('Request failed — please try again')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <h1 className="login-title">NBA Driver</h1>
+        <p className="login-subtitle">Fantasy basketball intelligence</p>
+        <form onSubmit={handleSubmit} className="login-form">
+          <input
+            className="login-input"
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            autoFocus
+            autoComplete="username"
+          />
+          <input
+            className="login-input"
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          {error && <div className="login-error">{error}</div>}
+          <button className="login-btn" type="submit" disabled={loading}>
+            {loading ? (mode === 'setup' ? 'Creating…' : 'Signing in…') : (mode === 'setup' ? 'Create account' : 'Sign in')}
+          </button>
+        </form>
+        <button
+          className="login-toggle"
+          onClick={() => { setMode(m => m === 'login' ? 'setup' : 'login'); setError(null) }}
+        >
+          {mode === 'login' ? 'First time? Create account' : '← Back to sign in'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const STAT_OPTIONS = [
   { value: 'pts', label: 'Points' },
   { value: 'reb', label: 'Rebounds' },
@@ -440,7 +528,7 @@ function RankingsPage({ onSelectPlayer }) {
     setLoading(true)
     setPlayers(null)
     const pos = position === 'all' ? 'all' : position
-    fetch(`/api/rankings?period=${period}&position=${encodeURIComponent(pos)}`)
+    apiFetch(`/api/rankings?period=${period}&position=${encodeURIComponent(pos)}`)
       .then(r => r.json())
       .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
@@ -712,7 +800,7 @@ function NewsSection() {
   const [error, setError]     = useState(null)
 
   useEffect(() => {
-    fetch('/api/news')
+    apiFetch('/api/news')
       .then(async r => {
         const text = await r.text()
         if (!r.ok) {
@@ -764,7 +852,7 @@ function DepthChartsPage({ onSelectPlayer }) {
 
   useEffect(() => {
     setLoading(true)
-    fetch('/api/depth-charts')
+    apiFetch('/api/depth-charts')
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Failed to load')))
       .then(d => { setTeams(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
@@ -838,7 +926,7 @@ function InjuriesPage({ onSelectPlayer }) {
   const [error, setError]     = useState(null)
 
   useEffect(() => {
-    fetch('/api/injuries')
+    apiFetch('/api/injuries')
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
@@ -954,7 +1042,7 @@ function BoxScorePage({ onSelectPlayer }) {
   const [error, setError]   = useState(null)
 
   const fetchScores = useCallback(() => {
-    fetch(`/api/box-score?date=${date}`)
+    apiFetch(`/api/box-score?date=${date}`)
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
@@ -1089,7 +1177,7 @@ function ProjectionsPage({ onSelectPlayer }) {
     if (!start || !end || start > end) return
     setLoading(true)
     setError(null)
-    fetch(`/api/projections?start=${start}&end=${end}`)
+    apiFetch(`/api/projections?start=${start}&end=${end}`)
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
       .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
@@ -1322,7 +1410,7 @@ function ProjectionsPage({ onSelectPlayer }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
-export default function App() {
+function AppMain({ onLogout }) {
   const [page, setPage]               = useState('home')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
@@ -1377,11 +1465,11 @@ export default function App() {
   const debounceRef = useRef(null)
 
   useEffect(() => {
-    fetch('/api/data-range')
+    apiFetch('/api/data-range')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setDataRange(d) })
       .catch(() => {})
-    fetch('/api/aging-curves')
+    apiFetch('/api/aging-curves')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d) {
@@ -1395,7 +1483,7 @@ export default function App() {
   // Compare tool — suggestions
   useEffect(() => {
     if (!cmpQuery || cmpQuery.length < 2) { setCmpSuggs([]); return }
-    fetch(`/api/players?q=${encodeURIComponent(cmpQuery)}`)
+    apiFetch(`/api/players?q=${encodeURIComponent(cmpQuery)}`)
       .then(r => r.json()).then(d => setCmpSuggs(Array.isArray(d) ? d : [])).catch(() => {})
   }, [cmpQuery])
 
@@ -1405,7 +1493,7 @@ export default function App() {
   const fetchSuggestions = useCallback(async (q) => {
     if (!q.trim()) { setSuggestions([]); return }
     try {
-      const res = await fetch(`/api/players?q=${encodeURIComponent(q)}`)
+      const res = await apiFetch(`/api/players?q=${encodeURIComponent(q)}`)
       if (res.ok) setSuggestions(await res.json())
     } catch { /* ignore */ }
   }, [])
@@ -1440,11 +1528,11 @@ export default function App() {
     setProjScenario('baseline')
     setUsageUsg(null)
     setUsageMinutes(null)
-    fetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
+    apiFetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setPlayerStats(d) })
       .catch(() => {})
-    fetch(`/api/project?player=${encodeURIComponent(p.slug)}&mpg=32`)
+    apiFetch(`/api/project?player=${encodeURIComponent(p.slug)}&mpg=32`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d) {
@@ -1453,7 +1541,7 @@ export default function App() {
         }
       })
       .catch(() => {})
-    fetch(`/api/player-games?player=${encodeURIComponent(p.slug)}`)
+    apiFetch(`/api/player-games?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d) {
@@ -1463,7 +1551,7 @@ export default function App() {
         }
       })
       .catch(() => {})
-    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}&period=${schedPeriod}&start_date=${schedStartDate}`)
+    apiFetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}&period=${schedPeriod}&start_date=${schedStartDate}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
@@ -1471,7 +1559,7 @@ export default function App() {
 
   function fetchSchedProj(slug, period, startDate) {
     const sd = startDate ?? schedStartDate
-    fetch(`/api/schedule-projection?player=${encodeURIComponent(slug)}&period=${period}&start_date=${sd}`)
+    apiFetch(`/api/schedule-projection?player=${encodeURIComponent(slug)}&period=${period}&start_date=${sd}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
@@ -1493,7 +1581,7 @@ export default function App() {
         pa_start: periodA.start, pa_end: periodA.end,
         pb_start: periodB.start, pb_end: periodB.end,
       })
-      const res = await fetch(`/api/decompose?${params}`)
+      const res = await apiFetch(`/api/decompose?${params}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: 'Request failed' }))
         setError(body.detail ?? 'Request failed')
@@ -1506,7 +1594,7 @@ export default function App() {
           pa_start: periodA.start,
           pb_end:   periodB.end,
         })
-        fetch(`/api/game-log?${logParams}`)
+        apiFetch(`/api/game-log?${logParams}`)
           .then(r => r.ok ? r.json() : null)
           .then(rows => { if (rows) setGameLog(rows) })
           .catch(() => {})
@@ -1517,7 +1605,7 @@ export default function App() {
           pb_start: periodB.start, pb_end: periodB.end,
         })
         if (stat === 'pts' || stat === 'fg3m') {
-          fetch(`/api/shot-diet?${shotParams}`)
+          apiFetch(`/api/shot-diet?${shotParams}`)
             .then(r => r.ok ? r.json() : null)
             .then(d => { if (d) setShotDiet(d) })
             .catch(() => {})
@@ -1978,6 +2066,7 @@ export default function App() {
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
           </nav>
+          <button className="logout-btn" onClick={onLogout}>Sign out</button>
         </div>
       </header>
 
@@ -2096,7 +2185,7 @@ export default function App() {
                 function addCmpPlayer(p) {
                   if (cmpPlayers.some(cp => cp.player.slug === p.slug)) return
                   if (p.slug === playerStats.player.slug) return
-                  fetch(`/api/player-stats?player=${p.slug}`)
+                  apiFetch(`/api/player-stats?player=${p.slug}`)
                     .then(r => r.json())
                     .then(stats => setCmpPlayers(ps => [...ps, { player: p, stats }]))
                     .catch(() => {})
@@ -3459,4 +3548,12 @@ export default function App() {
       </main>
     </>
   )
+}
+
+export default function App() {
+  const [token, setToken] = useState(() => localStorage.getItem('nba_token'))
+  function handleLogin(t) { localStorage.setItem('nba_token', t); setToken(t) }
+  function handleLogout() { localStorage.removeItem('nba_token'); setToken(null) }
+  if (!token) return <LoginPage onLogin={handleLogin} />
+  return <AppMain onLogout={handleLogout} />
 }
