@@ -1339,6 +1339,37 @@
 /* ── Schedule projection ─────────────────────────────────── */
 .sched-proj-wrap { padding: 4px 0 8px; }
 
+.sched-date-wrap { display: flex; align-items: center; gap: 6px; }
+
+.sched-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+.sched-stat-select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sched-cone-wrap {
+  height: 200px;
+  margin-bottom: 16px;
+}
+
+.sched-table-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
 .sched-controls {
   display: flex;
   align-items: center;

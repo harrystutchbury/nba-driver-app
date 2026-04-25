@@ -1282,6 +1282,9 @@ export default function App() {
   const [schedProj, setSchedProj]           = useState(null)
   const [schedExpanded, setSchedExpanded]   = useState(false)
   const [schedPeriod, setSchedPeriod]       = useState('season')
+  const [schedStat, setSchedStat]           = useState('pts')
+  const [schedScenario, setSchedScenario]   = useState('mid')
+  const [schedStartDate, setSchedStartDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Compare tool state
   const [cmpExpanded, setCmpExpanded] = useState(false)
@@ -1380,14 +1383,15 @@ export default function App() {
         }
       })
       .catch(() => {})
-    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}&period=${schedPeriod}`)
+    fetch(`/api/schedule-projection?player=${encodeURIComponent(p.slug)}&period=${schedPeriod}&start_date=${schedStartDate}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
   }
 
-  function fetchSchedProj(slug, period) {
-    fetch(`/api/schedule-projection?player=${encodeURIComponent(slug)}&period=${period}`)
+  function fetchSchedProj(slug, period, startDate) {
+    const sd = startDate ?? schedStartDate
+    fetch(`/api/schedule-projection?player=${encodeURIComponent(slug)}&period=${period}&start_date=${sd}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
@@ -2414,39 +2418,105 @@ export default function App() {
                     { key: 'tov',  label: 'TOV', invert: true },
                     { key: 'fg3m', label: '3PM' },
                   ]
-                  const homeBaseline = schedProj.home_baseline
-                  const awayBaseline = schedProj.away_baseline
+                  const SCHED_STAT_OPTS = [
+                    { key: 'pts', label: 'Points' }, { key: 'reb', label: 'Rebounds' },
+                    { key: 'ast', label: 'Assists' }, { key: 'stl', label: 'Steals' },
+                    { key: 'blk', label: 'Blocks' }, { key: 'tov', label: 'Turnovers' },
+                    { key: 'fg3m', label: '3-Pointers' },
+                  ]
 
-                  // SOS: average pts factor across upcoming games (higher = easier slate)
-                  const sosFactors = schedProj.games.map(g => {
-                    const ptsFactor = g.factors['pts'] ?? 1
-                    const tovFactor = g.factors['tov'] ?? 1
-                    // combine: easy if pts allowed high AND tov allowed low
-                    return (ptsFactor + (2 - tovFactor)) / 2
-                  })
+                  // SOS
+                  const sosFactors = schedProj.games.map(g => (g.factors['pts'] ?? 1 + (2 - (g.factors['tov'] ?? 1))) / 2)
                   const sosAvg = sosFactors.reduce((a, b) => a + b, 0) / sosFactors.length
-                  const sosPct = Math.min(Math.max((sosAvg - 0.85) / 0.3, 0), 1) // 0.85–1.15 range → 0–1
+                  const sosPct = Math.min(Math.max((sosAvg - 0.85) / 0.3, 0), 1)
                   const sosLabel = sosAvg > 1.05 ? 'Easy slate' : sosAvg < 0.95 ? 'Hard slate' : 'Neutral difficulty'
                   const sosColor = sosAvg > 1.05 ? '#4dffb4' : sosAvg < 0.95 ? '#ff6b6b' : '#aaa'
-
                   const periodLabel = { season: 'Season', l30: 'Last 30', l14: 'Last 14' }[schedProj.period] || 'Season'
+                  const todayStr = new Date().toISOString().slice(0, 10)
+
+                  // Chart data for selected stat
+                  const chartLabels = schedProj.games.map(g => `${g.date.slice(5)} ${g.home_away === 'Home' ? 'vs' : '@'} ${g.opponent.split(' ').pop()}`)
+                  const midVals  = schedProj.games.map(g => g.projected[schedStat])
+                  const lowVals  = schedProj.games.map(g => g.projected_low?.[schedStat] ?? g.projected[schedStat])
+                  const highVals = schedProj.games.map(g => g.projected_high?.[schedStat] ?? g.projected[schedStat])
+                  const coneColor = 'rgba(77,255,180,0.12)'
+                  const lineColor = '#4dffb4'
+
+                  const chartData = {
+                    labels: chartLabels,
+                    datasets: [
+                      {
+                        label: 'High',
+                        data: highVals,
+                        borderColor: 'transparent',
+                        backgroundColor: coneColor,
+                        fill: '+1',
+                        pointRadius: 0,
+                        tension: 0.3,
+                      },
+                      {
+                        label: 'Low',
+                        data: lowVals,
+                        borderColor: 'transparent',
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        pointRadius: 0,
+                        tension: 0.3,
+                      },
+                      {
+                        label: 'Projected',
+                        data: midVals,
+                        borderColor: lineColor,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        pointRadius: 4,
+                        pointBackgroundColor: lineColor,
+                        borderWidth: 2,
+                        tension: 0.3,
+                      },
+                    ],
+                  }
+                  const chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      datalabels: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: (ctx) => {
+                            if (ctx.datasetIndex !== 2) return null
+                            const i = ctx.dataIndex
+                            return [`Mid: ${midVals[i]?.toFixed(1)}`, `Low: ${lowVals[i]?.toFixed(1)}`, `High: ${highVals[i]?.toFixed(1)}`]
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#1e2235' } },
+                      y: { ticks: { color: '#666' }, grid: { color: '#1e2235' }, beginAtZero: true },
+                    },
+                  }
 
                   return (
                     <div className="sched-proj-wrap">
+                      {/* Controls */}
                       <div className="sched-controls">
                         <div className="rank-pills">
                           {['season', 'l30', 'l14'].map(p => (
-                            <button
-                              key={p}
-                              className={`rank-pill${schedPeriod === p ? ' active' : ''}`}
-                              onClick={() => {
-                                setSchedPeriod(p)
-                                fetchSchedProj(selectedPlayer.slug, p)
-                              }}
-                            >
+                            <button key={p} className={`rank-pill${schedPeriod === p ? ' active' : ''}`}
+                              onClick={() => { setSchedPeriod(p); fetchSchedProj(selectedPlayer.slug, p) }}>
                               {p === 'season' ? 'Season' : p === 'l30' ? 'L30' : 'L14'}
                             </button>
                           ))}
+                        </div>
+                        <div className="sched-date-wrap">
+                          <span className="ctrl-label">From</span>
+                          <input type="date" className="proj-date-input" min={todayStr} value={schedStartDate}
+                            onChange={e => {
+                              const v = e.target.value
+                              if (v >= todayStr) { setSchedStartDate(v); fetchSchedProj(selectedPlayer.slug, schedPeriod, v) }
+                            }} />
                         </div>
                         <div className="sos-bar-wrap">
                           <span className="sos-label" style={{ color: sosColor }}>{sosLabel}</span>
@@ -2459,48 +2529,75 @@ export default function App() {
                         Based on {periodLabel} avg · opponent defence vs {schedProj.position}s · {schedProj.games_in_window}G sample
                         {schedProj.b2b_games >= 3 && ` · B2B factor from ${schedProj.b2b_games}G`}
                       </p>
-                      <div className="sched-table-scroll">
-                      <table className="sched-proj-table">
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th>Opp</th>
-                            <th></th>
-                            {SCHED_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {schedProj.games.map((g, i) => (
-                            <tr key={i}>
-                              <td className="sched-date">
-                                {g.date.slice(5)}
-                                {g.is_b2b && <span className="b2b-badge">B2B</span>}
-                              </td>
-                              <td className="sched-opp">{g.opponent.split(' ').pop()}</td>
-                              <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
-                              {SCHED_COLS.map(c => {
-                                const proj = g.projected[c.key]
-                                const factor = g.factors[c.key]
-                                const delta = factor - 1
-                                const good = c.invert ? delta < -0.05 : delta > 0.05
-                                const bad  = c.invert ? delta > 0.05  : delta < -0.05
-                                const cellColor = good ? '#4dffb4' : bad ? '#ff6b6b' : 'inherit'
-                                return (
-                                  <td key={c.key} className="num mono sched-stat" style={{ color: cellColor }}>
-                                    {proj != null ? proj.toFixed(1) : '—'}
-                                  </td>
-                                )
-                              })}
-                            </tr>
+
+                      {/* Confidence cone chart */}
+                      <div className="sched-chart-header">
+                        <select className="sched-stat-select" value={schedStat} onChange={e => setSchedStat(e.target.value)}>
+                          {SCHED_STAT_OPTS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="sched-cone-wrap">
+                        <Line data={chartData} options={chartOptions} />
+                      </div>
+
+                      {/* Table */}
+                      <div className="sched-table-header">
+                        <div className="rank-pills">
+                          {['low', 'mid', 'high'].map(s => (
+                            <button key={s} className={`rank-pill${schedScenario === s ? ' active' : ''}`}
+                              onClick={() => setSchedScenario(s)}>
+                              {s.charAt(0).toUpperCase() + s.slice(1)}
+                            </button>
                           ))}
-                          <tr className="sched-baseline-row">
-                            <td colSpan={3} className="sched-baseline-label">{periodLabel} avg</td>
-                            {SCHED_COLS.map(c => (
-                              <td key={c.key} className="num mono muted">{schedProj.baseline[c.key] != null ? schedProj.baseline[c.key].toFixed(1) : '—'}</td>
-                            ))}
-                          </tr>
-                        </tbody>
-                      </table>
+                        </div>
+                      </div>
+                      <div className="sched-table-scroll">
+                        <table className="sched-proj-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Opp</th>
+                              <th></th>
+                              {SCHED_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {schedProj.games.map((g, i) => {
+                              const projData = schedScenario === 'low' ? g.projected_low
+                                             : schedScenario === 'high' ? g.projected_high
+                                             : g.projected
+                              return (
+                                <tr key={i}>
+                                  <td className="sched-date">
+                                    {g.date.slice(5)}
+                                    {g.is_b2b && <span className="b2b-badge">B2B</span>}
+                                  </td>
+                                  <td className="sched-opp">{g.opponent.split(' ').pop()}</td>
+                                  <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
+                                  {SCHED_COLS.map(c => {
+                                    const val = projData?.[c.key]
+                                    const factor = g.factors[c.key]
+                                    const delta = factor - 1
+                                    const good = c.invert ? delta < -0.05 : delta > 0.05
+                                    const bad  = c.invert ? delta > 0.05  : delta < -0.05
+                                    const cellColor = good ? '#4dffb4' : bad ? '#ff6b6b' : 'inherit'
+                                    return (
+                                      <td key={c.key} className="num mono sched-stat" style={{ color: cellColor }}>
+                                        {val != null ? val.toFixed(1) : '—'}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              )
+                            })}
+                            <tr className="sched-baseline-row">
+                              <td colSpan={3} className="sched-baseline-label">{periodLabel} avg</td>
+                              {SCHED_COLS.map(c => (
+                                <td key={c.key} className="num mono muted">{schedProj.baseline[c.key] != null ? schedProj.baseline[c.key].toFixed(1) : '—'}</td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )

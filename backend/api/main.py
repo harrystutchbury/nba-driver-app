@@ -1232,8 +1232,9 @@ SCHED_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
 
 @router.get("/schedule-projection")
 def get_schedule_projection(
-    player: str = Query(..., description="Player slug"),
-    period: str = Query("season", description="Baseline window: season | l30 | l14"),
+    player:     str = Query(...,    description="Player slug"),
+    period:     str = Query("season", description="Baseline window: season | l30 | l14"),
+    start_date: str = Query(None,   description="Show games from this date onward (YYYY-MM-DD, defaults to today, cannot be in past)"),
 ):
     """
     Return upcoming games for the player's team with per-game projected stats
@@ -1370,8 +1371,44 @@ def get_schedule_projection(
 
         b2b_games_count = len(b2b_hist)
 
+        # ── 3b. Per-stat SD (blended current + prev season) ──────────────
+        import math as _math
+
+        def _pop_sd(vals):
+            n = len(vals)
+            if n < 2: return 0.0
+            mean = sum(vals) / n
+            return _math.sqrt(sum((x - mean) ** 2 for x in vals) / n)
+
+        current_sd = {}
+        for stat in SCHED_STATS:
+            vals = [r[stat] for r in game_rows if r.get(stat) is not None]
+            current_sd[stat] = _pop_sd(vals)
+
+        # Prev-season SD for early-season blending
+        prev_season_year  = season_year - 1
+        prev_season_label = f"{prev_season_year - 1}-{str(prev_season_year)[2:]}"
+        prev_rows = conn.execute("""
+            SELECT pts, reb, ast, stl, blk, tov, fg3m
+            FROM game_logs
+            WHERE player_slug = ? AND season = ? AND min > 0
+        """, (player, prev_season_label)).fetchall()
+        prev_sd = {}
+        for stat in SCHED_STATS:
+            vals = [r[stat] for r in prev_rows if r[stat] is not None]
+            prev_sd[stat] = _pop_sd(vals) if len(vals) >= 5 else current_sd[stat]
+
+        # Blend: weight toward current as GP grows (fully current at 50 games)
+        gp_current = len(game_rows)
+        w_current  = min(gp_current, 50) / 50.0
+        blended_sd = {
+            stat: w_current * current_sd[stat] + (1 - w_current) * prev_sd[stat]
+            for stat in SCHED_STATS
+        }
+
         # ── 4. Forward schedule + B2B detection ───────────────────────────
-        today_str = date.today().isoformat()
+        today_str      = date.today().isoformat()
+        sched_from     = max(start_date, today_str) if start_date else today_str
         sched_rows = conn.execute("""
             SELECT s.game_date, s.home_team, s.away_team,
                    CASE WHEN EXISTS (
@@ -1386,7 +1423,7 @@ def get_schedule_projection(
               AND (s.home_team = ? OR s.away_team = ?)
             ORDER BY s.game_date
             LIMIT 10
-        """, (team, team, season_year, today_str, team, team)).fetchall()
+        """, (team, team, season_year, sched_from, team, team)).fetchall()
 
         upcoming = []
         for row in sched_rows:
@@ -1408,14 +1445,25 @@ def get_schedule_projection(
             opp_f    = opp_factors.get(opp, {stat: 1.0 for stat in SCHED_STATS})
             b2b_f    = b2b_factor if g["is_b2b"] else {stat: 1.0 for stat in SCHED_STATS}
             projected = {}
+            projected_low = {}
+            projected_high = {}
             combined_factors = {}
             for stat in SCHED_STATS:
                 base = base_row.get(stat)
                 of   = opp_f.get(stat, 1.0)
                 bf   = b2b_f.get(stat, 1.0)
                 combined_factors[stat] = round(of * bf, 3)
-                projected[stat] = round(base * of * bf, 1) if base is not None else None
-            games_out.append({**g, "projected": projected, "factors": combined_factors,
+                mid = round(base * of * bf, 1) if base is not None else None
+                projected[stat] = mid
+                if mid is not None:
+                    adj_sd = blended_sd[stat] * of * bf
+                    projected_low[stat]  = round(max(0.0, mid - adj_sd), 1)
+                    projected_high[stat] = round(mid + adj_sd, 1)
+                else:
+                    projected_low[stat] = projected_high[stat] = None
+            games_out.append({**g, "projected": projected,
+                               "projected_low": projected_low, "projected_high": projected_high,
+                               "factors": combined_factors,
                                "opp_factors": {s: round(opp_f.get(s, 1.0), 3) for s in SCHED_STATS},
                                "b2b_factors": {s: round(b2b_f.get(s, 1.0), 3) for s in SCHED_STATS}})
 
