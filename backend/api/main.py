@@ -2107,11 +2107,6 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     return payload
 
 
-app.include_router(router)
-
-
-# -----------------------------------------------------------------------
-# Serve React frontend (production build)
 # -----------------------------------------------------------------------
 # GET /depth-charts
 # -----------------------------------------------------------------------
@@ -2196,6 +2191,9 @@ def get_depth_charts():
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Depth chart fetch failed: {e}")
+
+
+app.include_router(router)
 
 
 # Must come AFTER all API routes so /api/* is never caught here.
