@@ -1217,11 +1217,13 @@ function ProjectionsPage({ onSelectPlayer }) {
                     const hasRange = showRanges && !c.noZ && !c.pct
                     const rangeLow  = p[`${c.key}_low`]
                     const rangeHigh = p[`${c.key}_high`]
+                    const displayLow  = isTotalsKey(c.key) ? Math.round(rangeLow  * (p.gp ?? 0)) : rangeLow
+                    const displayHigh = isTotalsKey(c.key) ? Math.round(rangeHigh * (p.gp ?? 0)) : rangeHigh
                     return (
                       <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                         <div>{displayFmt}</div>
                         {!c.noZ && !hasRange && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
-                        {hasRange && rangeLow != null && <div className="rank-range">{rangeLow}–{rangeHigh}</div>}
+                        {hasRange && rangeLow != null && <div className="rank-range">{displayLow}–{displayHigh}</div>}
                       </td>
                     )
                   })}
