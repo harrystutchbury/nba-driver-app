@@ -32,6 +32,8 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from datetime import timedelta
+import base64
+import requests as _requests
 
 import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -51,6 +53,56 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------
 # Auth
 # -----------------------------------------------------------------------
+
+# ── Yahoo Fantasy config ────────────────────────────────────────────────────
+YAHOO_CLIENT_ID     = os.environ.get("YAHOO_CLIENT_ID", "")
+YAHOO_CLIENT_SECRET = os.environ.get("YAHOO_CLIENT_SECRET", "")
+_APP_URL            = os.environ.get("APP_URL", "https://nba-driver-app.onrender.com").rstrip("/")
+YAHOO_REDIRECT_URI  = f"{_APP_URL}/api/fantasy/yahoo/callback"
+YAHOO_AUTH_URL      = "https://api.login.yahoo.com/oauth2/request_auth"
+YAHOO_TOKEN_URL     = "https://api.login.yahoo.com/oauth2/get_token"
+YAHOO_API_BASE      = "https://fantasysports.yahooapis.com/fantasy/v2"
+
+
+def _yahoo_token_headers():
+    creds = base64.b64encode(f"{YAHOO_CLIENT_ID}:{YAHOO_CLIENT_SECRET}".encode()).decode()
+    return {"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"}
+
+
+def _yahoo_api(access_token: str, path: str):
+    """GET from Yahoo Fantasy API, return parsed JSON."""
+    url = f"{YAHOO_API_BASE}/{path}{'&' if '?' in path else '?'}format=json"
+    resp = _requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _refresh_yahoo_token(conn, username: str) -> str:
+    """Refresh Yahoo access token if expired. Returns valid access token."""
+    row = conn.execute(
+        "SELECT access_token, refresh_token, expires_at FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [username]
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="Yahoo not connected")
+    if datetime.utcnow().isoformat() < (row["expires_at"] or ""):
+        return row["access_token"]
+    # Refresh
+    resp = _requests.post(YAHOO_TOKEN_URL, headers=_yahoo_token_headers(), data={
+        "grant_type": "refresh_token",
+        "redirect_uri": YAHOO_REDIRECT_URI,
+        "refresh_token": row["refresh_token"],
+    }, timeout=15)
+    resp.raise_for_status()
+    tok = resp.json()
+    expires_at = (datetime.utcnow() + timedelta(seconds=tok["expires_in"] - 60)).isoformat()
+    conn.execute(
+        "UPDATE fantasy_connections SET access_token=?, refresh_token=?, expires_at=?, updated_at=datetime('now') WHERE username=? AND provider='yahoo'",
+        [tok["access_token"], tok.get("refresh_token", row["refresh_token"]), expires_at, username]
+    )
+    conn.commit()
+    return tok["access_token"]
+
 
 JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
@@ -2430,6 +2482,295 @@ def login(body: dict = Body(...)):
     return {"token": token}
 
 
+# -----------------------------------------------------------------------
+# Fantasy router (all routes require auth)
+# -----------------------------------------------------------------------
+
+fantasy_router = APIRouter(prefix="/api/fantasy")
+
+
+@fantasy_router.get("/yahoo/auth-url")
+def yahoo_auth_url(current_user: str = Depends(get_current_user)):
+    """Return the Yahoo OAuth URL for the frontend to redirect to."""
+    state = _secrets.token_urlsafe(24)
+    conn = get_conn()
+    # Clean up old states for this user first
+    conn.execute("DELETE FROM oauth_states WHERE username=?", [current_user])
+    conn.execute("INSERT INTO oauth_states (state, username) VALUES (?,?)", [state, current_user])
+    conn.commit()
+    conn.close()
+    url = (
+        f"{YAHOO_AUTH_URL}?client_id={YAHOO_CLIENT_ID}"
+        f"&redirect_uri={YAHOO_REDIRECT_URI}"
+        f"&response_type=code&scope=fspt-r&state={state}"
+    )
+    return {"url": url}
+
+
+@fantasy_router.get("/yahoo/callback")
+def yahoo_callback(code: str = Query(...), state: str = Query(...)):
+    """Handle Yahoo OAuth callback — exchange code for tokens, redirect to app."""
+    from fastapi.responses import RedirectResponse
+    conn = get_conn()
+    row = conn.execute("SELECT username FROM oauth_states WHERE state=?", [state]).fetchone()
+    if not row:
+        conn.close()
+        return RedirectResponse(f"{_APP_URL}?fantasy_error=invalid_state")
+    username = row["username"]
+    conn.execute("DELETE FROM oauth_states WHERE state=?", [state])
+
+    try:
+        resp = _requests.post(YAHOO_TOKEN_URL, headers=_yahoo_token_headers(), data={
+            "grant_type": "authorization_code",
+            "redirect_uri": YAHOO_REDIRECT_URI,
+            "code": code,
+        }, timeout=15)
+        resp.raise_for_status()
+        tok = resp.json()
+    except Exception as e:
+        conn.close()
+        logger.exception("Yahoo token exchange failed")
+        return RedirectResponse(f"{_APP_URL}?fantasy_error=token_exchange")
+
+    expires_at = (datetime.utcnow() + timedelta(seconds=tok["expires_in"] - 60)).isoformat()
+    conn.execute("""
+        INSERT INTO fantasy_connections (username, provider, access_token, refresh_token, expires_at)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(username, provider) DO UPDATE SET
+            access_token=excluded.access_token,
+            refresh_token=excluded.refresh_token,
+            expires_at=excluded.expires_at,
+            updated_at=datetime('now')
+    """, [username, "yahoo", tok["access_token"], tok.get("refresh_token", ""), expires_at])
+    conn.commit()
+    conn.close()
+    return RedirectResponse(f"{_APP_URL}?yahoo_connected=1")
+
+
+@fantasy_router.get("/status")
+def fantasy_status(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT provider, league_key, team_key, updated_at FROM fantasy_connections WHERE username=?",
+        [current_user]
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"connected": False}
+    return {"connected": True, "provider": row["provider"], "league_key": row["league_key"], "team_key": row["team_key"]}
+
+
+@fantasy_router.get("/leagues")
+def get_leagues(current_user: str = Depends(get_current_user)):
+    """Return user's Yahoo Fantasy Basketball leagues for the current season."""
+    conn = get_conn()
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        data = _yahoo_api(token, "users;use_login=1/games;game_keys=nba/leagues")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+    conn.close()
+
+    leagues = []
+    try:
+        user_data = data["fantasy_content"]["users"]["0"]["user"]
+        games = user_data[1]["games"]
+        for gk in games:
+            if gk == "count": continue
+            game_entry = games[gk]["game"]
+            game_info = game_entry[0]
+            if game_info.get("code") != "nba": continue
+            league_map = game_entry[1].get("leagues", {})
+            for lk in league_map:
+                if lk == "count": continue
+                league = league_map[lk]["league"][0]
+                leagues.append({
+                    "league_key": league["league_key"],
+                    "name": league["name"],
+                    "num_teams": league.get("num_teams"),
+                    "season": league.get("season"),
+                })
+    except Exception as e:
+        logger.exception("Failed to parse Yahoo leagues response")
+        raise HTTPException(status_code=502, detail="Failed to parse Yahoo response")
+
+    return leagues
+
+
+@fantasy_router.post("/select-league")
+def select_league(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """Store the user's chosen league_key and find their team_key."""
+    league_key = (body.get("league_key") or "").strip()
+    if not league_key:
+        raise HTTPException(status_code=400, detail="league_key required")
+
+    conn = get_conn()
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        # Get teams in league to find the user's team
+        data = _yahoo_api(token, f"league/{league_key}/teams")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    team_key = None
+    try:
+        teams_data = data["fantasy_content"]["league"][1]["teams"]
+        for tk in teams_data:
+            if tk == "count": continue
+            team = teams_data[tk]["team"]
+            team_info = team[0]
+            # team_info is a list of dicts; find managers
+            managers = next((d["managers"] for d in team_info if isinstance(d, dict) and "managers" in d), None)
+            if managers:
+                for mk in managers:
+                    if mk == "count": continue
+                    mgr = managers[mk]["manager"]
+                    if mgr.get("is_current_login"):
+                        team_key = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), None)
+                        break
+            if team_key:
+                break
+    except Exception:
+        logger.exception("Failed to find user's team in league")
+
+    conn.execute(
+        "UPDATE fantasy_connections SET league_key=?, team_key=?, updated_at=datetime('now') WHERE username=? AND provider='yahoo'",
+        [league_key, team_key, current_user]
+    )
+    conn.commit()
+    conn.close()
+    return {"league_key": league_key, "team_key": team_key}
+
+
+@fantasy_router.get("/league")
+def get_league(current_user: str = Depends(get_current_user)):
+    """Return league standings with team rosters."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+
+    league_key = fc["league_key"]
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        standings_data = _yahoo_api(token, f"league/{league_key}/standings")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+    conn.close()
+
+    teams = []
+    try:
+        league = standings_data["fantasy_content"]["league"]
+        league_info = league[0]
+        standings = league[1]["standings"][0]["teams"]
+        for tk in standings:
+            if tk == "count": continue
+            team_list = standings[tk]["team"]
+            info = team_list[0]
+            name = next((d["name"] for d in info if isinstance(d, dict) and "name" in d), "")
+            team_key = next((d["team_key"] for d in info if isinstance(d, dict) and "team_key" in d), "")
+            team_pts = next((d["team_points"] for d in info if isinstance(d, dict) and "team_points" in d), None)
+            team_standings = team_list[2].get("team_standings", {}) if len(team_list) > 2 else {}
+            outcome = team_standings.get("outcome_totals", {})
+            teams.append({
+                "team_key": team_key,
+                "name": name,
+                "is_mine": team_key == fc["team_key"],
+                "wins":   outcome.get("wins", 0),
+                "losses": outcome.get("losses", 0),
+                "ties":   outcome.get("ties", 0),
+                "rank":   team_standings.get("rank"),
+            })
+        teams.sort(key=lambda t: int(t["rank"] or 99))
+    except Exception:
+        logger.exception("Failed to parse standings")
+        raise HTTPException(status_code=502, detail="Failed to parse Yahoo standings")
+
+    return {
+        "league_name": league_info.get("name", ""),
+        "num_teams":   league_info.get("num_teams"),
+        "my_team_key": fc["team_key"],
+        "teams": teams,
+    }
+
+
+@fantasy_router.get("/roster")
+def get_roster(current_user: str = Depends(get_current_user)):
+    """Return user's current roster, enriched with our stats."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No team selected")
+
+    team_key = fc["team_key"]
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        data = _yahoo_api(token, f"team/{team_key}/roster/players")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    players = []
+    try:
+        roster = data["fantasy_content"]["team"][1]["roster"]["0"]["players"]
+        for pk in roster:
+            if pk == "count": continue
+            player_data = roster[pk]["player"][0]
+            name = next((d["full_name"] for d in player_data if isinstance(d, dict) and "full_name" in d), "")
+            positions = next((d["eligible_positions"] for d in player_data if isinstance(d, dict) and "eligible_positions" in d), [])
+            pos_list = [p["position"] for p in positions if isinstance(p, dict) and "position" in p]
+            players.append({"name": name, "positions": pos_list})
+    except Exception:
+        logger.exception("Failed to parse roster")
+        raise HTTPException(status_code=502, detail="Failed to parse Yahoo roster")
+
+    # Fuzzy-match names to our slugs to enrich with stats
+    from rapidfuzz import process as rfprocess
+    all_players = conn.execute(
+        "SELECT slug, full_name FROM players GROUP BY slug"
+    ).fetchall()
+    conn.close()
+    slug_names = {r["slug"]: r["full_name"] for r in all_players}
+    name_to_slug = {v: k for k, v in slug_names.items()}
+
+    enriched = []
+    for p in players:
+        match = rfprocess.extractOne(p["name"], list(name_to_slug.keys()), score_cutoff=80)
+        slug = name_to_slug[match[0]] if match else None
+        enriched.append({**p, "slug": slug})
+
+    return enriched
+
+
+@fantasy_router.delete("/disconnect")
+def disconnect_fantasy(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    conn.execute("DELETE FROM fantasy_connections WHERE username=? AND provider='yahoo'", [current_user])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+app.include_router(fantasy_router)
 app.include_router(auth_router)
 
 # -----------------------------------------------------------------------

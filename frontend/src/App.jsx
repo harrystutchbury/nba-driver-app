@@ -1753,8 +1753,217 @@ function CommentsSection({ playerSlug }) {
   )
 }
 
+// ── Fantasy page ──────────────────────────────────────────────────────────────
+
+function FantasyPage() {
+  const [status,   setStatus]   = useState(null)   // null = loading
+  const [leagues,  setLeagues]  = useState(null)
+  const [league,   setLeague]   = useState(null)
+  const [roster,   setRoster]   = useState(null)
+  const [loading,  setLoading]  = useState(false)
+  const [msg,      setMsg]      = useState(null)
+
+  useEffect(() => { loadStatus() }, [])
+
+  function loadStatus() {
+    apiFetch('/api/fantasy/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setStatus(d))
+      .catch(() => setStatus({ connected: false }))
+  }
+
+  async function handleConnect() {
+    setLoading(true)
+    try {
+      const res = await apiFetch('/api/fantasy/yahoo/auth-url')
+      if (!res.ok) throw new Error()
+      const { url } = await res.json()
+      window.location.href = url
+    } catch {
+      setMsg({ type: 'err', text: 'Could not start Yahoo auth — please try again.' })
+      setLoading(false)
+    }
+  }
+
+  async function handleLoadLeagues() {
+    setLoading(true); setMsg(null)
+    try {
+      const res = await apiFetch('/api/fantasy/leagues')
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      const d = await res.json()
+      setLeagues(d.leagues || [])
+    } catch (e) {
+      setMsg({ type: 'err', text: e.message || 'Failed to load leagues' })
+    }
+    setLoading(false)
+  }
+
+  async function handleSelectLeague(leagueKey) {
+    setLoading(true); setMsg(null)
+    try {
+      const res = await apiFetch('/api/fantasy/select-league', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league_key: leagueKey }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      await loadStatus()
+      setLeagues(null)
+    } catch (e) {
+      setMsg({ type: 'err', text: e.message || 'Failed to select league' })
+    }
+    setLoading(false)
+  }
+
+  async function handleLoadLeague() {
+    setLoading(true); setMsg(null)
+    try {
+      const [lRes, rRes] = await Promise.all([
+        apiFetch('/api/fantasy/league'),
+        apiFetch('/api/fantasy/roster'),
+      ])
+      if (!lRes.ok || !rRes.ok) throw new Error('Failed to load fantasy data')
+      setLeague(await lRes.json())
+      setRoster(await rRes.json())
+    } catch (e) {
+      setMsg({ type: 'err', text: e.message })
+    }
+    setLoading(false)
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Disconnect Yahoo Fantasy?')) return
+    await apiFetch('/api/fantasy/disconnect', { method: 'DELETE' })
+    setStatus({ connected: false }); setLeague(null); setRoster(null); setLeagues(null)
+  }
+
+  // Once connected + league selected, auto-load league data
+  useEffect(() => {
+    if (status?.connected && status?.league_key && !league && !loading) {
+      handleLoadLeague()
+    }
+  }, [status])
+
+  if (!status) return <div className="dash-empty">Loading…</div>
+
+  // ── Not connected ──
+  if (!status.connected) return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-connect-card">
+        <h2 className="fantasy-connect-title">Yahoo Fantasy Sports</h2>
+        <p className="fantasy-connect-sub">Connect your Yahoo account to see your league, team, and roster projected stats.</p>
+        {msg && <div className="login-error">{msg.text}</div>}
+        <button className="login-btn" onClick={handleConnect} disabled={loading}>
+          {loading ? 'Redirecting…' : 'Connect Yahoo account'}
+        </button>
+      </div>
+    </div>
+  )
+
+  // ── Connected, no league selected yet ──
+  if (status.connected && !status.league_key) return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-connect-card">
+        <h2 className="fantasy-connect-title">Select your league</h2>
+        <p className="fantasy-connect-sub">Yahoo connected as <strong>{status.yahoo_guid || 'your account'}</strong>. Choose a league to get started.</p>
+        {msg && <div className={msg.type === 'ok' ? 'acct-ok' : 'login-error'}>{msg.text}</div>}
+        {!leagues ? (
+          <button className="login-btn" onClick={handleLoadLeagues} disabled={loading}>
+            {loading ? 'Loading…' : 'Load my leagues'}
+          </button>
+        ) : (
+          <ul className="fantasy-league-list">
+            {leagues.length === 0 && <li className="fantasy-league-empty">No active leagues found.</li>}
+            {leagues.map(lg => (
+              <li key={lg.league_key} className="fantasy-league-item">
+                <span className="fantasy-league-name">{lg.name}</span>
+                <span className="fantasy-league-meta">{lg.num_teams} teams · {lg.season}</span>
+                <button className="fantasy-league-btn" onClick={() => handleSelectLeague(lg.league_key)} disabled={loading}>
+                  Select
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button className="logout-btn" style={{ marginTop: 12 }} onClick={handleDisconnect}>Disconnect Yahoo</button>
+      </div>
+    </div>
+  )
+
+  // ── Connected + league selected ──
+  return (
+    <div className="fantasy-wrap">
+      <div className="fantasy-header">
+        <h2 className="fantasy-title">{status.league_name || 'My League'}</h2>
+        <div className="fantasy-header-actions">
+          <button className="fantasy-change-btn" onClick={() => { setStatus(s => ({ ...s, league_key: null })); setLeagues(null); setLeague(null); setRoster(null) }}>
+            Change league
+          </button>
+          <button className="logout-btn" onClick={handleDisconnect}>Disconnect</button>
+        </div>
+      </div>
+
+      {msg && <div className="login-error" style={{ margin: '0 0 12px' }}>{msg.text}</div>}
+      {loading && <div className="dash-empty">Loading…</div>}
+
+      {league && (
+        <div className="fantasy-grid">
+          {/* Standings */}
+          <div className="dash-card">
+            <div className="dash-card-title">Standings</div>
+            <table className="dash-table">
+              <thead>
+                <tr>
+                  <th>#</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(league.standings || []).map((t, i) => (
+                  <tr key={t.team_key} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                    <td>{i + 1}</td>
+                    <td>{t.name}</td>
+                    <td>{t.wins}</td>
+                    <td>{t.losses}</td>
+                    <td>{t.ties}</td>
+                    <td>{t.points_for != null ? (+t.points_for).toFixed(1) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Roster */}
+          {roster && (
+            <div className="dash-card">
+              <div className="dash-card-title">My Roster</div>
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th>Player</th><th>Team</th><th>Pos</th><th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(roster.players || []).map(p => (
+                    <tr key={p.player_key}>
+                      <td>{p.name}</td>
+                      <td>{p.team || '—'}</td>
+                      <td>{p.position || '—'}</td>
+                      <td className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>{p.injury_status || 'Active'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AppMain({ onLogout, onOpenAccount }) {
-  const [page, setPage]               = useState('dashboard')
+  const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
+  const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -1806,6 +2015,10 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   const searchRef   = useRef(null)
   const debounceRef = useRef(null)
+
+  useEffect(() => {
+    if (yahooConnected) window.history.replaceState({}, '', '/')
+  }, [])
 
   useEffect(() => {
     apiFetch('/api/data-range')
@@ -2408,6 +2621,7 @@ function AppMain({ onLogout, onOpenAccount }) {
             <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
+            <button className={`nav-btn${page === 'fantasy' ? ' active' : ''}`} onClick={() => setPage('fantasy')}>Fantasy</button>
           </nav>
           <div className="header-search-wrap" ref={searchRef}>
             <input
@@ -2451,6 +2665,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+
+      {page === 'fantasy' && <FantasyPage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

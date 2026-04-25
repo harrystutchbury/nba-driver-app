@@ -206,6 +206,29 @@ def init_db():
     """)
 
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS fantasy_connections (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT NOT NULL,
+            provider      TEXT NOT NULL DEFAULT 'yahoo',
+            access_token  TEXT,
+            refresh_token TEXT,
+            expires_at    TEXT,
+            league_key    TEXT,
+            team_key      TEXT,
+            updated_at    TEXT DEFAULT (datetime('now')),
+            UNIQUE(username, provider)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS oauth_states (
+            state      TEXT PRIMARY KEY,
+            username   TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             token      TEXT PRIMARY KEY,
             username   TEXT NOT NULL,
