@@ -2563,9 +2563,6 @@ export default function App() {
                           </thead>
                           <tbody>
                             {schedProj.games.map((g, i) => {
-                              const projData = schedScenario === 'low' ? g.projected_low
-                                             : schedScenario === 'high' ? g.projected_high
-                                             : g.projected
                               return (
                                 <tr key={i}>
                                   <td className="sched-date">
@@ -2575,14 +2572,16 @@ export default function App() {
                                   <td className="sched-opp">{g.opponent.split(' ').pop()}</td>
                                   <td className="sched-ha muted">{g.home_away === 'Home' ? 'vs' : '@'}</td>
                                   {SCHED_COLS.map(c => {
+                                    // TOV is inverted: pessimistic (low) = more TOV = projected_high
+                                    const scenarioForStat = (c.invert && schedScenario !== 'mid')
+                                      ? (schedScenario === 'low' ? 'high' : 'low')
+                                      : schedScenario
+                                    const projData = scenarioForStat === 'low' ? g.projected_low
+                                                   : scenarioForStat === 'high' ? g.projected_high
+                                                   : g.projected
                                     const val = projData?.[c.key]
-                                    const factor = g.factors[c.key]
-                                    const delta = factor - 1
-                                    const good = c.invert ? delta < -0.05 : delta > 0.05
-                                    const bad  = c.invert ? delta > 0.05  : delta < -0.05
-                                    const cellColor = good ? '#4dffb4' : bad ? '#ff6b6b' : 'inherit'
                                     return (
-                                      <td key={c.key} className="num mono sched-stat" style={{ color: cellColor }}>
+                                      <td key={c.key} className="num mono sched-stat">
                                         {val != null ? val.toFixed(1) : '—'}
                                       </td>
                                     )
