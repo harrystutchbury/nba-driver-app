@@ -39,13 +39,13 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState(null)
   const [loading,  setLoading]  = useState(false)
-  const [mode,     setMode]     = useState('login') // 'login' | 'setup'
+  const [mode,     setMode]     = useState('login') // 'login' | 'register'
 
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const endpoint = mode === 'setup' ? '/api/auth/setup' : '/api/auth/login'
+    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -54,7 +54,7 @@ function LoginPage({ onLogin }) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data.detail || (mode === 'setup' ? 'Setup failed — account already exists?' : 'Invalid username or password'))
+        setError(data.detail || (mode === 'register' ? 'Username already taken' : 'Invalid username or password'))
         setLoading(false)
         return
       }
@@ -91,14 +91,14 @@ function LoginPage({ onLogin }) {
           />
           {error && <div className="login-error">{error}</div>}
           <button className="login-btn" type="submit" disabled={loading}>
-            {loading ? (mode === 'setup' ? 'Creating…' : 'Signing in…') : (mode === 'setup' ? 'Create account' : 'Sign in')}
+            {loading ? (mode === 'register' ? 'Creating…' : 'Signing in…') : (mode === 'register' ? 'Create account' : 'Sign in')}
           </button>
         </form>
         <button
           className="login-toggle"
-          onClick={() => { setMode(m => m === 'login' ? 'setup' : 'login'); setError(null) }}
+          onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(null) }}
         >
-          {mode === 'login' ? 'First time? Create account' : '← Back to sign in'}
+          {mode === 'login' ? 'Create an account' : '← Back to sign in'}
         </button>
       </div>
     </div>

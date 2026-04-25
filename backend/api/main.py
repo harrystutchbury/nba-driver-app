@@ -2238,19 +2238,17 @@ def get_depth_charts():
 auth_router = APIRouter(prefix="/api/auth")
 
 
-@auth_router.post("/setup")
-def setup_first_user(body: dict = Body(...)):
-    """Create the first user — only works when no users exist yet."""
-    conn = get_conn()
-    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if count > 0:
-        conn.close()
-        raise HTTPException(status_code=403, detail="Setup already complete")
+@auth_router.post("/register")
+def register(body: dict = Body(...)):
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     if not username or not password:
-        conn.close()
         raise HTTPException(status_code=400, detail="Username and password required")
+    conn = get_conn()
+    existing = conn.execute("SELECT id FROM users WHERE username = ?", [username]).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Username already taken")
     hashed = _make_password_hash(password)
     conn.execute(
         "INSERT INTO users (username, password_hash) VALUES (?, ?)", [username, hashed]
