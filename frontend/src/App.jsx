@@ -1523,16 +1523,17 @@ function ProjectionsPage({ onSelectPlayer }) {
 // ── Dashboard page ────────────────────────────────────────────────────────────
 
 function DashboardPage({ onSelectPlayer }) {
-  const [top10,    setTop10]    = useState(null)
+  const todayET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const [games,    setGames]    = useState(null)
   const [injuries, setInjuries] = useState(null)
   const [news,     setNews]     = useState(null)
   const [comments, setComments] = useState(null)
 
   useEffect(() => {
-    apiFetch('/api/rankings?period=season&position=all')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setTop10(Array.isArray(d) ? d.slice(0, 10) : []))
-      .catch(() => setTop10([]))
+    apiFetch(`/api/box-score?date=${todayET()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setGames(d?.games ?? []))
+      .catch(() => setGames([]))
 
     apiFetch('/api/injuries')
       .then(r => r.ok ? r.json() : null)
@@ -1562,38 +1563,30 @@ function DashboardPage({ onSelectPlayer }) {
   return (
     <div className="dash-grid">
 
-      {/* ── Top 10 Players ─────────────────────────────────── */}
+      {/* ── Today's Games ──────────────────────────────────── */}
       <div className="dash-card">
-        <h2 className="dash-card-title">Top 10 Players — Season</h2>
-        {!top10 ? <div className="dash-loading">Loading…</div> : (
-          <table className="dash-table">
-            <thead>
-              <tr>
-                <th className="dash-th rank-col">#</th>
-                <th className="dash-th">Player</th>
-                <th className="dash-th num-col">PTS</th>
-                <th className="dash-th num-col">REB</th>
-                <th className="dash-th num-col">AST</th>
-                <th className="dash-th num-col">3PM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top10.map((p, i) => (
-                <tr key={p.slug} className="dash-tr" onClick={() => onSelectPlayer(p)}>
-                  <td className="dash-td rank-col">{i + 1}</td>
-                  <td className="dash-td">
-                    <span className="rank-player-link">{p.full_name}</span>
-                    <span className="dash-team">{p.team}</span>
-                  </td>
-                  <td className="dash-td num-col">{p.pts?.toFixed(1)}</td>
-                  <td className="dash-td num-col">{p.reb?.toFixed(1)}</td>
-                  <td className="dash-td num-col">{p.ast?.toFixed(1)}</td>
-                  <td className="dash-td num-col">{p.fg3m?.toFixed(1)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <h2 className="dash-card-title">Today's Games</h2>
+        {!games ? <div className="dash-loading">Loading…</div>
+          : games.length === 0 ? <div className="dash-empty">No games today.</div>
+          : games.map(g => (
+            <div key={g.game_id} className="dash-game">
+              <div className="dash-game-teams">
+                <span className={`dash-game-team${g.away_pts != null && g.home_pts != null && g.away_pts < g.home_pts ? ' dash-loser' : ''}`}>
+                  {g.away_abbr}
+                </span>
+                <span className="dash-game-score">
+                  {g.away_pts != null ? `${g.away_pts} – ${g.home_pts}` : 'vs'}
+                </span>
+                <span className={`dash-game-team${g.away_pts != null && g.home_pts != null && g.home_pts < g.away_pts ? ' dash-loser' : ''}`}>
+                  {g.home_abbr}
+                </span>
+              </div>
+              <span className={`dash-game-status${g.status === 'Completed' ? ' dash-final' : ' dash-live'}`}>
+                {g.status === 'Completed' ? 'Final' : g.status || 'Scheduled'}
+              </span>
+            </div>
+          ))
+        }
       </div>
 
       {/* ── Latest Comments ────────────────────────────────── */}
@@ -2410,13 +2403,33 @@ function AppMain({ onLogout, onOpenAccount }) {
           </div>
           <nav className="site-nav">
             <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>Home</button>
-            <button className={`nav-btn${page === 'player' ? ' active' : ''}`} onClick={() => setPage('player')}>Player</button>
             <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
             <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
             <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
           </nav>
+          <div className="header-search-wrap" ref={searchRef}>
+            <input
+              className="header-search-input"
+              type="text"
+              placeholder="Search player…"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setSelected(null); setShowSugg(true) }}
+              onFocus={() => setShowSugg(true)}
+            />
+            {showSugg && suggestions.length > 0 && (
+              <ul className="header-suggestions suggestions">
+                {suggestions.map(p => (
+                  <li key={p.slug} onMouseDown={() => { selectPlayer(p); setPage('player') }}>
+                    <span className="sugg-name">{p.name}</span>
+                    <span className="sugg-team">{p.team}</span>
+                    {p.injury && <InjuryBadge injury={p.injury} compact />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="nav-account">
             <button className="acct-btn" onClick={onOpenAccount}>Account</button>
             <button className="logout-btn" onClick={onLogout}>Sign out</button>
@@ -2440,32 +2453,12 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'player' && <>
-        {/* ── Player search ────────────────────────────────── */}
-        <div className="player-search-section" ref={searchRef}>
-          <div className="typeahead player-typeahead">
-            <input
-              className="ctrl-input player-search-input"
-              type="text"
-              placeholder="Search for a player…"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setSelected(null); setShowSugg(true) }}
-              onFocus={() => setShowSugg(true)}
-            />
-            {showSugg && suggestions.length > 0 && (
-              <ul className="suggestions">
-                {suggestions.map((p) => (
-                  <li key={p.slug} onMouseDown={() => selectPlayer(p)}>
-                    <span className="sugg-name">{p.name}</span>
-                    <span className="sugg-team">{p.team}</span>
-                    {p.injury && <InjuryBadge injury={p.injury} compact />}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
         {error && <div className="error-banner">{error}</div>}
+        {!selectedPlayer && (
+          <div className="dash-empty" style={{ textAlign: 'center', paddingTop: 60 }}>
+            Search for a player using the bar above.
+          </div>
+        )}
 
         {/* ── Player profile ────────────────────────────────── */}
         {selectedPlayer && playerStats && (

@@ -361,6 +361,84 @@
   margin-top: 4px;
 }
 
+/* ── Header search ───────────────────────────────────────── */
+
+.header-search-wrap {
+  position: relative;
+}
+
+.header-search-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.83rem;
+  padding: 6px 12px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.15s, width 0.2s;
+}
+
+.header-search-input:focus {
+  border-color: var(--accent);
+  width: 260px;
+}
+
+.header-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  width: 280px;
+  z-index: 200;
+}
+
+/* ── Today's Games (dashboard) ───────────────────────────── */
+
+.dash-game {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.dash-game:last-child { border-bottom: none; }
+
+.dash-game-teams {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-game-team {
+  font-size: 0.9rem;
+  font-weight: 700;
+  width: 38px;
+  text-align: center;
+}
+
+.dash-loser { opacity: 0.4; }
+
+.dash-game-score {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 60px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-game-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dash-final { color: #555; }
+.dash-live  { color: var(--accent); }
+
 /* ── Nav account controls ────────────────────────────────── */
 
 .nav-account {
