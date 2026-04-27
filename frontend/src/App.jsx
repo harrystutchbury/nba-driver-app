@@ -937,7 +937,7 @@ function RankingsPage({ onSelectPlayer }) {
                       const punted = puntedCats.has(c.key)
                       const z     = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? getTotalsZ(p, c.key) : p[`z_${c.key}`]
                       const zAdj  = (z != null && c.lowerBetter) ? -z : z
-                      const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                      const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? 'var(--skill)' : zAdj <= -1 ? '#ff6b6b' : '#888'
                       const displayFmt = isTotalsKey(c.key)
                         ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                         : fmt(p[c.key], c.pct)
@@ -1597,7 +1597,7 @@ function ProjectionsPage({ onSelectPlayer }) {
                         ? getTotalsZ(p, c.key)
                         : p[`z_${c.key}`]
                     const zAdj   = (z != null && c.lowerBetter) ? -z : z
-                    const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? '#4dffb4' : zAdj <= -1 ? '#ff6b6b' : '#888'
+                    const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? 'var(--skill)' : zAdj <= -1 ? '#ff6b6b' : '#888'
                     const displayFmt = isTotalsKey(c.key)
                       ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                       : fmt(p[c.key], c.pct)
@@ -2184,14 +2184,869 @@ function ProjectedStandings() {
 
 // ── Roster Analyser stub ───────────────────────────────────────────────────────
 
-function RosterAnalyser() {
+// ── Roster Analysis tab ────────────────────────────────────────────────────────
+
+function RosterAnalysis({ data }) {
+  const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
+  const catToKey = {}
+  tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
+  const negSet = new Set(neg_cats || [])
+
+  function zCls(z) {
+    if (z == null) return ''
+    if (z >= 0.5)  return 'ra-z-pos'
+    if (z <= -0.5) return 'ra-z-neg'
+    return 'ra-z-neu'
+  }
+  function zFmt(z) {
+    if (z == null) return null
+    return (z >= 0 ? '+' : '') + z.toFixed(1)
+  }
+  function zBg(z) {
+    if (z == null) return undefined
+    if (z >=  2)   return 'rgba(76,175,100,0.45)'
+    if (z >=  1)   return 'rgba(76,175,100,0.22)'
+    if (z >=  0.3) return 'rgba(76,175,100,0.10)'
+    if (z <= -2)   return 'rgba(220,50,50,0.45)'
+    if (z <= -1)   return 'rgba(220,50,50,0.22)'
+    if (z <= -0.3) return 'rgba(220,50,50,0.10)'
+    return undefined
+  }
+
+  // All teams sorted by projected EOS win% desc
+  const allSorted = [...teams].sort((a, b) =>
+    (b.proj_win_pct ?? 0) - (a.proj_win_pct ?? 0)
+  )
+
+  // Compute user's category W-L-T vs a team
+  function vsRecord(t) {
+    if (t.is_my_team) return null
+    let w = 0, l = 0, tie = 0
+    tracked_cats.forEach(cat => {
+      const key = catToKey[cat]; if (!key) return
+      const mine  = my_stats?.[key] ?? 0
+      const their = t.stats?.[key]  ?? 0
+      const diff  = mine - their
+      const neg   = negSet.has(cat)
+      if (Math.abs(diff) < 0.05) { tie++; return }
+      if (neg ? diff < 0 : diff > 0) w++; else l++
+    })
+    return { w, l, tie }
+  }
+
   return (
     <div className="fantasy-wrap">
-      <div className="fantasy-coming-soon">
-        <div className="fantasy-cs-icon">🔄</div>
-        <h3>Roster Change Analyser</h3>
-        <p>Coming soon — model trades and free agent pickups to see how your roster strength changes across each scoring category.</p>
+
+      {/* ── Roster ── */}
+      <div className="ra-section-title">Roster</div>
+      <div className="dash-card ra-card-wide" style={{overflowX:'auto',marginBottom:24}}>
+        <table className="dash-table ra-table">
+          <thead>
+            <tr>
+              <th>Player</th>
+              {tracked_cats.map(c => <th key={c}>{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {my_roster.map((p, i) => (
+              <tr key={p.espn_name + i} className={!p.stats ? 'ra-row-unmatched' : ''}>
+                <td className="ra-player-name">{p.espn_name}{!p.br_slug && <span className="ra-no-data"> (no data)</span>}</td>
+                {tracked_cats.map(cat => {
+                  const key = catToKey[cat]
+                  const v = p.stats?.[key]
+                  const z = p.z_scores?.[key]
+                  return (
+                    <td key={cat} style={{verticalAlign:'top'}}>
+                      <div>{v != null ? v.toFixed(1) : '—'}</div>
+                      {z != null && <div className={`ra-z-val ${zCls(z)}`}>{zFmt(z)}</div>}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            <tr className="ra-totals-row">
+              <td>TOTAL</td>
+              {tracked_cats.map(cat => {
+                const v = my_stats?.[catToKey[cat]]
+                return <td key={cat}><strong>{v != null ? v.toFixed(1) : '—'}</strong></td>
+              })}
+            </tr>
+            {my_cat_z && (
+              <tr className="ra-rank-row-inline">
+                <td className="ra-rank-inline-label">Z SUM</td>
+                {tracked_cats.map(cat => {
+                  const z = my_cat_z[cat]
+                  return <td key={cat} className={zCls(z)}><strong>{zFmt(z) ?? '—'}</strong></td>
+                })}
+              </tr>
+            )}
+            <tr className="ra-rank-row-inline">
+              <td className="ra-rank-inline-label">RANK</td>
+              {tracked_cats.map(cat => {
+                const info = cat_ranks[cat]
+                if (!info) return <td key={cat}>—</td>
+                const { rank, total } = info
+                const cls = rank <= Math.ceil(total / 3) ? 'ra-rank-good'
+                          : rank >= total - Math.floor(total / 3) ? 'ra-rank-bad'
+                          : 'ra-rank-mid'
+                return <td key={cat} className={cls}><strong>{rank}/{total}</strong></td>
+              })}
+            </tr>
+          </tbody>
+        </table>
+        {my_roster.some(p => !p.br_slug) && (
+          <div className="ra-unmatched-note">(no data) — player not matched, excluded from projections</div>
+        )}
       </div>
+
+      {/* ── VS Each Opponent ── */}
+      <div className="ra-section-title">VS Each Opponent</div>
+      <div className="dash-card ra-card-wide" style={{overflowX:'auto',marginBottom:24}}>
+        <table className="dash-table ra-table">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th style={{whiteSpace:'nowrap'}}>Win%</th>
+              <th style={{whiteSpace:'nowrap'}}>You vs</th>
+              {tracked_cats.map(c => <th key={c}>{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {allSorted.map(t => {
+              const rec = vsRecord(t)
+              const recCls = rec
+                ? rec.w > rec.l ? 'ra-score-win' : rec.w < rec.l ? 'ra-score-loss' : 'ra-score-tie'
+                : ''
+              return (
+                <tr key={t.team_id || t.name} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                  <td className="ra-player-name">{t.name}</td>
+                  <td style={{fontFamily:'var(--mono)',fontSize:12,whiteSpace:'nowrap'}}>
+                    {t.proj_win_pct != null ? t.proj_win_pct.toFixed(3) : '—'}
+                  </td>
+                  <td className={recCls} style={{whiteSpace:'nowrap',fontWeight:600}}>
+                    {rec ? `${rec.w}–${rec.l}${rec.tie ? `–${rec.tie}` : ''}` : '—'}
+                  </td>
+                  {tracked_cats.map(cat => {
+                    const key  = catToKey[cat]
+                    const stat = t.stats?.[key]
+                    const z    = t.cat_z?.[cat]
+                    return (
+                      <td key={cat} style={{background: zBg(z), verticalAlign:'top'}}>
+                        <div style={{fontFamily:'var(--mono)',fontSize:11}}>
+                          {stat != null ? (stat / 10).toFixed(1) : '—'}
+                        </div>
+                        {z != null && <div className={`ra-z-val ${zCls(z)}`}>{zFmt(z)}</div>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Trade Analysis tab ─────────────────────────────────────────────────────────
+
+function TradeAnalysis({ data }) {
+  // Unified "leaving my roster" list — used by both trade and waiver
+  const [outSlugs,   setOutSlugs]   = useState([])  // {slug, name} — trade outs
+  const [dropSlugs,  setDropSlugs]  = useState([])  // {slug, name} — pure drops
+
+  // Trade
+  const [tradeTeam,  setTradeTeam]  = useState(null)
+  const [tradeTeam2, setTradeTeam2] = useState(null)
+  const [getSlugs,   setGetSlugs]   = useState([])  // getting from team 1
+  const [getSlugs2,  setGetSlugs2]  = useState([])  // getting from team 2
+
+  // Waiver
+  const [freeAgents, setFreeAgents] = useState(null)
+  const [faLoading,  setFaLoading]  = useState(false)
+  const [faSearch,   setFaSearch]   = useState('')
+  const [pickSlugs,  setPickSlugs]  = useState([])  // FAs adding
+
+  // Simulation
+  const [baseSim,    setBaseSim]    = useState(null) // baseline (no changes) for "before" standings
+  const [simResult,  setSimResult]  = useState(null)
+  const [simLoading, setSimLoading] = useState(false)
+  const [simErr,     setSimErr]     = useState(null)
+
+  const [dragging,   setDragging]   = useState(null)
+
+  useEffect(() => {
+    // Fetch free agents
+    setFaLoading(true)
+    apiFetch('/api/fantasy/espn/free-agents')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setFreeAgents(d.free_agents || []))
+      .catch(() => setFreeAgents([]))
+      .finally(() => setFaLoading(false))
+    // Fetch baseline projected standings (no roster changes)
+    apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ add_slugs: [], drop_slugs: [] }),
+    }).then(r => r.ok ? r.json() : null).then(d => { if (d) setBaseSim(d) }).catch(() => {})
+  }, [])
+
+  const { my_roster, my_stats, teams, tracked_cats, neg_cats, stat_name_map, cat_ranks } = data
+  const catToKey = {}
+  tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
+  const negSet  = new Set(neg_cats || [])
+  const otherTeams = teams.filter(t => !t.is_my_team)
+
+  // Click cycles: normal → trade out (toTeam:1) → drop → normal
+  function toggleOut(slug, name) {
+    const inTrade = outSlugs.find(p=>p.slug===slug)
+    const inDrop  = dropSlugs.find(p=>p.slug===slug)
+    if (inTrade) {
+      setOutSlugs(prev=>prev.filter(p=>p.slug!==slug))
+      setDropSlugs(prev=>[...prev, {slug, name}])
+    } else if (inDrop) {
+      setDropSlugs(prev=>prev.filter(p=>p.slug!==slug))
+    } else {
+      setOutSlugs(prev=>[...prev, {slug, name, toTeam: 1}])
+    }
+    resetSim()
+  }
+
+  function toggleOutDest(slug) {
+    setOutSlugs(prev => prev.map(p => p.slug===slug ? {...p, toTeam: p.toTeam===1 ? 2 : 1} : p))
+    resetSim()
+  }
+
+  async function simulate() {
+    const addSlugs    = [...getSlugs.map(p=>p.slug), ...getSlugs2.map(p=>p.slug), ...pickSlugs]
+    const allDropSlugs = [...outSlugs.map(p=>p.slug), ...dropSlugs.map(p=>p.slug)]
+    if (!addSlugs.length && !allDropSlugs.length) return
+    setSimLoading(true); setSimErr(null); setSimResult(null)
+
+    // Tell the backend how each trade partner's roster changes
+    const toTeam1 = outSlugs.filter(p=>p.toTeam!==2).map(p=>p.slug)
+    const toTeam2 = outSlugs.filter(p=>p.toTeam===2).map(p=>p.slug)
+    const teamChanges = []
+    if (tradeTeam) {
+      teamChanges.push({
+        team_id:    tradeTeam.team_id,
+        add_slugs:  toTeam1,
+        drop_slugs: getSlugs.map(p => p.slug),
+      })
+    }
+    if (tradeTeam2) {
+      teamChanges.push({
+        team_id:    tradeTeam2.team_id,
+        add_slugs:  toTeam2,
+        drop_slugs: getSlugs2.map(p => p.slug),
+      })
+    }
+
+    try {
+      const res = await apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add_slugs: addSlugs, drop_slugs: allDropSlugs, team_changes: teamChanges }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Simulation failed') }
+      setSimResult(await res.json())
+    } catch(e) { setSimErr(e.message) }
+    setSimLoading(false)
+  }
+
+  function resetSim() { setSimResult(null); setSimErr(null) }
+
+  function onDrop(zone) {
+    if (!dragging) return
+    const addTo = (list, set) => { if (!list.find(p=>p.slug===dragging.slug)) set(prev=>[...prev,{slug:dragging.slug,name:dragging.name}]) }
+    if      (zone==='get'  && dragging.source==='theirs')  addTo(getSlugs,  setGetSlugs)
+    else if (zone==='get2' && dragging.source==='theirs2') addTo(getSlugs2, setGetSlugs2)
+    setDragging(null)
+  }
+  function onDragOver(e) { e.preventDefault() }
+
+  // Helper: render a roster stats table (for before/after)
+  function RosterTable({ roster, totals, ranks, label, beforeTotals, beforeRanks }) {
+    return (
+      <div className="dash-card" style={{flex:1,minWidth:0,overflowX:'auto'}}>
+        <div className="ra-before-after-label">{label}</div>
+        <table className="dash-table ra-table">
+          <thead>
+            <tr><th>Player</th>{tracked_cats.map(c=><th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {roster.map((p,i) => (
+              <tr key={p.name+i} className={p.isNew ? 'ra-player-added' : p.isOut ? 'ra-player-out' : ''}>
+                <td className="ra-player-name">
+                  {p.name}
+                  {p.isOut && <span className="ra-out-badge"> OUT</span>}
+                </td>
+                {tracked_cats.map(cat => {
+                  const key = catToKey[cat]; const v = p.stats?.[key]
+                  return <td key={cat}>{v != null ? v.toFixed(1) : '—'}</td>
+                })}
+              </tr>
+            ))}
+            <tr className="ra-totals-row">
+              <td>TOTAL</td>
+              {tracked_cats.map(cat => {
+                const key = catToKey[cat]
+                const v = totals?.[key]
+                const bv = beforeTotals?.[key]
+                const delta = (v != null && bv != null) ? v - bv : null
+                const isNeg = negSet.has(cat)
+                const improved = delta != null && (isNeg ? delta < -0.001 : delta > 0.001)
+                const worsened = delta != null && (isNeg ? delta > 0.001 : delta < -0.001)
+                return (
+                  <td key={cat}>
+                    <strong>{v != null ? v.toFixed(1) : '—'}</strong>
+                    {delta != null && Math.abs(delta) > 0.001 && (
+                      <div className={`ra-delta-inset ${improved?'ra-delta-pos':worsened?'ra-delta-neg':''}`}>
+                        {delta > 0 ? '+' : ''}{delta.toFixed(1)}
+                      </div>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+            {ranks && (
+              <tr className="ra-rank-row-inline">
+                <td className="ra-rank-inline-label">RANK</td>
+                {tracked_cats.map(cat => {
+                  const info = ranks[cat]
+                  if (!info) return <td key={cat}>—</td>
+                  const {rank, total} = info
+                  const cls = rank <= Math.ceil(total/3) ? 'ra-rank-good' : rank >= total-Math.floor(total/3) ? 'ra-rank-bad' : 'ra-rank-mid'
+                  const bInfo = beforeRanks?.[cat]
+                  const rankDelta = bInfo ? bInfo.rank - rank : null  // positive = improved
+                  return (
+                    <td key={cat} className={cls}>
+                      <strong>{rank}/{total}</strong>
+                      {rankDelta != null && rankDelta !== 0 && (
+                        <div className={`ra-delta-inset ${rankDelta>0?'ra-delta-pos':'ra-delta-neg'}`}>
+                          {rankDelta > 0 ? `▲${rankDelta}` : `▼${Math.abs(rankDelta)}`}
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  // Helper: render a projected standings table
+  function StandingsTable({ standings, label }) {
+    if (!standings) return null
+    return (
+      <div className="dash-card" style={{flex:1,minWidth:0,overflowX:'auto'}}>
+        <div className="ra-before-after-label">{label}</div>
+        <table className="dash-table">
+          <thead><tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'left'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th style={{textAlign:'center'}}>Win%</th></tr></thead>
+          <tbody>
+            {[...standings].sort((a,b)=>a.proj_standing-b.proj_standing).map(r => (
+              <tr key={r.name} className={r.is_my_team ? 'fantasy-my-team' : ''}>
+                <td style={{textAlign:'center'}}>{r.proj_standing}</td>
+                <td>{r.name}</td>
+                <td style={{textAlign:'center'}}>{r.proj_wins}</td>
+                <td style={{textAlign:'center'}}>{r.proj_losses}</td>
+                <td style={{textAlign:'center'}}>{r.proj_wins != null && r.proj_losses != null
+                  ? ((r.proj_wins/(r.proj_wins+r.proj_losses+0.0001))*100).toFixed(1)+'%'
+                  : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  const addCount    = getSlugs.length + getSlugs2.length + pickSlugs.length
+  const dropCount   = outSlugs.length + dropSlugs.length
+  const rosterAfter = my_roster.length - dropCount + addCount
+  const overLimit   = rosterAfter > 10
+  const hasChanges  = addCount > 0 || dropCount > 0
+
+  return (
+    <div className="fantasy-wrap">
+
+      {/* ── Player Movement — 3-column layout ── */}
+      <div className="dash-card" style={{marginBottom:12}}>
+        <div className="ra-movement-grid">
+
+          {/* Col 1: My Roster */}
+          <div>
+            <div className="ra-trade-col-title ra-my-team-title">My Roster <span className="ra-col-sub">(click: trade out → drop → clear)</span></div>
+            {my_roster.filter(p=>p.br_slug).map((p,i) => {
+              const inTrade = outSlugs.find(o=>o.slug===p.br_slug)
+              const inDrop  = dropSlugs.find(o=>o.slug===p.br_slug)
+              return (
+                <div key={p.espn_name+i}
+                     className={`ra-player-chip${inTrade?' ra-chip-out':inDrop?' ra-chip-drop':''}`}
+                     onClick={() => toggleOut(p.br_slug, p.espn_name)}>
+                  {p.espn_name}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Col 2: Movement summary */}
+          <div className="ra-movement-summary">
+            <div className="ra-move-box">
+              <div className="ra-zone-label">OUT · Trade</div>
+              {outSlugs.length === 0
+                ? <span className="ra-zone-hint">1st click from My Roster</span>
+                : outSlugs.map(p => (
+                    <div key={p.slug} className="ra-zone-chip ra-zone-chip-out" style={{flexWrap:'wrap',gap:2}}>
+                      <span style={{flex:1}}>{p.name}</span>
+                      {tradeTeam2 && (
+                        <button className="ra-chip-dest" onClick={()=>toggleOutDest(p.slug)}
+                                title={`Going to: ${p.toTeam===2 ? tradeTeam2?.name : tradeTeam?.name}`}>
+                          → {p.toTeam===2 ? 'T2' : 'T1'}
+                        </button>
+                      )}
+                      <button className="ra-chip-remove" onClick={()=>{setOutSlugs(prev=>prev.filter(o=>o.slug!==p.slug));resetSim()}}>✕</button>
+                    </div>
+                  ))
+              }
+            </div>
+            <div className="ra-move-box">
+              <div className="ra-zone-label">IN · Trade</div>
+              {getSlugs.length===0 && getSlugs2.length===0
+                ? <span className="ra-zone-hint">Click from partner roster</span>
+                : [...getSlugs, ...getSlugs2].map(p => (
+                    <div key={p.slug} className="ra-zone-chip">
+                      {p.name}<button className="ra-chip-remove" onClick={()=>{setGetSlugs(prev=>prev.filter(g=>g.slug!==p.slug));setGetSlugs2(prev=>prev.filter(g=>g.slug!==p.slug));resetSim()}}>✕</button>
+                    </div>
+                  ))
+              }
+            </div>
+            <div className="ra-move-box">
+              <div className="ra-zone-label">OUT · Drop</div>
+              {dropSlugs.length === 0
+                ? <span className="ra-zone-hint">2nd click from My Roster</span>
+                : dropSlugs.map(p => (
+                    <div key={p.slug} className="ra-zone-chip ra-zone-chip-out">
+                      {p.name}<button className="ra-chip-remove" onClick={()=>{setDropSlugs(prev=>prev.filter(o=>o.slug!==p.slug));resetSim()}}>✕</button>
+                    </div>
+                  ))
+              }
+            </div>
+            <div className="ra-move-box">
+              <div className="ra-zone-label">IN · FA</div>
+              {pickSlugs.length===0
+                ? <span className="ra-zone-hint">Click from FA list</span>
+                : pickSlugs.map(slug => (
+                    <div key={slug} className="ra-zone-chip">
+                      {freeAgents?.find(p=>p.br_slug===slug)?.espn_name||slug}
+                      <button className="ra-chip-remove" onClick={()=>{setPickSlugs(prev=>prev.filter(s=>s!==slug));resetSim()}}>✕</button>
+                    </div>
+                  ))
+              }
+            </div>
+          </div>
+
+          {/* Col 3: Trade partner(s) + FA list */}
+          <div className="ra-movement-selection">
+            {/* Trade partner selectors */}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+              <div className="ra-sim-col" style={{flex:1,minWidth:140}}>
+                <label className="ra-sim-label">Trade partner</label>
+                <select className="ra-sim-select"
+                        value={tradeTeam?.team_id||''}
+                        onChange={e => {
+                          const t = otherTeams.find(t=>t.team_id===e.target.value)
+                          setTradeTeam(t||null); setTradeTeam2(null); setGetSlugs([]); setGetSlugs2([]); resetSim()
+                        }}>
+                  <option value="">— None —</option>
+                  {otherTeams.map(t=><option key={t.team_id} value={t.team_id}>{t.name}</option>)}
+                </select>
+              </div>
+              {tradeTeam && (
+                <div className="ra-sim-col" style={{flex:1,minWidth:140}}>
+                  <label className="ra-sim-label">3rd team (optional)</label>
+                  <select className="ra-sim-select"
+                          value={tradeTeam2?.team_id||''}
+                          onChange={e => {
+                            const t = otherTeams.find(t=>t.team_id===e.target.value && t.team_id!==tradeTeam.team_id)
+                            setTradeTeam2(t||null); setGetSlugs2([]); resetSim()
+                          }}>
+                    <option value="">— None —</option>
+                    {otherTeams.filter(t=>t.team_id!==tradeTeam.team_id).map(t=><option key={t.team_id} value={t.team_id}>{t.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            {/* Partner roster(s) */}
+            {[
+              {team:tradeTeam,  gets:getSlugs,  setGets:setGetSlugs,  source:'theirs'},
+              ...(tradeTeam2 ? [{team:tradeTeam2,gets:getSlugs2,setGets:setGetSlugs2,source:'theirs2'}] : []),
+            ].filter(x=>x.team).map(({team,gets,setGets,source}) => (
+              <div key={team.team_id} style={{marginBottom:8}}>
+                <div className="ra-trade-col-title">{team.name} <span className="ra-col-sub">(click to get)</span></div>
+                <div className="ra-partner-chips">
+                  {(team.players||[]).filter(p=>p.br_slug).map((p,i) => (
+                    <div key={p.espn_name+i}
+                         className={`ra-player-chip${gets.find(g=>g.slug===p.br_slug)?' ra-chip-selected':''}`}
+                         draggable
+                         onDragStart={() => setDragging({slug:p.br_slug,name:p.espn_name,source})}
+                         onClick={() => {
+                           if (gets.find(g=>g.slug===p.br_slug)) setGets(prev=>prev.filter(g=>g.slug!==p.br_slug))
+                           else setGets(prev=>[...prev,{slug:p.br_slug,name:p.espn_name}])
+                           resetSim()
+                         }}>
+                      {p.espn_name}
+                        </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {/* FA list */}
+            {faLoading && <div className="dash-empty" style={{fontSize:12}}>Loading free agents…</div>}
+            {freeAgents && (
+              <div>
+                <div className="ra-trade-col-title">Free Agents <span className="ra-col-sub">(click to pick up)</span></div>
+                <input className="ra-fa-search" placeholder="Search…" value={faSearch} onChange={e=>setFaSearch(e.target.value)} />
+                <div className="ra-waiver-list">
+                  {freeAgents.filter(p=>p.stats&&(!faSearch||p.espn_name?.toLowerCase().includes(faSearch.toLowerCase()))).map((p,i)=>(
+                    <div key={p.espn_name+i}
+                         className={`ra-player-chip${pickSlugs.includes(p.br_slug)?' ra-chip-selected':''}`}
+                         onClick={()=>{setPickSlugs(prev=>prev.includes(p.br_slug)?prev.filter(s=>s!==p.br_slug):[...prev,p.br_slug]);resetSim()}}>
+                      <span>{p.espn_name}</span>
+                      <span className="ra-chip-stats-row">
+                        {tracked_cats.slice(0,5).map(cat=>(
+                          <span key={cat} className="ra-chip-cat">{cat} {p.stats[catToKey[cat]]?.toFixed(1)??'—'}</span>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* ── Simulate ── */}
+      {overLimit && (
+        <div className="ra-roster-warning">
+          Roster would be {rosterAfter} — drop {rosterAfter-10} more player{rosterAfter-10>1?'s':''} to stay at 10
+        </div>
+      )}
+      <button className="ra-simulate-btn" style={{marginTop:8,width:'100%'}}
+              disabled={simLoading||!hasChanges||overLimit} onClick={simulate}>
+        {simLoading ? 'Simulating…' : 'Simulate'}
+      </button>
+      {simErr && <div className="login-error" style={{marginTop:12}}>{simErr}</div>}
+
+      {/* ── Results ── */}
+      {simResult && (() => {
+        const cats = simResult.tracked_cats || tracked_cats
+        const neg  = new Set(simResult.neg_cats || [])
+
+        // Build before and after roster lists
+        const outSet = new Set([...outSlugs.map(p=>p.slug), ...dropSlugs.map(p=>p.slug)])
+        const addedPlayers = [
+          ...getSlugs.map(p=>({...p, from: tradeTeam?.name || 'Trade partner 1'})),
+          ...getSlugs2.map(p=>({...p, from: tradeTeam2?.name || 'Trade partner 2'})),
+          ...pickSlugs.map(slug=>({slug, name: freeAgents?.find(p=>p.br_slug===slug)?.espn_name||slug, from:'FA'}))
+        ]
+        const beforeRoster = my_roster.map(p => ({
+          name: p.espn_name,
+          stats: p.stats,
+          isOut: outSet.has(p.br_slug),
+          isNew: false,
+        }))
+        const afterRoster = [
+          ...my_roster.filter(p=>!outSet.has(p.br_slug)).map(p=>({name:p.espn_name,stats:p.stats,isNew:false,isOut:false})),
+          ...addedPlayers.map(a => {
+            const fromTeam = [...(tradeTeam?.players||[]),...(tradeTeam2?.players||[])].find(p=>p.br_slug===a.slug)
+            const fromFA   = freeAgents?.find(p=>p.br_slug===a.slug)
+            return {name:a.name, stats:fromTeam?.stats||fromFA?.stats||null, isNew:true, isOut:false, from:a.from}
+          })
+        ]
+
+        // Compute "after" cat_ranks from simResult.cat_beats_new
+        const afterRanks = {}
+        const total = simResult.total_teams || 1
+        cats.forEach(cat => {
+          const beats = simResult.cat_beats_new?.[cat]
+          if (beats != null) afterRanks[cat] = {rank: total + 1 - beats, total: total + 1}
+        })
+
+        // Win% lookup helpers
+        const myStandBefore = baseSim?.projected_standings?.find(r=>r.is_my_team)
+        const myStandAfter  = simResult.projected_standings?.find(r=>r.is_my_team)
+        const winPct = r => r ? ((r.proj_wins/(r.proj_wins+r.proj_losses+0.0001))*100).toFixed(1)+'%' : '—'
+
+        return (
+          <div style={{marginTop:20}}>
+
+            {/* VS Each Opponent */}
+            <div className="ra-section-title" style={{marginTop:0}}>VS Each Opponent</div>
+            <div className="dash-card" style={{overflowX:'auto'}}>
+              {(() => {
+                const myTeam = teams.find(t => t.is_my_team)
+                const zCls = z => z == null ? '' : z > 0.5 ? 'ra-z-pos' : z < -0.5 ? 'ra-z-neg' : ''
+                const zFmt = z => z == null ? '—' : (z > 0 ? '+' : '') + z.toFixed(2)
+                return (
+                  <table className="dash-table ra-table">
+                    <thead>
+                      <tr>
+                        <th>Team</th>
+                        <th>Win% Before</th>
+                        <th>Win% After</th>
+                        <th>H2H Before</th>
+                        <th>H2H After</th>
+                        {cats.map(c=><th key={c}>{c} Z</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myTeam && (
+                        <tr className="fantasy-my-team">
+                          <td className="ra-player-name">{myTeam.name}</td>
+                          <td>{winPct(myStandBefore)}</td>
+                          <td>{winPct(myStandAfter)}</td>
+                          <td>—</td>
+                          <td>—</td>
+                          {cats.map(cat => {
+                            const z = myTeam.cat_z?.[cat]
+                            return <td key={cat} className={zCls(z)}>{zFmt(z)}</td>
+                          })}
+                        </tr>
+                      )}
+                      {otherTeams.map(t => {
+                        let wB=0,lB=0,wA=0,lA=0
+                        cats.forEach(cat => {
+                          const key = catToKey[cat]; if(!key) return
+                          const isN = neg.has(cat)
+                          const their = t.stats?.[key]??0
+                          const bef = simResult.orig_stats?.[key]??0
+                          const aft = simResult.new_stats?.[key]??0
+                          const dB = bef-their, dA = aft-their
+                          if(isN?dB<-0.001:dB>0.001) wB++; else if(isN?dB>0.001:dB<-0.001) lB++
+                          if(isN?dA<-0.001:dA>0.001) wA++; else if(isN?dA>0.001:dA<-0.001) lA++
+                        })
+                        const tStandB = baseSim?.projected_standings?.find(r=>r.name===t.name)
+                        const tStandA = simResult.projected_standings?.find(r=>r.name===t.name)
+                        const tWinPctB = tStandB ? ((tStandB.proj_wins/(tStandB.proj_wins+tStandB.proj_losses+0.0001))*100).toFixed(1)+'%' : '—'
+                        const tWinPctA = tStandA ? ((tStandA.proj_wins/(tStandA.proj_wins+tStandA.proj_losses+0.0001))*100).toFixed(1)+'%' : '—'
+                        const cB = wB>lB?'ra-score-win':wB<lB?'ra-score-loss':'ra-score-tie'
+                        const cA = wA>lA?'ra-score-win':wA<lA?'ra-score-loss':'ra-score-tie'
+                        return (
+                          <tr key={t.team_id||t.name}>
+                            <td className="ra-player-name">{t.name}</td>
+                            <td>{tWinPctB}</td>
+                            <td>{tWinPctA}</td>
+                            <td className={cB}><strong>{wB}–{lB}</strong></td>
+                            <td className={cA}><strong>{wA}–{lA}</strong></td>
+                            {cats.map(cat => {
+                              const z = t.cat_z?.[cat]
+                              return <td key={cat} className={zCls(z)}>{zFmt(z)}</td>
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )
+              })()}
+            </div>
+
+            {/* Squad Before / After */}
+            <div className="ra-section-title" style={{marginTop:24}}>Squad Analysis</div>
+            <div className="ra-before-after-grid">
+              <RosterTable roster={beforeRoster} totals={simResult.orig_stats} ranks={cat_ranks} label="Before" />
+              <RosterTable roster={afterRoster}  totals={simResult.new_stats}  ranks={afterRanks}  label="After"
+                           beforeTotals={simResult.orig_stats} beforeRanks={cat_ranks} />
+            </div>
+
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+// ── Player Mapping ─────────────────────────────────────────────────────────────
+
+const TIER_LABEL = { 1: 'Exact', 2: 'Fuzzy', 3: 'Manual', null: 'Unmatched' }
+const TIER_CLS   = { 1: 'pm-tier-exact', 2: 'pm-tier-fuzzy', 3: 'pm-tier-manual', null: 'pm-tier-none' }
+
+function PlayerMapping({ provider }) {
+  const [data,        setData]        = useState(null)
+  const [populating,  setPopulating]  = useState(false)
+  const [popMsg,      setPopMsg]      = useState(null)
+  const [search,      setSearch]      = useState('')
+  const [filter,      setFilter]      = useState('all')   // all | unmatched | fuzzy | exact | manual
+  const [editId,      setEditId]      = useState(null)    // provider_id being manually linked
+  const [brSearch,    setBrSearch]    = useState('')
+  const [brResults,   setBrResults]   = useState([])
+  const [brLoading,   setBrLoading]   = useState(false)
+  const [saveMsg,     setSaveMsg]     = useState(null)
+
+  useEffect(() => { load() }, [provider])
+
+  function load() {
+    apiFetch(`/api/fantasy/player-map?provider=${provider}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setData(d) })
+      .catch(() => {})
+  }
+
+  async function populate() {
+    setPopulating(true); setPopMsg(null)
+    try {
+      const res = await apiFetch(`/api/fantasy/player-map/populate?provider=${provider}`, { method: 'POST' })
+      const d   = await res.json()
+      if (!res.ok) throw new Error(d.detail || 'Failed')
+      setPopMsg(`Done — ${d.exact} exact, ${d.fuzzy} fuzzy, ${d.unmatched} unmatched out of ${d.total}`)
+      load()
+    } catch (e) { setPopMsg(e.message) }
+    setPopulating(false)
+  }
+
+  // Search BR players by name
+  useEffect(() => {
+    if (brSearch.length < 2) { setBrResults([]); return }
+    setBrLoading(true)
+    apiFetch(`/api/fantasy/player-map/search-br?q=${encodeURIComponent(brSearch)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setBrResults(d.players || []) })
+      .catch(() => {})
+      .finally(() => setBrLoading(false))
+  }, [brSearch])
+
+  async function saveLink(provId, brSlug) {
+    setSaveMsg(null)
+    try {
+      const res = await apiFetch('/api/fantasy/player-map', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, provider_id: provId, br_slug: brSlug }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      setEditId(null); setBrSearch(''); setBrResults([])
+      load()
+    } catch (e) { setSaveMsg(e.message) }
+  }
+
+  if (!data) return <div className="dash-empty">Loading…</div>
+
+  const players = (data.players || [])
+    .filter(p => !search || p.provider_name.toLowerCase().includes(search.toLowerCase())
+                          || (p.br_name || '').toLowerCase().includes(search.toLowerCase()))
+    .filter(p => {
+      if (filter === 'unmatched') return !p.match_tier
+      if (filter === 'fuzzy')    return p.match_tier === 2
+      if (filter === 'exact')    return p.match_tier === 1
+      if (filter === 'manual')   return p.match_tier === 3
+      return true
+    })
+
+  const counts = (data.players || []).reduce((acc, p) => {
+    const k = p.match_tier == null ? 'unmatched' : p.match_tier === 1 ? 'exact' : p.match_tier === 2 ? 'fuzzy' : 'manual'
+    acc[k] = (acc[k] || 0) + 1
+    return acc
+  }, {})
+
+  return (
+    <div className="fantasy-wrap">
+      <div className="pm-header">
+        <div className="pm-summary">
+          <span className="pm-chip pm-chip-exact" onClick={() => setFilter(f => f === 'exact' ? 'all' : 'exact')}>
+            {counts.exact || 0} Exact
+          </span>
+          <span className="pm-chip pm-chip-fuzzy" onClick={() => setFilter(f => f === 'fuzzy' ? 'all' : 'fuzzy')}>
+            {counts.fuzzy || 0} Fuzzy
+          </span>
+          <span className="pm-chip pm-chip-manual" onClick={() => setFilter(f => f === 'manual' ? 'all' : 'manual')}>
+            {counts.manual || 0} Manual
+          </span>
+          <span className="pm-chip pm-chip-none" onClick={() => setFilter(f => f === 'unmatched' ? 'all' : 'unmatched')}>
+            {counts.unmatched || 0} Unmatched
+          </span>
+        </div>
+        <div className="pm-actions">
+          <input
+            className="pm-search"
+            placeholder="Search player…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button className="acct-connect-btn" onClick={populate} disabled={populating}>
+            {populating ? 'Populating…' : 'Populate / Refresh'}
+          </button>
+        </div>
+      </div>
+      {popMsg && <div className={popMsg.startsWith('Done') ? 'pm-pop-ok' : 'login-error'}>{popMsg}</div>}
+      {saveMsg && <div className="login-error">{saveMsg}</div>}
+
+      <table className="dash-table pm-table">
+        <thead>
+          <tr><th>ESPN/Yahoo Name</th><th>BR Name</th><th>Match</th><th>Conf</th><th></th></tr>
+        </thead>
+        <tbody>
+          {players.map(p => (
+            <Fragment key={p.provider_id}>
+              <tr className={!p.match_tier ? 'pm-row-unmatched' : p.match_tier === 2 && p.confidence < 90 ? 'pm-row-low' : ''}>
+                <td>{p.provider_name}</td>
+                <td>{p.br_name || <span className="pm-none">—</span>}</td>
+                <td><span className={`pm-tier ${TIER_CLS[p.match_tier]}`}>{TIER_LABEL[p.match_tier]}</span></td>
+                <td>{p.confidence != null ? `${p.confidence}%` : '—'}</td>
+                <td>
+                  <button className="pm-edit-btn" onClick={() => {
+                    setEditId(editId === p.provider_id ? null : p.provider_id)
+                    setBrSearch(''); setBrResults([])
+                  }}>
+                    {editId === p.provider_id ? 'Cancel' : 'Link'}
+                  </button>
+                </td>
+              </tr>
+              {editId === p.provider_id && (
+                <tr className="pm-edit-row">
+                  <td colSpan={5}>
+                    <div className="pm-edit-inner">
+                      <span className="pm-edit-label">Linking <strong>{p.provider_name}</strong> →</span>
+                      <input
+                        className="pm-search"
+                        placeholder="Search BR name…"
+                        value={brSearch}
+                        onChange={e => setBrSearch(e.target.value)}
+                        autoFocus
+                      />
+                      {brLoading && <span className="pm-edit-label">Searching…</span>}
+                      {brResults.length > 0 && (
+                        <ul className="pm-br-results">
+                          {brResults.map(br => (
+                            <li key={br.slug} className="pm-br-item" onClick={() => saveLink(p.provider_id, br.slug)}>
+                              <span className="pm-br-name">{br.full_name}</span>
+                              <span className="pm-br-meta">{br.team} · {br.season}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <button className="pm-unlink-btn" onClick={() => saveLink(p.provider_id, null)}>
+                        Clear / Unmatch
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      {players.length === 0 && (
+        <div className="dash-empty">
+          {(data.players || []).length === 0
+            ? 'No players loaded yet — click "Populate / Refresh" to pull your league rosters.'
+            : 'No players match your filter.'}
+        </div>
+      )}
     </div>
   )
 }
@@ -2199,8 +3054,10 @@ function RosterAnalyser() {
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 function FantasyPage() {
-  const [status,  setStatus]  = useState(null)
-  const [tab,     setTab]     = useState('dashboard')
+  const [status,      setStatus]      = useState(null)
+  const [tab,         setTab]         = useState('dashboard')
+  const [rosterData,  setRosterData]  = useState(null)
+  const [rosterErr,   setRosterErr]   = useState(null)
 
   function loadStatus() {
     apiFetch('/api/fantasy/status')
@@ -2210,6 +3067,15 @@ function FantasyPage() {
   }
 
   useEffect(() => { loadStatus() }, [])
+
+  // Fetch roster data once (shared between Roster Analysis + Trade Analysis tabs)
+  useEffect(() => {
+    if (!status?.espn?.team_key) return
+    apiFetch('/api/fantasy/espn/roster-analysis')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setRosterData(d))
+      .catch(() => setRosterErr('Failed to load roster — is ESPN connected?'))
+  }, [status?.espn?.team_key])
 
   if (!status) return <div className="dash-empty">Loading…</div>
 
@@ -2234,16 +3100,32 @@ function FantasyPage() {
     />
   )
 
+  function RosterTabContent() {
+    if (rosterErr) return <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+    if (!rosterData) return <div className="dash-empty">Loading…</div>
+    return <RosterAnalysis data={rosterData} />
+  }
+
+  function TradeTabContent() {
+    if (rosterErr) return <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+    if (!rosterData) return <div className="dash-empty">Loading…</div>
+    return <TradeAnalysis data={rosterData} />
+  }
+
   return (
     <div>
       <div className="fantasy-tabs">
         <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
         <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
-        <button className={`fantasy-tab${tab === 'analyser'  ? ' active' : ''}`} onClick={() => setTab('analyser')}>Roster Analyser</button>
+        <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
+        <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
+        <button className={`fantasy-tab${tab === 'mapping'   ? ' active' : ''}`} onClick={() => setTab('mapping')}>Player Mapping</button>
       </div>
       {tab === 'dashboard' && <ManagerDashboard />}
       {tab === 'standings' && <ProjectedStandings />}
-      {tab === 'analyser'  && <RosterAnalyser />}
+      {tab === 'roster'    && <RosterTabContent />}
+      {tab === 'trade'     && <TradeTabContent />}
+      {tab === 'mapping'   && <PlayerMapping provider="espn" />}
     </div>
   )
 }
@@ -2251,6 +3133,11 @@ function FantasyPage() {
 
 function AppMain({ onLogout, onOpenAccount }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+  }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
@@ -2933,6 +3820,9 @@ function AppMain({ onLogout, onOpenAccount }) {
             )}
           </div>
           <div className="nav-account">
+            <button className="theme-toggle" onClick={() => setDark(d => !d)} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+              {dark ? '☀︎' : '☾'}
+            </button>
             <button className="acct-btn" onClick={onOpenAccount}>Account</button>
             <button className="logout-btn" onClick={onLogout}>Sign out</button>
           </div>

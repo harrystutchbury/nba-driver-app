@@ -3023,6 +3023,8 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
     """
     Project final standings by simulating each remaining matchup using
     season-average stats for every team's current roster.
+    Uses fantasy_player_map for ESPN→BR slug resolution; falls back to fuzzy
+    matching for players not yet in the map.
     """
     import json as _json
     from rapidfuzz import process as rfprocess
@@ -3073,7 +3075,13 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
     """, [season]).fetchall()
     player_avgs = {r["player_slug"]: dict(r) for r in rows}
 
-    # ── 3. Build name → slug lookup ─────────────────────────────────────────────
+    # ── 3. Build ESPN ID → BR slug from player map (prefer map, fallback to fuzzy) ─
+    map_rows    = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL",
+    ).fetchall()
+    espn_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    # Fallback fuzzy: name → slug
     name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
     name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
     all_names    = list(name_to_slug.keys())
@@ -3094,11 +3102,17 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
 
         for player in team.roster:
             total += 1
-            match = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
-            if not match:
+            # Prefer map lookup by ESPN player ID
+            pid  = str(player.playerId)
+            slug = espn_id_to_slug.get(pid)
+            if not slug:
+                # Fallback: fuzzy match on name
+                match = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+                if match:
+                    slug = name_to_slug[match[0]]
+            if not slug:
                 continue
-            slug = name_to_slug[match[0]]
-            avg  = player_avgs.get(slug)
+            avg = player_avgs.get(slug)
             if not avg:
                 continue
             matched += 1
@@ -3322,6 +3336,889 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
             "matchup_period": getattr(league, 'current_matchup_period', None),
         }
     }
+
+
+@fantasy_router.get("/espn/roster-analysis")
+def espn_roster_analysis(current_user: str = Depends(get_current_user)):
+    """
+    Return my roster with per-player season averages, team category totals,
+    and league rank per category.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT scoring_settings, team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    scoring      = _json.loads(fc["scoring_settings"]) if fc and fc["scoring_settings"] else {}
+    my_team_id   = str(fc["team_key"]) if fc else None
+    scoring_type = scoring.get("scoring_type", "H2H_CATEGORY")
+
+    NEG_CATS = {"TO", "TOV"}
+    stat_name_map = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+        "BLK": "blk", "TO": "tov", "TOV": "tov", "3PM": "fg3m",
+        "FG%": "fg_pct", "FT%": "ft_pct",
+    }
+    if scoring_type == "H2H_CATEGORY":
+        items = scoring.get("items", [])
+        tracked_cats = [it["stat"] for it in items if it.get("points", 0) != 0] if items else \
+                       ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+    else:
+        tracked_cats = [it["stat"] for it in scoring.get("items", []) if it.get("points", 0) != 0]
+
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+    ).fetchall()
+    espn_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    conn = get_conn()
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+
+    def _resolve_slug(player):
+        pid   = str(player.playerId)
+        slug  = espn_id_to_slug.get(pid)
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    def _stats_from_slugs(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg:
+                continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts":    round(pts,  1), "reb":    round(reb,  1),
+            "ast":    round(ast,  1), "stl":    round(stl,  1),
+            "blk":    round(blk,  1), "tov":    round(tov,  1),
+            "fg3m":   round(fg3m, 1),
+            "fg_pct": round((fgm_sum / fga_sum * 100) if fga_sum else 0, 1),
+            "ft_pct": round((ftm_sum / fta_sum * 100) if fta_sum else 0, 1),
+        }
+
+    my_players   = []
+    all_team_stats = {}
+
+    for t in league.teams:
+        tid   = str(t.team_id)
+        slugs = []
+        team_players = []
+        for p in t.roster:
+            slug = _resolve_slug(p)
+            avg  = player_avgs.get(slug) if slug else None
+            pdata = {
+                "espn_name": p.name,
+                "br_slug":   slug,
+                "stats": {k: round(avg[k] or 0, 1) for k in
+                          ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]} if avg else None,
+            }
+            team_players.append(pdata)
+            if tid == my_team_id:
+                my_players.append(pdata)
+            if slug:
+                slugs.append(slug)
+        all_team_stats[tid] = {
+            "name":       t.team_name,
+            "team_id":    tid,
+            "is_my_team": tid == my_team_id,
+            "stats":      _stats_from_slugs(slugs),
+            "slugs":      slugs,
+            "players":    team_players,
+            "wins":       getattr(t, "wins",    0),
+            "losses":     getattr(t, "losses",  0),
+            "standing":   getattr(t, "standing", None),
+        }
+
+    my_stats = all_team_stats.get(my_team_id, {}).get("stats", {})
+    my_slugs = all_team_stats.get(my_team_id, {}).get("slugs", [])
+
+    # ── Per-player z-scores (league population = all rostered players) ─────────
+    import math as _math
+
+    all_rostered_slugs = [s for d in all_team_stats.values() for s in d["slugs"]]
+    _z_keys = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+    _lvs = {k: [] for k in _z_keys}
+    for _slug in all_rostered_slugs:
+        _avg = player_avgs.get(_slug)
+        if not _avg:
+            continue
+        for k in _z_keys:
+            v = _avg.get(k)
+            if v is not None:
+                _lvs[k].append(float(v))
+
+    _lz = {}
+    for k, vals in _lvs.items():
+        if len(vals) < 2:
+            continue
+        _mean = sum(vals) / len(vals)
+        _std  = _math.sqrt(sum((v - _mean) ** 2 for v in vals) / len(vals))
+        _lz[k] = (_mean, max(_std, 0.001))
+
+    def _pz(slug):
+        avg = player_avgs.get(slug)
+        if not avg:
+            return None
+        z = {}
+        for k, (mean, std) in _lz.items():
+            v = avg.get(k)
+            if v is None:
+                continue
+            raw = (float(v) - mean) / std
+            z[k] = round(-raw if k == "tov" else raw, 2)
+        z["total"] = round(sum(z.values()), 2)
+        return z
+
+    for p in my_players:
+        if p.get("br_slug"):
+            p["z_scores"] = _pz(p["br_slug"])
+
+    # Per-category z-score sum across my roster
+    my_cat_z = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key:
+            continue
+        my_cat_z[cat] = round(sum(
+            p.get("z_scores", {}).get(key, 0)
+            for p in my_players if p.get("z_scores")
+        ), 2)
+
+    # Per-team z-scores derived from team-level aggregated stats
+    # (so z correlates directly with the per-team stat shown in the table)
+    _tz_keys = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+    _tz_vals = {k: [d["stats"][k] for d in all_team_stats.values()
+                    if d["stats"].get(k) is not None] for k in _tz_keys}
+    _tz = {}
+    for k, vals in _tz_vals.items():
+        if len(vals) < 2:
+            continue
+        _m = sum(vals) / len(vals)
+        _s = _math.sqrt(sum((v - _m) ** 2 for v in vals) / len(vals))
+        _tz[k] = (_m, max(_s, 0.001))
+
+    for d in all_team_stats.values():
+        team_cat_z = {}
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key or key not in _tz:
+                continue
+            v = d["stats"].get(key)
+            if v is None:
+                continue
+            m, s = _tz[key]
+            raw = (v - m) / s
+            team_cat_z[cat] = round(-raw if key == "tov" else raw, 2)
+        d["cat_z"] = team_cat_z
+
+    # Category ranks
+    cat_ranks = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key:
+            continue
+        neg      = cat in NEG_CATS
+        all_vals = [d["stats"].get(key, 0) for d in all_team_stats.values()]
+        my_val   = my_stats.get(key, 0)
+        rank = sum(1 for v in all_vals if (v < my_val if neg else v > my_val)) + 1
+        cat_ranks[cat] = {"rank": rank, "total": len(all_team_stats), "key": key}
+
+    # ── Simulate remaining schedule → projected EOS win% per team ─────────────
+    def _cat_winner(s1, s2):
+        """Return (w1, w2) category wins for s1 vs s2."""
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key:
+                continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            if abs(v1 - v2) < 1e-6:
+                continue
+            neg = cat in NEG_CATS
+            if (v1 < v2 if neg else v1 > v2):
+                w1 += 1
+            else:
+                w2 += 1
+        return w1, w2
+
+    proj_w  = {tid: 0 for tid in all_team_stats}
+    proj_l  = {tid: 0 for tid in all_team_stats}
+    try:
+        for matchup in league.schedule:
+            winner = getattr(matchup, "winner", None)
+            if winner and str(winner).upper() not in ("UNDECIDED", "NONE", ""):
+                continue
+            h = str(getattr(matchup.home_team, "team_id", ""))
+            a = str(getattr(matchup.away_team, "team_id", ""))
+            if h not in all_team_stats or a not in all_team_stats:
+                continue
+            hw, aw = _cat_winner(all_team_stats[h]["stats"], all_team_stats[a]["stats"])
+            if hw > aw:
+                proj_w[h] += 1; proj_l[a] += 1
+            elif aw > hw:
+                proj_w[a] += 1; proj_l[h] += 1
+    except Exception:
+        pass
+
+    for tid, d in all_team_stats.items():
+        total_w = d.get("wins", 0) + proj_w[tid]
+        total_l = d.get("losses", 0) + proj_l[tid]
+        d["proj_wins"]    = total_w
+        d["proj_losses"]  = total_l
+        d["proj_win_pct"] = round(total_w / (total_w + total_l + 0.0001), 3) if (total_w + total_l) > 0 else None
+
+    return {
+        "my_roster":    my_players,
+        "my_stats":     my_stats,
+        "my_slugs":     my_slugs,
+        "my_cat_z":     my_cat_z,
+        "teams":        list(all_team_stats.values()),
+        "cat_ranks":    cat_ranks,
+        "scoring_type": scoring_type,
+        "tracked_cats": tracked_cats,
+        "neg_cats":     list(NEG_CATS),
+        "stat_name_map": stat_name_map,
+    }
+
+
+@fantasy_router.post("/espn/roster-analysis/simulate")
+def espn_roster_simulate(body: dict = Body(...),
+                          current_user: str = Depends(get_current_user)):
+    """
+    Simulate adding (and optionally dropping) a player.
+    Re-runs the full remaining-schedule simulation with the modified roster
+    and returns category deltas + new projected standings.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+
+    # Support both single slug (legacy) and lists (trade)
+    add_slugs  = body.get("add_slugs")  or ([body["add_slug"]]  if body.get("add_slug")  else [])
+    drop_slugs = body.get("drop_slugs") or ([body["drop_slug"]] if body.get("drop_slug") else [])
+
+    # Trade partner roster mutations: [{team_id, add_slugs, drop_slugs}]
+    # Lets the simulation account for players moving TO/FROM each trade partner
+    team_changes_map = {}
+    for tc in body.get("team_changes", []):
+        tid = str(tc.get("team_id", ""))
+        if tid:
+            team_changes_map[tid] = {
+                "add":  tc.get("add_slugs",  []),
+                "drop": tc.get("drop_slugs", []),
+            }
+
+    if not add_slugs and not drop_slugs and not team_changes_map:
+        pass  # baseline call — no changes, just compute current projected standings
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT scoring_settings, team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    scoring      = _json.loads(fc["scoring_settings"]) if fc and fc["scoring_settings"] else {}
+    my_team_id   = str(fc["team_key"]) if fc else None
+    scoring_type = scoring.get("scoring_type", "H2H_CATEGORY")
+
+    NEG_CATS = {"TO", "TOV"}
+    stat_name_map = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+        "BLK": "blk", "TO": "tov", "TOV": "tov", "3PM": "fg3m",
+        "FG%": "fg_pct", "FT%": "ft_pct",
+    }
+    if scoring_type == "H2H_CATEGORY":
+        items = scoring.get("items", [])
+        tracked_cats = [it["stat"] for it in items if it.get("points", 0) != 0] if items else \
+                       ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+    else:
+        tracked_cats = [it["stat"] for it in scoring.get("items", []) if it.get("points", 0) != 0]
+
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+    ).fetchall()
+    espn_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    conn = get_conn()
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+
+    def _resolve_slug(player):
+        pid  = str(player.playerId)
+        slug = espn_id_to_slug.get(pid)
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    def _stats_from_slugs(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg:
+                continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts":    pts,  "reb":    reb,  "ast":    ast,
+            "stl":    stl,  "blk":    blk,  "tov":    tov,
+            "fg3m":   fg3m,
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0,
+        }
+
+    # Build all teams' slug lists + stats
+    all_team_slugs = {}
+    all_team_meta  = {}
+    for t in league.teams:
+        tid   = str(t.team_id)
+        slugs = [s for p in t.roster if (s := _resolve_slug(p))]
+        all_team_slugs[tid] = slugs
+        all_team_meta[tid]  = {"name": t.team_name, "wins": t.wins, "losses": t.losses,
+                                "standing": t.standing}
+
+    # Current + new slug lists for my team
+    orig_slugs = list(all_team_slugs.get(my_team_id, []))
+    new_slugs  = [s for s in orig_slugs if s not in drop_slugs]
+    for s in add_slugs:
+        if s and s not in new_slugs:
+            new_slugs.append(s)
+
+    orig_stats = _stats_from_slugs(orig_slugs)
+    new_stats  = _stats_from_slugs(new_slugs)
+
+    # Delta
+    delta = {k: round(new_stats[k] - orig_stats[k], 2) for k in orig_stats}
+
+    def _apply_team_changes(tid, slugs):
+        """Return modified slug list for a team if trade changes apply to it."""
+        if tid not in team_changes_map:
+            return slugs
+        tc = team_changes_map[tid]
+        modified = [s for s in slugs if s not in tc["drop"]]
+        for s in tc["add"]:
+            if s and s not in modified:
+                modified.append(s)
+        return modified
+
+    # Other teams' stats — apply trade partner roster changes where relevant
+    other_stats = [_stats_from_slugs(_apply_team_changes(tid, slugs))
+                   for tid, slugs in all_team_slugs.items() if tid != my_team_id]
+
+    def _cat_beats(my_s, others):
+        beats = {}
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key:
+                continue
+            neg    = cat in NEG_CATS
+            my_val = my_s.get(key, 0)
+            beats[cat] = sum(1 for o in others if (my_val < o.get(key, 0) if neg else my_val > o.get(key, 0)))
+        return beats
+
+    cat_beats_orig = _cat_beats(orig_stats, other_stats)
+    cat_beats_new  = _cat_beats(new_stats,  other_stats)
+
+    # Re-run remaining matchup simulation with modified my team
+    def _wins_cats(s1, s2):
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key:
+                continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            neg = cat in NEG_CATS
+            if abs(v1 - v2) < 1e-6:
+                continue
+            if (v1 < v2 if neg else v1 > v2):
+                w1 += 1
+            else:
+                w2 += 1
+        return w1, w2
+
+    def _wins_points(s1, s2):
+        t1 = t2 = 0
+        for it in scoring.get("items", []):
+            key = stat_name_map.get(it["stat"])
+            if not key:
+                continue
+            t1 += s1.get(key, 0) * it.get("points", 0)
+            t2 += s2.get(key, 0) * it.get("points", 0)
+        return t1, t2
+
+    # team_data for simulation
+    team_sim = {}
+    for tid, slugs in all_team_slugs.items():
+        s = new_stats if tid == my_team_id else _stats_from_slugs(_apply_team_changes(tid, slugs))
+        team_sim[tid] = {
+            "stats":       s,
+            "name":        all_team_meta[tid]["name"],
+            "act_wins":    all_team_meta[tid]["wins"],
+            "act_losses":  all_team_meta[tid]["losses"],
+            "act_standing":all_team_meta[tid]["standing"],
+            "is_my_team":  tid == my_team_id,
+            "proj_wins":   0,
+            "proj_losses": 0,
+        }
+
+    try:
+        for matchup in league.schedule:
+            winner = getattr(matchup, "winner", None)
+            if winner and str(winner).upper() not in ("UNDECIDED", "NONE", ""):
+                continue
+            h = str(getattr(matchup.home_team, "team_id", ""))
+            a = str(getattr(matchup.away_team, "team_id", ""))
+            if h not in team_sim or a not in team_sim:
+                continue
+            hs = team_sim[h]["stats"]
+            as_ = team_sim[a]["stats"]
+            if scoring_type == "H2H_CATEGORY":
+                hw, aw = _wins_cats(hs, as_)
+            else:
+                hp, ap = _wins_points(hs, as_)
+                hw, aw = (1, 0) if hp > ap else (0, 1) if ap > hp else (0, 0)
+            if hw > aw:
+                team_sim[h]["proj_wins"]   += 1
+                team_sim[a]["proj_losses"] += 1
+            elif aw > hw:
+                team_sim[a]["proj_wins"]   += 1
+                team_sim[h]["proj_losses"] += 1
+    except Exception:
+        logger.exception("simulate: could not iterate schedule")
+
+    result = []
+    for tid, d in team_sim.items():
+        result.append({
+            "name":          d["name"],
+            "is_my_team":    d["is_my_team"],
+            "act_wins":      d["act_wins"],
+            "act_losses":    d["act_losses"],
+            "proj_wins":     d["act_wins"]    + d["proj_wins"],
+            "proj_losses":   d["act_losses"]  + d["proj_losses"],
+            "added_wins":    d["proj_wins"],
+        })
+    result.sort(key=lambda x: (-x["proj_wins"], x["proj_losses"]))
+    for i, r in enumerate(result):
+        r["proj_standing"] = i + 1
+
+    my_new = next((r for r in result if r["is_my_team"]), {})
+
+    return {
+        "orig_stats":      {k: round(v, 2) for k, v in orig_stats.items()},
+        "new_stats":       {k: round(v, 2) for k, v in new_stats.items()},
+        "delta":           delta,
+        "cat_beats_orig":  cat_beats_orig,
+        "cat_beats_new":   cat_beats_new,
+        "total_teams":     len(all_team_slugs) - 1,
+        "projected_standings": result,
+        "my_proj_standing":    my_new.get("proj_standing"),
+        "my_proj_wins":        my_new.get("proj_wins"),
+        "tracked_cats":    tracked_cats,
+        "neg_cats":        list(NEG_CATS),
+    }
+
+
+@fantasy_router.get("/espn/roster-analysis/search-player")
+def roster_search_player(q: str = Query(..., min_length=2),
+                          current_user: str = Depends(get_current_user)):
+    """Search BR players by name and return their season averages."""
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT p.slug, p.full_name, p.team,
+               AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+               AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+               AVG(g.fg3m) AS fg3m,
+               SUM(g.fgm)*100.0/NULLIF(SUM(g.fga),0) AS fg_pct,
+               SUM(g.ftm)*100.0/NULLIF(SUM(g.fta),0) AS ft_pct,
+               COUNT(*) AS games
+        FROM players p
+        JOIN game_logs g ON g.player_slug = p.slug AND g.season = ?
+        WHERE p.full_name LIKE ? AND g.min > 5
+        GROUP BY p.slug
+        HAVING COUNT(*) >= 5
+        ORDER BY AVG(g.pts) DESC
+        LIMIT 10
+    """, [season, f"%{q}%"]).fetchall()
+    conn.close()
+    return {"players": [dict(r) for r in rows]}
+
+
+@fantasy_router.get("/espn/free-agents")
+def espn_free_agents(size: int = Query(150, le=300),
+                     current_user: str = Depends(get_current_user)):
+    """Return free agents with season averages, sorted by composite fantasy value."""
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+    ).fetchall()
+    espn_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    conn = get_conn()
+    try:
+        league = _espn_league(conn, current_user)
+    finally:
+        conn.close()
+
+    try:
+        fas = league.free_agents(size=size)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch free agents: {e}")
+
+    result = []
+    for p in fas:
+        pid  = str(p.playerId)
+        slug = espn_id_to_slug.get(pid)
+        if not slug:
+            m = rfprocess.extractOne(p.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        avg = player_avgs.get(slug) if slug else None
+        stats = {k: round(avg[k] or 0, 1) for k in
+                 ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]} if avg else None
+        # Composite fantasy value: weighted sum across counting + % stats
+        value = 0.0
+        if stats:
+            value = (stats["pts"] + 1.5*stats["stl"] + 1.5*stats["blk"]
+                     + 1.2*stats["ast"] + 1.1*stats["reb"]
+                     + stats["fg3m"] - stats["tov"]
+                     + (stats["fg_pct"] - 46) * 0.3
+                     + (stats["ft_pct"] - 76) * 0.2)
+        result.append({"espn_name": p.name, "br_slug": slug, "stats": stats, "value": round(value, 1)})
+
+    result.sort(key=lambda x: -x["value"])
+    return {"free_agents": result}
+
+
+@fantasy_router.post("/player-map/populate")
+def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
+                        current_user: str = Depends(get_current_user)):
+    """
+    Pull rosters from the user's ESPN or Yahoo league and attempt to match
+    each player to a Basketball Reference slug via exact then fuzzy match.
+    Stores results (including unmatched) in fantasy_player_map for review.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+
+    # Build BR name → slug lookup
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+
+    players_to_match = []  # list of (provider_id, provider_name)
+
+    if provider == "espn":
+        try:
+            league = _espn_league(conn, current_user)
+        except Exception as e:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"ESPN error: {e}")
+        seen_ids = set()
+        for team in league.teams:
+            for p in team.roster:
+                pid = str(p.playerId)
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    players_to_match.append((pid, p.name))
+
+        # Also pull free agents to cover the full player universe
+        try:
+            fas = league.free_agents(size=500)
+            for p in fas:
+                pid = str(p.playerId)
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    players_to_match.append((pid, p.name))
+        except Exception:
+            logger.warning("Could not fetch free agents from ESPN")
+
+    elif provider == "yahoo":
+        token = _refresh_yahoo_token(conn, current_user)
+        fc    = conn.execute(
+            "SELECT league_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+            [current_user]
+        ).fetchone()
+        if not fc or not fc["league_key"]:
+            conn.close()
+            raise HTTPException(status_code=400, detail="No Yahoo league connected")
+        league_key = fc["league_key"]
+        # Fetch all teams in the league
+        try:
+            data = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        except Exception as e:
+            conn.close()
+            raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+        seen_ids = set()
+        try:
+            teams = (data.get("fantasy_content", {})
+                        .get("league", [{}])[1]
+                        .get("teams", {}))
+            for key, val in teams.items():
+                if key == "count":
+                    continue
+                roster = (val.get("team", [{}])[1]
+                             .get("roster", {})
+                             .get("players", {}))
+                for rk, rv in roster.items():
+                    if rk == "count":
+                        continue
+                    pinfo = rv.get("player", [{}])
+                    p_list = pinfo[0] if isinstance(pinfo[0], list) else []
+                    pid = name = None
+                    for item in p_list:
+                        if isinstance(item, dict):
+                            if "player_id" in item:
+                                pid = str(item["player_id"])
+                            if "full_name" in item:
+                                name = item["full_name"]
+                    if pid and name and pid not in seen_ids:
+                        seen_ids.add(pid)
+                        players_to_match.append((pid, name))
+        except Exception:
+            logger.exception("Error parsing Yahoo roster response")
+
+    conn.close()
+
+    # Match each player to BR
+    now = datetime.utcnow().isoformat()
+    rows_to_upsert = []
+    for pid, pname in players_to_match:
+        br_slug = br_name = None
+        tier = confidence = None
+
+        # 1. Exact match
+        if pname in name_to_slug:
+            br_slug    = name_to_slug[pname]
+            br_name    = pname
+            tier        = 1
+            confidence  = 100.0
+        else:
+            # 2. Fuzzy match
+            match = rfprocess.extractOne(pname, all_names, score_cutoff=75)
+            if match:
+                br_name    = match[0]
+                br_slug    = name_to_slug[br_name]
+                tier        = 2
+                confidence  = round(match[1], 1)
+            else:
+                tier = None  # unmatched
+
+        rows_to_upsert.append((provider, pid, pname, br_slug, br_name, tier, confidence, now))
+
+    conn = get_conn()
+    conn.executemany("""
+        INSERT INTO fantasy_player_map
+            (provider, provider_id, provider_name, br_slug, br_name, match_tier, confidence, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(provider, provider_id) DO UPDATE SET
+            provider_name = excluded.provider_name,
+            br_slug       = CASE WHEN fantasy_player_map.match_tier = 3
+                                 THEN fantasy_player_map.br_slug
+                                 ELSE excluded.br_slug END,
+            br_name       = CASE WHEN fantasy_player_map.match_tier = 3
+                                 THEN fantasy_player_map.br_name
+                                 ELSE excluded.br_name END,
+            match_tier    = CASE WHEN fantasy_player_map.match_tier = 3
+                                 THEN 3
+                                 ELSE excluded.match_tier END,
+            confidence    = CASE WHEN fantasy_player_map.match_tier = 3
+                                 THEN fantasy_player_map.confidence
+                                 ELSE excluded.confidence END,
+            updated_at    = excluded.updated_at
+    """, rows_to_upsert)
+    conn.commit()
+
+    matched   = sum(1 for r in rows_to_upsert if r[5] == 1)
+    fuzzy     = sum(1 for r in rows_to_upsert if r[5] == 2)
+    unmatched = sum(1 for r in rows_to_upsert if r[5] is None)
+    conn.close()
+
+    return {
+        "total":     len(rows_to_upsert),
+        "exact":     matched,
+        "fuzzy":     fuzzy,
+        "unmatched": unmatched,
+    }
+
+
+@fantasy_router.get("/player-map")
+def get_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
+                   current_user: str = Depends(get_current_user)):
+    """Return all entries in fantasy_player_map for the given provider."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT provider_id, provider_name, br_slug, br_name, match_tier, confidence, updated_at
+        FROM fantasy_player_map
+        WHERE provider = ?
+        ORDER BY
+            CASE WHEN match_tier IS NULL THEN 0
+                 WHEN match_tier = 2 AND confidence < 90 THEN 1
+                 ELSE 2 END,
+            provider_name
+    """, [provider]).fetchall()
+    conn.close()
+    return {"provider": provider, "players": [dict(r) for r in rows]}
+
+
+@fantasy_router.patch("/player-map")
+def patch_player_map(body: dict = Body(...),
+                     current_user: str = Depends(get_current_user)):
+    """
+    Manually set or correct a player mapping.
+    Body: { provider, provider_id, br_slug }
+    br_slug may be null to mark a player as intentionally unmatched.
+    """
+    provider    = body.get("provider")
+    provider_id = body.get("provider_id")
+    br_slug     = body.get("br_slug")  # may be null / empty string → clear
+
+    if not provider or not provider_id:
+        raise HTTPException(status_code=400, detail="provider and provider_id required")
+    if provider not in ("espn", "yahoo"):
+        raise HTTPException(status_code=400, detail="provider must be espn or yahoo")
+
+    conn = get_conn()
+
+    # Resolve br_name from slug if provided
+    br_name = None
+    if br_slug:
+        row = conn.execute(
+            "SELECT full_name FROM players WHERE slug=? ORDER BY season DESC LIMIT 1",
+            [br_slug]
+        ).fetchone()
+        br_name = row["full_name"] if row else br_slug
+
+    conn.execute("""
+        UPDATE fantasy_player_map
+        SET br_slug=?, br_name=?, match_tier=3, confidence=NULL,
+            updated_at=datetime('now')
+        WHERE provider=? AND provider_id=?
+    """, [br_slug or None, br_name, provider, provider_id])
+    conn.commit()
+    conn.close()
+
+    return {"ok": True, "br_slug": br_slug, "br_name": br_name}
+
+
+@fantasy_router.get("/player-map/search-br")
+def search_br_players(q: str = Query(..., min_length=2),
+                      current_user: str = Depends(get_current_user)):
+    """Search Basketball Reference players by name for manual linking."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT slug, full_name, team, season
+        FROM players
+        WHERE full_name LIKE ?
+        GROUP BY slug
+        ORDER BY MAX(season) DESC
+        LIMIT 20
+    """, [f"%{q}%"]).fetchall()
+    conn.close()
+    return {"players": [dict(r) for r in rows]}
 
 
 app.include_router(fantasy_router)

@@ -193,6 +193,20 @@ def init_db():
         pass  # column already exists
 
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS fantasy_player_map (
+            provider      TEXT NOT NULL,   -- 'espn' or 'yahoo'
+            provider_id   TEXT NOT NULL,   -- ESPN numeric ID or Yahoo player key
+            provider_name TEXT NOT NULL,   -- name as it appears in ESPN/Yahoo
+            br_slug       TEXT,            -- Basketball Reference slug (null = unmatched)
+            br_name       TEXT,            -- BR full name for human verification
+            match_tier    INTEGER,         -- 1=exact, 2=fuzzy-auto, 3=manual
+            confidence    REAL,            -- fuzzy score 0-100 (null for exact/manual)
+            updated_at    TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (provider, provider_id)
+        )
+    """)
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS comments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             player_slug TEXT NOT NULL,
