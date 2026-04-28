@@ -1254,11 +1254,24 @@ function BoxScoreTable({ players, onSelectPlayer }) {
 }
 
 function BoxScorePage({ onSelectPlayer }) {
-  const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-  const [date, setDate]     = useState(todayStr())
-  const [data, setData]     = useState(null)
+  const clientET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const [todayEt, setTodayEt] = useState(clientET)
+  const [date, setDate]       = useState(clientET)
+  const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState(null)
+  const [error, setError]     = useState(null)
+
+  // Fetch authoritative ET date from server on mount (avoids browser Intl quirks)
+  useEffect(() => {
+    apiFetch('/api/today')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.date) return
+        setTodayEt(d.date)
+        setDate(prev => prev > d.date ? d.date : prev)
+      })
+      .catch(() => {})
+  }, [])
 
   const fetchScores = useCallback(() => {
     apiFetch(`/api/box-score?date=${date}`)
@@ -1274,11 +1287,11 @@ function BoxScorePage({ onSelectPlayer }) {
     fetchScores()
 
     // Auto-refresh every 30s for today only
-    const isToday = date === todayStr()
+    const isToday = date === todayEt
     if (!isToday) return
     const interval = setInterval(fetchScores, 30000)
     return () => clearInterval(interval)
-  }, [date, fetchScores])
+  }, [date, todayEt, fetchScores])
 
   function shiftDate(days) {
     const d = new Date(date + 'T12:00:00')
@@ -1296,8 +1309,8 @@ function BoxScorePage({ onSelectPlayer }) {
           value={date}
           onChange={e => setDate(e.target.value)}
         />
-        <button className="bs-nav-btn" onClick={() => shiftDate(1)} disabled={date >= todayStr()}>→</button>
-        {date === todayStr() && <span className="bs-live-pill">● LIVE</span>}
+        <button className="bs-nav-btn" onClick={() => shiftDate(1)} disabled={date >= todayEt}>→</button>
+        {date === todayEt && <span className="bs-live-pill">● LIVE</span>}
       </div>
 
       {loading && <div className="bs-loading">Loading box scores…</div>}

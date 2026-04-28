@@ -243,6 +243,17 @@ app.add_middleware(
 
 
 # -----------------------------------------------------------------------
+# GET /today  — server-side US Eastern date (avoids browser Intl quirks)
+# -----------------------------------------------------------------------
+
+@router.get("/today")
+def get_today():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return {"date": datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")}
+
+
+# -----------------------------------------------------------------------
 # GET /players
 # -----------------------------------------------------------------------
 
