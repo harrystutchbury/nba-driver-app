@@ -4944,67 +4944,6 @@ function AppMain({ onLogout, onOpenAccount }) {
               </div>
             )}
 
-            {/* ── Aging curves table ────────────────────────── */}
-            {agingCurves && (
-              <div className="projection-section">
-                <div className="projection-header" onClick={() => setAgingExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Aging Curves</h3>
-                  <span className="proj-toggle">{agingExpanded ? '▲' : '▼'}</span>
-                </div>
-
-                {agingExpanded && (() => {
-                  const rows = agingCurves[agingArchetype] ?? []
-                  const colRanges = AGING_COLS.reduce((acc, c) => {
-                    const vals = rows.map(r => r[c.key]).filter(v => v !== null)
-                    acc[c.key] = { min: Math.min(...vals), max: Math.max(...vals) }
-                    return acc
-                  }, {})
-                  return (
-                    <>
-                    <div className="aging-tabs">
-                      {Object.keys(agingCurves).map(a => (
-                        <button
-                          key={a}
-                          className={`aging-tab${agingArchetype === a ? ' active' : ''}`}
-                          onClick={() => setAgingArchetype(a)}
-                        >
-                          {a}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="table-scroll">
-                      <table className="stats-table aging-table">
-                        <thead>
-                          <tr>
-                            <th className="num">Age</th>
-                            <th className="num muted">n</th>
-                            {AGING_COLS.map(c => <th key={c.key} className="num">{c.label}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map(row => (
-                            <tr key={row.age}>
-                              <td className="num mono" style={{ fontWeight: 600 }}>{row.age}</td>
-                              <td className="num mono muted" style={{ fontSize: '11px' }}>{row.n}</td>
-                              {AGING_COLS.map(c => (
-                                <td
-                                  key={c.key}
-                                  className="num mono"
-                                  style={heatColor(row[c.key], colRanges[c.key].min, colRanges[c.key].max, c.reverse)}
-                                >
-                                  {row[c.key] ?? '—'}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    </>
-                  )
-                })()}
-              </div>
-            )}
 
 
           </div>
