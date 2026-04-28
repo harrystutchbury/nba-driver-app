@@ -1973,7 +1973,7 @@ function EspnTeamPicker({ onPicked, onDisconnect }) {
 
 // ── Manager Dashboard ──────────────────────────────────────────────────────────
 
-function ManagerDashboard() {
+function ManagerDashboard({ onSelectPlayer }) {
   const [league,  setLeague]  = useState(null)
   const [roster,  setRoster]  = useState(null)
   const [matchup, setMatchup] = useState(undefined)
@@ -2091,7 +2091,7 @@ function ManagerDashboard() {
           ) : (
             <table className="dash-table">
               <thead>
-                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'center'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th>W%</th></tr>
+                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'center'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th style={{textAlign:'center'}}>W%</th></tr>
               </thead>
               <tbody>
                 {(league.standings || []).map((t, i) => {
@@ -2103,7 +2103,7 @@ function ManagerDashboard() {
                       <td style={{textAlign:'center'}}>{t.name}</td>
                       <td style={{textAlign:'center'}}>{t.wins}</td>
                       <td style={{textAlign:'center'}}>{t.losses}</td>
-                      <td>{pct}</td>
+                      <td style={{textAlign:'center'}}>{pct}</td>
                     </tr>
                   )
                 })}
@@ -2258,7 +2258,7 @@ function ProjectedStandings() {
 
 // ── Roster Analysis tab ────────────────────────────────────────────────────────
 
-function RosterAnalysis({ data }) {
+function RosterAnalysis({ data, onSelectPlayer }) {
   const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
@@ -2322,7 +2322,10 @@ function RosterAnalysis({ data }) {
           <tbody>
             {my_roster.map((p, i) => (
               <tr key={p.espn_name + i} className={!p.stats ? 'ra-row-unmatched' : ''}>
-                <td className="ra-player-name">{p.espn_name}{!p.br_slug && <span className="ra-no-data"> (no data)</span>}</td>
+                <td
+                  className={`ra-player-name${p.br_slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                  onClick={() => p.br_slug && onSelectPlayer && onSelectPlayer({ slug: p.br_slug, name: p.espn_name })}
+                >{p.espn_name}{!p.br_slug && <span className="ra-no-data"> (no data)</span>}</td>
                 {tracked_cats.map(cat => {
                   const key = catToKey[cat]
                   const v = p.stats?.[key]
@@ -3134,7 +3137,7 @@ function PlayerMapping({ provider }) {
 
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
-function FantasyPage() {
+function FantasyPage({ onSelectPlayer }) {
   const [status,      setStatus]      = useState(null)
   const [tab,         setTab]         = useState('dashboard')
   const [rosterData,  setRosterData]  = useState(null)
@@ -3189,12 +3192,12 @@ function FantasyPage() {
         <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
       </div>
-      {tab === 'dashboard' && <ManagerDashboard />}
+      {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
       {tab === 'standings' && <ProjectedStandings />}
       {tab === 'roster' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <RosterAnalysis data={rosterData} />
+        : <RosterAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
@@ -3919,7 +3922,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'fantasy' && <FantasyPage />}
+      {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}
