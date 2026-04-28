@@ -2066,14 +2066,14 @@ function ManagerDashboard() {
           ) : (
             <table className="dash-table">
               <thead>
-                <tr><th style={{textAlign:'left'}}>Player</th><th>Pos</th><th>Status</th></tr>
+                <tr><th style={{textAlign:'left'}}>Player</th><th style={{textAlign:'center'}}>Pos</th><th style={{textAlign:'center'}}>Status</th></tr>
               </thead>
               <tbody>
                 {(roster.players || []).map((p, i) => (
                   <tr key={p.name + i}>
                     <td>{p.name}</td>
-                    <td>{p.position || '—'}</td>
-                    <td className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>
+                    <td style={{textAlign:'center'}}>{p.position || '—'}</td>
+                    <td style={{textAlign:'center'}} className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>
                       {p.injury_status || 'Active'}
                     </td>
                   </tr>
@@ -2091,7 +2091,7 @@ function ManagerDashboard() {
           ) : (
             <table className="dash-table">
               <thead>
-                <tr><th>#</th><th style={{textAlign:'left'}}>Team</th><th>W</th><th>L</th><th>W%</th></tr>
+                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'center'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th>W%</th></tr>
               </thead>
               <tbody>
                 {(league.standings || []).map((t, i) => {
@@ -2099,10 +2099,10 @@ function ManagerDashboard() {
                   const pct   = total > 0 ? (t.wins / total).toFixed(3).replace(/^0/, '') : '.000'
                   return (
                     <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                      <td>{i + 1}</td>
-                      <td>{t.name}</td>
-                      <td>{t.wins}</td>
-                      <td>{t.losses}</td>
+                      <td style={{textAlign:'center'}}>{i + 1}</td>
+                      <td style={{textAlign:'center'}}>{t.name}</td>
+                      <td style={{textAlign:'center'}}>{t.wins}</td>
+                      <td style={{textAlign:'center'}}>{t.losses}</td>
                       <td>{pct}</td>
                     </tr>
                   )
