@@ -1854,6 +1854,43 @@ def get_projections(
 # GET /injuries
 # -----------------------------------------------------------------------
 
+@router.post("/admin/build-player-map")
+def admin_build_player_map():
+    """Rebuild the tank01_id → br_slug mapping table. Run once after deploying to a fresh DB."""
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    try:
+        import ingest_tank01
+        conn = get_conn()
+        ingest_tank01.build_player_map(conn)
+        count = conn.execute("SELECT COUNT(*) FROM tank01_player_map").fetchone()[0]
+        conn.close()
+        return {"status": "ok", "mapped_players": count}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/admin/refresh-stats")
+def admin_refresh_stats():
+    """Trigger an immediate game-log refresh from Tank01 (last 3 days)."""
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    try:
+        import ingest_tank01
+        from datetime import date, timedelta
+        season_year = _current_season_end_year()
+        since = date.today() - timedelta(days=3)
+        ingest_tank01.ingest(season_year, since_date=since)
+        conn = get_conn()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM game_logs WHERE game_date >= ?", (since.isoformat(),)
+        ).fetchone()[0]
+        conn.close()
+        return {"status": "ok", "rows_in_range": count}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @router.post("/admin/sync-injuries")
 def admin_sync_injuries():
     """Trigger an immediate injury sync from Tank01. Requires RAPIDAPI_KEY on server."""

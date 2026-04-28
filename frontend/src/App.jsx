@@ -3159,7 +3159,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [projYear, setProjYear]       = useState(1)
   const [projExpanded, setProjExpanded] = useState(false)
   const [projScenario, setProjScenario] = useState('baseline')
-  const [usageExpanded, setUsageExpanded] = useState(true)
+  const [usageExpanded, setUsageExpanded] = useState(false)
   const [usageUsg, setUsageUsg]           = useState(null)   // target USG% (null = use base)
   const [usageMinutes, setUsageMinutes]   = useState(null)   // target min/g (null = use base)
   const [playerGames, setPlayerGames] = useState(null)
