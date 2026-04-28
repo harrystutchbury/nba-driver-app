@@ -2347,14 +2347,14 @@ def admin_build_player_map():
 
 @admin_router.post("/refresh-stats")
 def admin_refresh_stats():
-    """Trigger an immediate game-log refresh from Tank01 (last 3 days)."""
+    """Trigger an immediate game-log refresh from Tank01 (last 45 days)."""
     if not os.environ.get("RAPIDAPI_KEY"):
         raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
     try:
         import ingest_tank01
         from datetime import date, timedelta
         season_year = _current_season_end_year()
-        since = date.today() - timedelta(days=3)
+        since = date.today() - timedelta(days=45)
         ingest_tank01.ingest(season_year, since_date=since)
         conn = get_conn()
         count = conn.execute(

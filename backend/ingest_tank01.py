@@ -212,10 +212,10 @@ def parse_game_id(game_id: str, player_team_abbrev: str) -> tuple[str, str, str]
 
     away_abbrev, home_abbrev = matchup.split("@")
     if player_team_abbrev.upper() == home_abbrev.upper():
-        home_away = "HOME"
+        home_away = "H"
         opp_abbrev = away_abbrev
     else:
-        home_away = "AWAY"
+        home_away = "A"
         opp_abbrev = home_abbrev
 
     opponent = TEAM_ABBREV.get(opp_abbrev.upper(), opp_abbrev.upper())
