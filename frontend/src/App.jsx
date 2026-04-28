@@ -1976,7 +1976,6 @@ function EspnTeamPicker({ onPicked, onDisconnect }) {
 function ManagerDashboard() {
   const [league,  setLeague]  = useState(null)
   const [roster,  setRoster]  = useState(null)
-  const [scoring, setScoring] = useState(null)
   const [matchup, setMatchup] = useState(undefined)
   const [loading, setLoading] = useState(true)
   const [msg,     setMsg]     = useState(null)
@@ -1986,10 +1985,9 @@ function ManagerDashboard() {
     Promise.all([
       apiFetch('/api/fantasy/espn/league').then(r => r.ok ? r.json() : null),
       apiFetch('/api/fantasy/espn/roster').then(r => r.ok ? r.json() : null),
-      apiFetch('/api/fantasy/espn/scoring').then(r => r.ok ? r.json() : null),
       apiFetch('/api/fantasy/espn/matchup').then(r => r.ok ? r.json() : null),
-    ]).then(([l, r, s, m]) => {
-      setLeague(l); setRoster(r); setScoring(s)
+    ]).then(([l, r, m]) => {
+      setLeague(l); setRoster(r)
       setMatchup(m?.matchup ?? null)
     }).catch(() => setMsg('Failed to load fantasy data'))
     .finally(() => setLoading(false))
@@ -1998,33 +1996,78 @@ function ManagerDashboard() {
   if (loading) return <div className="dash-empty">Loading…</div>
   if (msg) return <div className="login-error" style={{margin:24}}>{msg}</div>
 
+  const cats = matchup?.categories || []
+
   return (
     <div className="fantasy-wrap">
-      <div className="fantasy-grid fantasy-grid-3">
 
-        {/* Standings */}
-        {league && (
-          <div className="dash-card">
-            <div className="dash-card-title">Standings — {league.league_name || 'My League'}</div>
-            <table className="dash-table">
-              <thead><tr><th>#</th><th>Team</th><th>W</th><th>L</th></tr></thead>
+      {/* Current Matchup — full width */}
+      <div className="dash-card dash-matchup-card">
+        <div className="dash-card-title">
+          Current Matchup{matchup?.matchup_period ? ` — Week ${matchup.matchup_period}` : ''}
+        </div>
+        {!matchup ? (
+          <div className="dash-empty">No active matchup</div>
+        ) : cats.length > 0 ? (
+          <div style={{overflowX:'auto'}}>
+            <table className="dash-table dash-matchup-cat-table">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  {cats.map(c => <th key={c.stat}>{c.stat}</th>)}
+                  <th>Cats</th>
+                </tr>
+              </thead>
               <tbody>
-                {(league.standings || []).map((t, i) => (
-                  <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                    <td>{i + 1}</td><td>{t.name}</td><td>{t.wins}</td><td>{t.losses}</td>
-                  </tr>
-                ))}
+                <tr>
+                  <td className="dash-matchup-team-name dash-matchup-my">{matchup.my_team}</td>
+                  {cats.map(c => (
+                    <td key={c.stat} className={c.winning ? 'dash-cat-win' : c.tied ? 'dash-cat-tied' : 'dash-cat-loss'}>
+                      {c.my_val}
+                    </td>
+                  ))}
+                  <td className={`dash-matchup-cat-count ${cats.filter(c => c.winning).length > cats.filter(c => !c.winning && !c.tied).length ? 'dash-cat-win' : ''}`}>
+                    {cats.filter(c => c.winning).length}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="dash-matchup-team-name">{matchup.opp_team}</td>
+                  {cats.map(c => (
+                    <td key={c.stat} className={!c.winning && !c.tied ? 'dash-cat-win' : c.tied ? 'dash-cat-tied' : 'dash-cat-loss'}>
+                      {c.opp_val}
+                    </td>
+                  ))}
+                  <td className={`dash-matchup-cat-count ${cats.filter(c => !c.winning && !c.tied).length > cats.filter(c => c.winning).length ? 'dash-cat-win' : ''}`}>
+                    {cats.filter(c => !c.winning && !c.tied).length}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="dash-matchup-simple">
+            <span className="dash-matchup-my">{matchup.my_team}</span>
+            <span className="dash-matchup-score-val">{matchup.my_score}</span>
+            <span style={{color:'var(--muted)'}}>vs</span>
+            <span className="dash-matchup-score-val">{matchup.opp_score}</span>
+            <span>{matchup.opp_team}</span>
+          </div>
         )}
+      </div>
+
+      {/* Bottom row: Roster + Standings */}
+      <div className="dash-bottom-grid">
 
         {/* Roster */}
-        {roster && (
-          <div className="dash-card">
-            <div className="dash-card-title">My Roster{roster.team_name ? ` — ${roster.team_name}` : ''}</div>
+        <div className="dash-card">
+          <div className="dash-card-title">My Roster{roster?.team_name ? ` — ${roster.team_name}` : ''}</div>
+          {!roster ? (
+            <div className="dash-empty">No roster data</div>
+          ) : (
             <table className="dash-table">
-              <thead><tr><th>Player</th><th>Pos</th><th>Status</th></tr></thead>
+              <thead>
+                <tr><th style={{textAlign:'left'}}>Player</th><th>Pos</th><th>Status</th></tr>
+              </thead>
               <tbody>
                 {(roster.players || []).map((p, i) => (
                   <tr key={p.name + i}>
@@ -2037,48 +2080,38 @@ function ManagerDashboard() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {/* Current matchup */}
-        <div className="dash-card">
-          <div className="dash-card-title">Current Matchup</div>
-          {!matchup ? (
-            <div className="dash-empty" style={{padding:'16px 0'}}>No active matchup</div>
-          ) : (
-            <div className="fantasy-matchup">
-              <div className="fantasy-matchup-teams">
-                <span className="fantasy-matchup-my">{matchup.my_team}</span>
-                <span className="fantasy-matchup-vs">vs</span>
-                <span className="fantasy-matchup-opp">{matchup.opp_team}</span>
-              </div>
-              <div className="fantasy-matchup-score">
-                <span className={matchup.my_score > matchup.opp_score ? 'score-winning' : matchup.my_score < matchup.opp_score ? 'score-losing' : ''}>
-                  {matchup.my_score}
-                </span>
-                <span className="score-sep">–</span>
-                <span className={matchup.opp_score > matchup.my_score ? 'score-winning' : matchup.opp_score < matchup.my_score ? 'score-losing' : ''}>
-                  {matchup.opp_score}
-                </span>
-              </div>
-              {matchup.categories?.length > 0 && (
-                <table className="dash-table" style={{marginTop:8}}>
-                  <thead><tr><th>Cat</th><th>Mine</th><th>Opp</th></tr></thead>
-                  <tbody>
-                    {matchup.categories.map(c => (
-                      <tr key={c.stat} className={c.winning ? 'fantasy-cat-win' : c.tied ? '' : 'fantasy-cat-loss'}>
-                        <td>{c.stat}</td><td>{c.my_val}</td><td>{c.opp_val}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
           )}
         </div>
 
-        {/* Scoring */}
-        <ScoringCard scoring={scoring} />
+        {/* Standings */}
+        <div className="dash-card">
+          <div className="dash-card-title">Standings{league?.league_name ? ` — ${league.league_name}` : ''}</div>
+          {!league ? (
+            <div className="dash-empty">No standings data</div>
+          ) : (
+            <table className="dash-table">
+              <thead>
+                <tr><th>#</th><th style={{textAlign:'left'}}>Team</th><th>W</th><th>L</th><th>W%</th></tr>
+              </thead>
+              <tbody>
+                {(league.standings || []).map((t, i) => {
+                  const total = t.wins + t.losses + (t.ties || 0)
+                  const pct   = total > 0 ? (t.wins / total).toFixed(3).replace(/^0/, '') : '.000'
+                  return (
+                    <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                      <td>{i + 1}</td>
+                      <td>{t.name}</td>
+                      <td>{t.wins}</td>
+                      <td>{t.losses}</td>
+                      <td>{pct}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
       </div>
     </div>
   )

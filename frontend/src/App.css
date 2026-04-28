@@ -2925,6 +2925,46 @@ td.bs-name {
 .fantasy-cat-win  td { color: var(--skill); }
 .fantasy-cat-loss td { color: #888; }
 
+/* Dashboard redesign */
+.dash-matchup-card {
+  margin-bottom: 16px;
+  max-height: none;
+}
+
+.dash-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 700px) {
+  .dash-bottom-grid { grid-template-columns: 1fr; }
+}
+
+.dash-matchup-cat-table th,
+.dash-matchup-cat-table td { text-align: center; }
+
+.dash-matchup-cat-table th:first-child,
+.dash-matchup-cat-table td:first-child {
+  text-align: left;
+  min-width: 120px;
+  font-weight: 600;
+}
+
+.dash-matchup-my { color: var(--accent); font-weight: 700; }
+.dash-matchup-cat-count { font-weight: 700; }
+
+.dash-cat-win  { color: var(--skill); font-weight: 600; }
+.dash-cat-loss { color: var(--muted); }
+.dash-cat-tied { color: var(--text); }
+
+.dash-matchup-simple {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.dash-matchup-score-val { font-size: 22px; font-weight: 700; }
+
 /* Coming soon stubs */
 .fantasy-coming-soon {
   text-align: center;
