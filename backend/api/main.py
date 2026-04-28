@@ -3044,12 +3044,11 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         conn.close()
         raise HTTPException(status_code=400, detail="No team selected")
     my_team_id = fc["team_key"]
-    slug_map = {
-        r["provider_id"]: r["br_slug"]
-        for r in conn.execute(
-            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
-        ).fetchall()
-    }
+    map_rows = conn.execute(
+        "SELECT provider_id, provider_name, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+    ).fetchall()
+    slug_by_id   = {r["provider_id"]:   r["br_slug"] for r in map_rows}
+    slug_by_name = {r["provider_name"]: r["br_slug"] for r in map_rows}
     try:
         league = _espn_league(conn, current_user)
     finally:
@@ -3059,10 +3058,11 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Team not found in league")
     players = []
     for p in my_team.roster:
-        pid = str(getattr(p, "playerId", "") or "")
+        pid    = str(getattr(p, "playerId", "") or "")
+        br_slug = slug_by_id.get(pid) or slug_by_name.get(p.name)
         players.append({
             "name": p.name,
-            "br_slug": slug_map.get(pid),
+            "br_slug": br_slug,
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": getattr(p, "injuryStatus", "Active"),
