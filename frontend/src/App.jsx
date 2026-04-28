@@ -2347,7 +2347,7 @@ function RosterAnalysis({ data }) {
                 <tr key={t.team_id || t.name} className={t.is_my_team ? 'fantasy-my-team' : ''}>
                   <td className="ra-player-name">{t.name}</td>
                   <td style={{fontFamily:'var(--mono)',fontSize:12,whiteSpace:'nowrap'}}>
-                    {t.proj_win_pct != null ? t.proj_win_pct.toFixed(3) : '—'}
+                    {t.proj_win_pct != null ? (t.proj_win_pct * 100).toFixed(1) + '%' : '—'}
                   </td>
                   <td className={recCls} style={{whiteSpace:'nowrap',fontWeight:600}}>
                     {rec ? `${rec.w}–${rec.l}${rec.tie ? `–${rec.tie}` : ''}` : '—'}
@@ -2492,6 +2492,7 @@ function TradeAnalysis({ data }) {
 
   // Helper: render a roster stats table (for before/after)
   function RosterTable({ roster, totals, ranks, label, beforeTotals, beforeRanks }) {
+    const n = roster.filter(p => !p.isOut).length || 1
     return (
       <div className="dash-card" style={{flex:1,minWidth:0,overflowX:'auto'}}>
         <div className="ra-before-after-label">{label}</div>
@@ -2513,11 +2514,11 @@ function TradeAnalysis({ data }) {
               </tr>
             ))}
             <tr className="ra-totals-row">
-              <td>TOTAL</td>
+              <td>AVG</td>
               {tracked_cats.map(cat => {
                 const key = catToKey[cat]
-                const v = totals?.[key]
-                const bv = beforeTotals?.[key]
+                const v = totals?.[key] != null ? totals[key] / n : null
+                const bv = beforeTotals?.[key] != null ? beforeTotals[key] / n : null
                 const delta = (v != null && bv != null) ? v - bv : null
                 const isNeg = negSet.has(cat)
                 const improved = delta != null && (isNeg ? delta < -0.001 : delta > 0.001)
@@ -2816,8 +2817,16 @@ function TradeAnalysis({ data }) {
             <div className="dash-card" style={{overflowX:'auto'}}>
               {(() => {
                 const myTeam = teams.find(t => t.is_my_team)
-                const zCls = z => z == null ? '' : z > 0.5 ? 'ra-z-pos' : z < -0.5 ? 'ra-z-neg' : ''
-                const zFmt = z => z == null ? '—' : (z > 0 ? '+' : '') + z.toFixed(2)
+                const total = simResult.total_teams ?? 1
+                // Δbeats per cat: how many more teams I beat after the trade
+                const catDelta = {}
+                cats.forEach(cat => {
+                  const bo = simResult.cat_beats_orig?.[cat] ?? 0
+                  const bn = simResult.cat_beats_new?.[cat]  ?? 0
+                  catDelta[cat] = bn - bo
+                })
+                const dCls = d => d > 0 ? 'ra-z-pos' : d < 0 ? 'ra-z-neg' : ''
+                const dFmt = d => d === 0 ? '—' : (d > 0 ? '+' : '') + d
                 return (
                   <table className="dash-table ra-table">
                     <thead>
@@ -2827,7 +2836,7 @@ function TradeAnalysis({ data }) {
                         <th>Win% After</th>
                         <th>H2H Before</th>
                         <th>H2H After</th>
-                        {cats.map(c=><th key={c}>{c} Z</th>)}
+                        {cats.map(c=><th key={c}>Δ{c}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -2839,8 +2848,8 @@ function TradeAnalysis({ data }) {
                           <td>—</td>
                           <td>—</td>
                           {cats.map(cat => {
-                            const z = myTeam.cat_z?.[cat]
-                            return <td key={cat} className={zCls(z)}>{zFmt(z)}</td>
+                            const d = catDelta[cat]
+                            return <td key={cat} className={dCls(d)}>{dFmt(d)}</td>
                           })}
                         </tr>
                       )}
@@ -2870,8 +2879,8 @@ function TradeAnalysis({ data }) {
                             <td className={cB}><strong>{wB}–{lB}</strong></td>
                             <td className={cA}><strong>{wA}–{lA}</strong></td>
                             {cats.map(cat => {
-                              const z = t.cat_z?.[cat]
-                              return <td key={cat} className={zCls(z)}>{zFmt(z)}</td>
+                              const d = catDelta[cat]
+                              return <td key={cat} className={dCls(d)}>{dFmt(d)}</td>
                             })}
                           </tr>
                         )
@@ -3145,13 +3154,11 @@ function FantasyPage() {
         <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
         <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
-        <button className={`fantasy-tab${tab === 'mapping'   ? ' active' : ''}`} onClick={() => setTab('mapping')}>Player Mapping</button>
       </div>
       {tab === 'dashboard' && <ManagerDashboard />}
       {tab === 'standings' && <ProjectedStandings />}
       {tab === 'roster'    && <RosterTabContent />}
       {tab === 'trade'     && <TradeTabContent />}
-      {tab === 'mapping'   && <PlayerMapping provider="espn" />}
     </div>
   )
 }
