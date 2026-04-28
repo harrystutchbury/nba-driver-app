@@ -32,9 +32,10 @@
 }
 
 .dash-loading, .dash-empty {
-  color: #555;
-  font-size: 0.82rem;
+  color: var(--muted);
+  font-size: 13px;
   padding: 12px 0;
+  text-align: center;
 }
 
 /* Top 10 table */
@@ -333,7 +334,7 @@
 
 .modal-close:hover { color: var(--text); }
 
-.modal-loading { color: #666; font-size: 0.85rem; }
+.modal-loading { color: var(--muted); font-size: 13px; }
 
 .acct-form {
   display: flex;
@@ -2153,9 +2154,9 @@
 
 .bs-loading, .bs-error, .bs-empty {
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted);
   padding: 60px 0;
-  font-size: 15px;
+  font-size: 13px;
 }
 .bs-error { color: #ff6b6b; }
 
@@ -2422,7 +2423,7 @@ td.bs-name {
   text-align: center;
   padding: 64px;
   color: var(--muted);
-  font-family: var(--mono);
+  font-size: 13px;
 }
 
 .inj-grid {
