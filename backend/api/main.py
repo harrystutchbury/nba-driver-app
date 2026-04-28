@@ -3044,6 +3044,12 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         conn.close()
         raise HTTPException(status_code=400, detail="No team selected")
     my_team_id = fc["team_key"]
+    slug_map = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
     try:
         league = _espn_league(conn, current_user)
     finally:
@@ -3051,12 +3057,6 @@ def espn_roster(current_user: str = Depends(get_current_user)):
     my_team = next((t for t in league.teams if str(t.team_id) == str(my_team_id)), None)
     if not my_team:
         raise HTTPException(status_code=404, detail="Team not found in league")
-    slug_map = {
-        r["provider_id"]: r["br_slug"]
-        for r in conn.execute(
-            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
-        ).fetchall()
-    }
     players = []
     for p in my_team.roster:
         pid = str(getattr(p, "playerId", "") or "")
