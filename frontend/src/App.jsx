@@ -2105,11 +2105,6 @@ function ProjectedStandings() {
           <span className="proj-meta-sep">·</span>
           <span>{isCat ? 'H2H Categories' : scoring_type === 'H2H_POINTS' ? 'H2H Points' : scoring_type}</span>
         </div>
-        {isCat && tracked_cats?.length > 0 && (
-          <div className="scoring-cats" style={{marginTop:6}}>
-            {tracked_cats.map(c => <span key={c} className="scoring-cat">{c}</span>)}
-          </div>
-        )}
       </div>
 
       <table className="proj-table">
@@ -2117,7 +2112,6 @@ function ProjectedStandings() {
           <tr>
             <th>Proj</th><th>Team</th><th>Current</th>
             <th>+W</th><th>+L</th><th>Proj W-L</th>
-            <th className="proj-match-col">Match</th>
           </tr>
         </thead>
         <tbody>
@@ -2138,11 +2132,6 @@ function ProjectedStandings() {
                 <td className="scoring-pos">+{t.proj_wins}</td>
                 <td className="scoring-neg">+{t.proj_losses}</td>
                 <td><strong>{t.proj_total_wins}–{t.proj_total_losses}</strong></td>
-                <td className="proj-match-col">
-                  <span className={+t.match_rate.split('/')[0] / +t.match_rate.split('/')[1] < 0.6 ? 'proj-match-warn' : 'proj-match-ok'}>
-                    {t.match_rate}
-                  </span>
-                </td>
               </tr>
             )
           })}
@@ -2150,34 +2139,71 @@ function ProjectedStandings() {
       </table>
 
       <p className="proj-note">
-        Based on 2025–26 season averages for matched players. "Match" = players found in our database — lower coverage means less reliable projection.
+        Based on 2025–26 season averages for matched players.
       </p>
 
-      {isCat && tracked_cats?.length > 0 && standings.length > 0 && (
-        <div className="proj-strength">
-          <div className="proj-strength-title">Projected team strengths (per game totals)</div>
-          <div className="proj-strength-scroll">
-            <table className="proj-table">
-              <thead>
-                <tr>
-                  <th>Team</th>
-                  {tracked_cats.map(c => <th key={c}>{c}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map(t => (
-                  <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                    <td>{t.name}</td>
-                    {tracked_cats.map(c => (
-                      <td key={c}>{t.team_stats[statMap[c]] ?? '—'}</td>
-                    ))}
+      {isCat && tracked_cats?.length > 0 && standings.length > 0 && (() => {
+        const negCats = new Set(['TO', 'TOV'])
+        // Per-cat ranks: 1 = best. For neg cats, lower value = rank 1.
+        const catRanks = {}
+        tracked_cats.forEach(c => {
+          const key = statMap[c]
+          const neg = negCats.has(c)
+          const vals = standings.map(t => ({ id: t.team_id, v: t.team_stats?.[key] ?? 0 }))
+          const sorted = [...vals].sort((a, b) => neg ? a.v - b.v : b.v - a.v)
+          catRanks[c] = {}
+          sorted.forEach((item, i) => { catRanks[c][item.id] = i + 1 })
+        })
+        const n = standings.length
+        function rankBg(rank) {
+          const pct = (rank - 1) / Math.max(n - 1, 1)
+          if (pct <= 0.25) return 'rgba(10,122,54,0.22)'
+          if (pct <= 0.45) return 'rgba(10,122,54,0.10)'
+          if (pct >= 0.75) return 'rgba(212,32,32,0.22)'
+          if (pct >= 0.55) return 'rgba(212,32,32,0.10)'
+          return undefined
+        }
+        function rankColor(rank) {
+          const pct = (rank - 1) / Math.max(n - 1, 1)
+          if (pct <= 0.45) return 'var(--skill)'
+          if (pct >= 0.55) return 'var(--neg)'
+          return undefined
+        }
+        return (
+          <div className="proj-strength">
+            <div className="proj-strength-title">Projected team strengths (per game)</div>
+            <div className="proj-strength-scroll">
+              <table className="proj-table">
+                <thead>
+                  <tr>
+                    <th>Team</th>
+                    {tracked_cats.map(c => <th key={c}>{c}</th>)}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {standings.map(t => (
+                    <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                      <td>{t.name}</td>
+                      {tracked_cats.map(c => {
+                        const key = statMap[c]
+                        const raw = t.team_stats?.[key]
+                        const val = raw != null ? (raw / 10).toFixed(1) : '—'
+                        const rank = catRanks[c][t.team_id]
+                        return (
+                          <td key={c} style={{background: rankBg(rank), color: rankColor(rank)}}>
+                            <div style={{fontWeight: 600}}>{val}</div>
+                            <div style={{fontSize:'0.7em', opacity:0.7}}>#{rank}</div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
