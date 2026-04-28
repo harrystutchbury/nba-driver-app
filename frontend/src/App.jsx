@@ -3148,18 +3148,6 @@ function FantasyPage() {
     />
   )
 
-  function RosterTabContent() {
-    if (rosterErr) return <div className="login-error" style={{margin:24}}>{rosterErr}</div>
-    if (!rosterData) return <div className="dash-empty">Loading…</div>
-    return <RosterAnalysis data={rosterData} />
-  }
-
-  function TradeTabContent() {
-    if (rosterErr) return <div className="login-error" style={{margin:24}}>{rosterErr}</div>
-    if (!rosterData) return <div className="dash-empty">Loading…</div>
-    return <TradeAnalysis data={rosterData} />
-  }
-
   return (
     <div>
       <div className="fantasy-tabs">
@@ -3170,8 +3158,16 @@ function FantasyPage() {
       </div>
       {tab === 'dashboard' && <ManagerDashboard />}
       {tab === 'standings' && <ProjectedStandings />}
-      {tab === 'roster'    && <RosterTabContent />}
-      {tab === 'trade'     && <TradeTabContent />}
+      {tab === 'roster' && (rosterErr
+        ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+        : !rosterData ? <div className="dash-empty">Loading…</div>
+        : <RosterAnalysis data={rosterData} />
+      )}
+      {tab === 'trade' && (rosterErr
+        ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+        : !rosterData ? <div className="dash-empty">Loading…</div>
+        : <TradeAnalysis data={rosterData} />
+      )}
     </div>
   )
 }
