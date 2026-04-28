@@ -2071,7 +2071,10 @@ function ManagerDashboard({ onSelectPlayer }) {
               <tbody>
                 {(roster.players || []).map((p, i) => (
                   <tr key={p.name + i}>
-                    <td>{p.name}</td>
+                    <td
+                      className={p.br_slug && onSelectPlayer ? 'rank-player-link' : undefined}
+                      onClick={() => p.br_slug && onSelectPlayer && onSelectPlayer({ slug: p.br_slug, name: p.name })}
+                    >{p.name}</td>
                     <td style={{textAlign:'center'}}>{p.position || '—'}</td>
                     <td style={{textAlign:'center'}} className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>
                       {p.injury_status || 'Active'}
@@ -2091,7 +2094,7 @@ function ManagerDashboard({ onSelectPlayer }) {
           ) : (
             <table className="dash-table">
               <thead>
-                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'center'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th style={{textAlign:'center'}}>W%</th></tr>
+                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'left'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th style={{textAlign:'center'}}>W%</th></tr>
               </thead>
               <tbody>
                 {(league.standings || []).map((t, i) => {
@@ -2100,7 +2103,7 @@ function ManagerDashboard({ onSelectPlayer }) {
                   return (
                     <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
                       <td style={{textAlign:'center'}}>{i + 1}</td>
-                      <td style={{textAlign:'center'}}>{t.name}</td>
+                      <td style={{textAlign:'left'}}>{t.name}</td>
                       <td style={{textAlign:'center'}}>{t.wins}</td>
                       <td style={{textAlign:'center'}}>{t.losses}</td>
                       <td style={{textAlign:'center'}}>{pct}</td>
@@ -2426,7 +2429,7 @@ function RosterAnalysis({ data, onSelectPlayer }) {
 
 // ── Trade Analysis tab ─────────────────────────────────────────────────────────
 
-function TradeAnalysis({ data }) {
+function TradeAnalysis({ data, onSelectPlayer }) {
   // Unified "leaving my roster" list — used by both trade and waiver
   const [outSlugs,   setOutSlugs]   = useState([])  // {slug, name} — trade outs
   const [dropSlugs,  setDropSlugs]  = useState([])  // {slug, name} — pure drops
@@ -2552,7 +2555,10 @@ function TradeAnalysis({ data }) {
           <tbody>
             {roster.map((p,i) => (
               <tr key={p.name+i} className={p.isNew ? 'ra-player-added' : p.isOut ? 'ra-player-out' : ''}>
-                <td className="ra-player-name">
+                <td
+                  className={`ra-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                  onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
+                >
                   {p.name}
                   {p.isOut && <span className="ra-out-badge"> OUT</span>}
                 </td>
@@ -2832,16 +2838,17 @@ function TradeAnalysis({ data }) {
         ]
         const beforeRoster = my_roster.map(p => ({
           name: p.espn_name,
+          slug: p.br_slug,
           stats: p.stats,
           isOut: outSet.has(p.br_slug),
           isNew: false,
         }))
         const afterRoster = [
-          ...my_roster.filter(p=>!outSet.has(p.br_slug)).map(p=>({name:p.espn_name,stats:p.stats,isNew:false,isOut:false})),
+          ...my_roster.filter(p=>!outSet.has(p.br_slug)).map(p=>({name:p.espn_name,slug:p.br_slug,stats:p.stats,isNew:false,isOut:false})),
           ...addedPlayers.map(a => {
             const fromTeam = [...(tradeTeam?.players||[]),...(tradeTeam2?.players||[])].find(p=>p.br_slug===a.slug)
             const fromFA   = freeAgents?.find(p=>p.br_slug===a.slug)
-            return {name:a.name, stats:fromTeam?.stats||fromFA?.stats||null, isNew:true, isOut:false, from:a.from}
+            return {name:a.name, slug:a.slug, stats:fromTeam?.stats||fromFA?.stats||null, isNew:true, isOut:false, from:a.from}
           })
         ]
 
@@ -3202,7 +3209,7 @@ function FantasyPage({ onSelectPlayer }) {
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <TradeAnalysis data={rosterData} />
+        : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
     </div>
   )

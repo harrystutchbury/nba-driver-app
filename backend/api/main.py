@@ -3051,10 +3051,18 @@ def espn_roster(current_user: str = Depends(get_current_user)):
     my_team = next((t for t in league.teams if str(t.team_id) == str(my_team_id)), None)
     if not my_team:
         raise HTTPException(status_code=404, detail="Team not found in league")
+    slug_map = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
     players = []
     for p in my_team.roster:
+        pid = str(getattr(p, "playerId", "") or "")
         players.append({
             "name": p.name,
+            "br_slug": slug_map.get(pid),
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": getattr(p, "injuryStatus", "Active"),
