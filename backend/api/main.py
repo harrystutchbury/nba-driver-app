@@ -3500,6 +3500,9 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
 
     weeks = [w for w in weeks if w["games"]]
 
+    today          = date.today()
+    current_monday = today - timedelta(days=today.weekday())
+
     # ESPN league for rosters + schedule
     my_team_obj      = None
     fantasy_team_nba = {}
