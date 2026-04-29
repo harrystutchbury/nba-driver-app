@@ -734,7 +734,7 @@ const PERIODS = [
   { value: 'l14',    label: 'Last 14 Days' },
 ]
 
-function RankingsPage({ onSelectPlayer }) {
+function RankingsPage({ onSelectPlayer, ownership }) {
   const [period,   setPeriod]   = useState('season')
   const [position, setPosition] = useState('all')
   const [players,  setPlayers]  = useState(null)
@@ -928,6 +928,7 @@ function RankingsPage({ onSelectPlayer }) {
                       <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
                         {p.name}
                         {p.injury && <InjuryBadge injury={p.injury} compact />}
+                        <OwnBadge slug={p.slug} ownership={ownership} />
                       </div>
                       <div className="rank-player-team">{p.team}</div>
                     </td>
@@ -993,6 +994,15 @@ const INJ_COLORS = {
   'Doubtful':     { bg: '#ff7700', text: '#fff' },
   'Questionable': { bg: '#ccaa00', text: '#000' },
   'Day-To-Day':   { bg: '#ccaa00', text: '#000' },
+}
+
+function OwnBadge({ slug, ownership }) {
+  if (!ownership || !slug) return null
+  const info = ownership[slug]
+  if (!info) return null
+  return info.is_mine
+    ? <span className="own-badge own-mine">Mine</span>
+    : <span className="own-badge own-taken" title={info.team}>Taken</span>
 }
 
 function InjuryBadge({ injury, compact }) {
@@ -1139,7 +1149,7 @@ function DepthChartsPage({ onSelectPlayer }) {
   )
 }
 
-function InjuriesPage({ onSelectPlayer }) {
+function InjuriesPage({ onSelectPlayer, ownership }) {
   const [tab, setTab]         = useState('injuries')
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1187,6 +1197,7 @@ function InjuriesPage({ onSelectPlayer }) {
                     className={`inj-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
                     onClick={() => p.slug && onSelectPlayer && onSelectPlayer(p)}
                   >{p.name}</span>
+                  <OwnBadge slug={p.slug} ownership={ownership} />
                   {p.description && <span className="inj-desc">{p.description}</span>}
                 </div>
               ))}
@@ -1198,7 +1209,7 @@ function InjuriesPage({ onSelectPlayer }) {
   )
 }
 
-function BoxScoreTable({ players, onSelectPlayer }) {
+function BoxScoreTable({ players, onSelectPlayer, ownership }) {
   if (!players.length) return null
   return (
     <table className="bs-table">
@@ -1231,6 +1242,7 @@ function BoxScoreTable({ players, onSelectPlayer }) {
                 onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
               >{p.name}</span>
               {p.injury && <InjuryBadge injury={p.injury} compact />}
+              <OwnBadge slug={p.slug} ownership={ownership} />
             </td>
             <td className="bs-ctr">{p.min}</td>
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
@@ -1254,7 +1266,7 @@ function BoxScoreTable({ players, onSelectPlayer }) {
   )
 }
 
-function BoxScorePage({ onSelectPlayer }) {
+function BoxScorePage({ onSelectPlayer, ownership }) {
   const clientET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
   const [todayEt, setTodayEt] = useState(clientET)
   const [date, setDate]       = useState(clientET)
@@ -1346,11 +1358,11 @@ function BoxScorePage({ onSelectPlayer }) {
           <div className="bs-teams-wrap">
             <div className="bs-team-section">
               <div className="bs-team-label">{game.away} <span className="bs-team-abbr">{game.away_abbr}</span></div>
-              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} />
+              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} ownership={ownership} />
             </div>
             <div className="bs-team-section">
               <div className="bs-team-label">{game.home} <span className="bs-team-abbr">{game.home_abbr}</span></div>
-              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} />
+              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} ownership={ownership} />
             </div>
           </div>
         </div>
@@ -1386,7 +1398,7 @@ const PROJ_PCT_KEYS   = new Set(['fg_pct'])
 const PROJ_PUNT_COLS  = PROJ_COLS.filter(c => !c.noZ)   // puntable = cols with Z-scores
 const PROJ_COUNTING   = PROJ_PUNT_COLS.filter(c => !PROJ_PCT_KEYS.has(c.key)).map(c => c.key)
 
-function ProjectionsPage({ onSelectPlayer }) {
+function ProjectionsPage({ onSelectPlayer, ownership }) {
   function todayStr() { return new Date().toISOString().slice(0, 10) }
   function addDays(n) {
     const d = new Date(todayStr() + 'T12:00:00')
@@ -1599,6 +1611,7 @@ function ProjectionsPage({ onSelectPlayer }) {
                     <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
                       {p.name}
                       {p.injury && <InjuryBadge injury={p.injury} compact />}
+                      <OwnBadge slug={p.slug} ownership={ownership} />
                     </div>
                     <div className="rank-player-team">{p.team}</div>
                   </td>
@@ -3344,6 +3357,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [glExpanded, setGlExpanded]   = useState(false)
   const [glStart, setGlStart]         = useState(0)
   const [glEnd, setGlEnd]             = useState(0)
+  const [ownership, setOwnership]         = useState({})
   const [agingCurves, setAgingCurves]     = useState(null)
   const [agingArchetype, setAgingArchetype] = useState(null)
   const [agingExpanded, setAgingExpanded]   = useState(false)
@@ -3367,6 +3381,13 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   useEffect(() => {
     if (yahooConnected) window.history.replaceState({}, '', '/')
+  }, [])
+
+  useEffect(() => {
+    apiFetch('/api/fantasy/espn/ownership')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.by_slug) setOwnership(d.by_slug) })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -4009,13 +4030,13 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'dashboard' && <DashboardPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
-      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
-      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
-      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 

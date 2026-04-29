@@ -3411,6 +3411,60 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
     }
 
 
+@fantasy_router.get("/espn/ownership")
+def espn_ownership(current_user: str = Depends(get_current_user)):
+    """Return slug → {team, is_mine} for every rostered player in the league."""
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        return {"by_slug": {}}
+    my_team_id = str(fc["team_key"])
+
+    espn_id_to_slug = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    conn2 = get_conn()
+    try:
+        league = _espn_league(conn2, current_user)
+    except Exception:
+        conn2.close()
+        return {"by_slug": {}}
+    finally:
+        conn2.close()
+
+    def _resolve_slug(player):
+        slug = espn_id_to_slug.get(str(player.playerId))
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    by_slug = {}
+    for team in league.teams:
+        is_mine = str(team.team_id) == my_team_id
+        for player in (team.roster or []):
+            slug = _resolve_slug(player)
+            if slug:
+                by_slug[slug] = {"team": team.team_name, "is_mine": is_mine}
+
+    return {"by_slug": by_slug}
+
+
 @fantasy_router.get("/espn/schedule-grid")
 def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     """Return schedule grid: games per NBA team per week, with per-week opponent totals."""
