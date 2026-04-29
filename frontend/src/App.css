@@ -3815,10 +3815,6 @@ td.bs-name {
 /* ── Schedule Grid ─────────────────────────────────────────────────────────── */
 .sg-wrap { padding: 16px; }
 
-.sg-legend { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
-.sg-legend-my  { color: var(--skill); }
-.sg-legend-opp { color: var(--opponent); }
-
 .sg-scroll { overflow-x: auto; }
 
 .sg-table {
@@ -3849,12 +3845,10 @@ td.bs-name {
 .sg-table thead .sg-col-week { z-index: 3; }
 
 .sg-col-team { font-weight: 600; color: var(--muted); font-size: 11px; }
-.sg-col-team.sg-my-team  { color: var(--skill);    background: rgba(77,255,180,0.06); }
-.sg-col-team.sg-opp-team { color: var(--opponent); background: rgba(255,184,77,0.06); }
+.sg-col-team.sg-my-team { color: var(--skill); background: rgba(77,255,180,0.06); }
 
 .sg-cell { color: var(--text); }
-.sg-cell.sg-my-team  { background: rgba(77,255,180,0.06); }
-.sg-cell.sg-opp-team { background: rgba(255,184,77,0.06); }
+.sg-cell.sg-my-team { background: rgba(77,255,180,0.06); }
 .sg-zero { color: var(--muted); }
 
 .sg-col-total { font-weight: 700; border-left: 2px solid var(--border); }
@@ -3862,3 +3856,11 @@ td.bs-name {
 .sg-col-opp-total { color: var(--opponent); }
 .sg-total-win  { font-weight: 700; }
 .sg-total-loss { opacity: 0.6; }
+
+.sg-col-opp-name {
+  text-align: left !important;
+  color: var(--muted);
+  font-size: 11px;
+  border-left: 2px solid var(--border);
+  min-width: 100px;
+}

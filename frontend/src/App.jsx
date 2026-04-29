@@ -3159,11 +3159,10 @@ function ScheduleGrid() {
 
   if (loading) return <div className="dash-empty">Loading schedule…</div>
   if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
-  if (!data || !data.weeks.length) return <div className="dash-empty">No upcoming schedule data available.</div>
+  if (!data || !data.weeks.length) return <div className="dash-empty">No schedule data available.</div>
 
-  const { weeks, all_teams, my_nba_teams, opp_nba_teams, my_team_name, opp_team_name } = data
+  const { weeks, all_teams, my_nba_teams } = data
 
-  // Abbreviate full team name to 3-letter code for compact headers
   const ABBREV = {
     'ATLANTA HAWKS': 'ATL', 'BOSTON CELTICS': 'BOS', 'BROOKLYN NETS': 'BKN',
     'CHARLOTTE HORNETS': 'CHA', 'CHICAGO BULLS': 'CHI', 'CLEVELAND CAVALIERS': 'CLE',
@@ -3177,15 +3176,10 @@ function ScheduleGrid() {
     'TORONTO RAPTORS': 'TOR', 'UTAH JAZZ': 'UTA', 'WASHINGTON WIZARDS': 'WAS',
   }
 
-  const mySet  = new Set(my_nba_teams)
-  const oppSet = new Set(opp_nba_teams)
+  const mySet = new Set(my_nba_teams)
 
   return (
     <div className="sg-wrap">
-      <div className="sg-legend">
-        <span className="sg-legend-my">■</span> {my_team_name || 'My Team'}
-        {opp_team_name && <><span className="sg-legend-opp" style={{marginLeft:16}}>■</span> {opp_team_name}</>}
-      </div>
       <div className="sg-scroll">
         <table className="sg-table">
           <thead>
@@ -3194,14 +3188,15 @@ function ScheduleGrid() {
               {all_teams.map(t => (
                 <th
                   key={t}
-                  className={`sg-col-team${mySet.has(t) ? ' sg-my-team' : oppSet.has(t) ? ' sg-opp-team' : ''}`}
+                  className={`sg-col-team${mySet.has(t) ? ' sg-my-team' : ''}`}
                   title={t}
                 >
                   {ABBREV[t] || t.slice(0, 3)}
                 </th>
               ))}
-              <th className="sg-col-total sg-col-my-total" title={my_team_name || 'My Team'}>My GP</th>
-              <th className="sg-col-total sg-col-opp-total" title={opp_team_name || 'Opponent'}>Opp GP</th>
+              <th className="sg-col-total sg-col-my-total">My GP</th>
+              <th className="sg-col-total sg-col-opp-total">Opp GP</th>
+              <th className="sg-col-opp-name">Opponent</th>
             </tr>
           </thead>
           <tbody>
@@ -3211,12 +3206,8 @@ function ScheduleGrid() {
                 {all_teams.map(t => {
                   const count = w.games[t] || 0
                   const isMy  = mySet.has(t)
-                  const isOpp = oppSet.has(t)
                   return (
-                    <td
-                      key={t}
-                      className={`sg-cell${isMy ? ' sg-my-team' : isOpp ? ' sg-opp-team' : ''}`}
-                    >
+                    <td key={t} className={`sg-cell${isMy ? ' sg-my-team' : ''}`}>
                       {count > 0 ? count : <span className="sg-zero">–</span>}
                     </td>
                   )
@@ -3225,8 +3216,9 @@ function ScheduleGrid() {
                   {w.my_total}
                 </td>
                 <td className={`sg-col-total sg-col-opp-total${w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
-                  {w.opp_total}
+                  {w.opp_total || '–'}
                 </td>
+                <td className="sg-col-opp-name">{w.opp_name || '–'}</td>
               </tr>
             ))}
           </tbody>
