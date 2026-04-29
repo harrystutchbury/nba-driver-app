@@ -3411,6 +3411,147 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
     }
 
 
+@fantasy_router.get("/espn/schedule-grid")
+def espn_schedule_grid(current_user: str = Depends(get_current_user)):
+    """Return schedule grid: games per NBA team per week, with user/opponent totals."""
+    from datetime import date, timedelta
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No team selected")
+    my_team_id = str(fc["team_key"])
+
+    # Most-recent NBA team per player slug (for current season)
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    team_rows = conn.execute("""
+        SELECT g.player_slug, g.team
+        FROM game_logs g
+        INNER JOIN (
+            SELECT player_slug, MAX(game_date) AS last_date
+            FROM game_logs WHERE season=?
+            GROUP BY player_slug
+        ) lm ON g.player_slug = lm.player_slug AND g.game_date = lm.last_date
+        WHERE g.season=?
+        GROUP BY g.player_slug
+    """, [season, season]).fetchall()
+    slug_to_team = {r["player_slug"]: r["team"] for r in team_rows}
+
+    # Week buckets: Mon–Sun, starting from current week, up to 6 weeks
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())  # Monday
+    end_date = week_start + timedelta(weeks=6, days=-1)
+
+    schedule_rows = conn.execute("""
+        SELECT game_date, home_team, away_team
+        FROM nba_schedule
+        WHERE game_date >= ? AND game_date <= ?
+        ORDER BY game_date
+    """, [week_start.isoformat(), end_date.isoformat()]).fetchall()
+
+    # Player ID → slug mappings
+    espn_id_to_slug = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    # Build week buckets
+    weeks = []
+    for w in range(6):
+        ws = week_start + timedelta(weeks=w)
+        we = ws + timedelta(days=6)
+        weeks.append({
+            "start":     ws.isoformat(),
+            "end":       we.isoformat(),
+            "label":     f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+            "games":     {},
+        })
+
+    all_teams = set()
+    for row in schedule_rows:
+        gd = date.fromisoformat(row["game_date"])
+        week_idx = (gd - week_start).days // 7
+        if 0 <= week_idx < len(weeks):
+            home, away = row["home_team"], row["away_team"]
+            all_teams.add(home)
+            all_teams.add(away)
+            weeks[week_idx]["games"][home] = weeks[week_idx]["games"].get(home, 0) + 1
+            weeks[week_idx]["games"][away] = weeks[week_idx]["games"].get(away, 0) + 1
+
+    weeks = [w for w in weeks if w["games"]]  # drop empty weeks
+
+    # Resolve slugs → NBA teams from fantasy rosters
+    conn2 = get_conn()
+    try:
+        league = _espn_league(conn2, current_user)
+    finally:
+        conn2.close()
+
+    my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
+
+    def _resolve_slug(player):
+        slug = espn_id_to_slug.get(str(player.playerId))
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    def _roster_nba_teams(team_obj):
+        if not team_obj:
+            return []
+        nba_teams = set()
+        for p in (team_obj.roster or []):
+            slug = _resolve_slug(p)
+            if slug and slug in slug_to_team:
+                nba_teams.add(slug_to_team[slug])
+        return sorted(nba_teams)
+
+    my_nba_teams  = _roster_nba_teams(my_team_obj)
+    opp_nba_teams = []
+    opp_team_name = ""
+    try:
+        scores = league.box_scores()
+        my_matchup = next(
+            (m for m in scores
+             if str(getattr(m.home_team, 'team_id', '')) == my_team_id
+             or str(getattr(m.away_team, 'team_id', '')) == my_team_id),
+            None
+        )
+        if my_matchup:
+            i_am_home   = str(getattr(my_matchup.home_team, 'team_id', '')) == my_team_id
+            opp_team_obj = my_matchup.away_team if i_am_home else my_matchup.home_team
+            opp_team_name = getattr(opp_team_obj, 'team_name', '')
+            opp_nba_teams = _roster_nba_teams(opp_team_obj)
+    except Exception:
+        logger.exception("Could not resolve opponent for schedule grid")
+
+    for w in weeks:
+        w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
+        w["opp_total"] = sum(w["games"].get(t, 0) for t in opp_nba_teams)
+
+    return {
+        "weeks":         weeks,
+        "all_teams":     sorted(all_teams),
+        "my_nba_teams":  my_nba_teams,
+        "opp_nba_teams": opp_nba_teams,
+        "my_team_name":  getattr(my_team_obj, 'team_name', '') if my_team_obj else '',
+        "opp_team_name": opp_team_name,
+    }
+
+
 @fantasy_router.get("/espn/roster-analysis")
 def espn_roster_analysis(current_user: str = Depends(get_current_user)):
     """

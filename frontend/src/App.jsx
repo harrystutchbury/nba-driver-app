@@ -3143,6 +3143,100 @@ function PlayerMapping({ provider }) {
   )
 }
 
+// ── ScheduleGrid ───────────────────────────────────────────────────────────────
+
+function ScheduleGrid() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+
+  useEffect(() => {
+    apiFetch('/api/fantasy/espn/schedule-grid')
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  if (loading) return <div className="dash-empty">Loading schedule…</div>
+  if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
+  if (!data || !data.weeks.length) return <div className="dash-empty">No upcoming schedule data available.</div>
+
+  const { weeks, all_teams, my_nba_teams, opp_nba_teams, my_team_name, opp_team_name } = data
+
+  // Abbreviate full team name to 3-letter code for compact headers
+  const ABBREV = {
+    'ATLANTA HAWKS': 'ATL', 'BOSTON CELTICS': 'BOS', 'BROOKLYN NETS': 'BKN',
+    'CHARLOTTE HORNETS': 'CHA', 'CHICAGO BULLS': 'CHI', 'CLEVELAND CAVALIERS': 'CLE',
+    'DALLAS MAVERICKS': 'DAL', 'DENVER NUGGETS': 'DEN', 'DETROIT PISTONS': 'DET',
+    'GOLDEN STATE WARRIORS': 'GSW', 'HOUSTON ROCKETS': 'HOU', 'INDIANA PACERS': 'IND',
+    'LOS ANGELES CLIPPERS': 'LAC', 'LOS ANGELES LAKERS': 'LAL', 'MEMPHIS GRIZZLIES': 'MEM',
+    'MIAMI HEAT': 'MIA', 'MILWAUKEE BUCKS': 'MIL', 'MINNESOTA TIMBERWOLVES': 'MIN',
+    'NEW ORLEANS PELICANS': 'NOP', 'NEW YORK KNICKS': 'NYK', 'OKLAHOMA CITY THUNDER': 'OKC',
+    'ORLANDO MAGIC': 'ORL', 'PHILADELPHIA 76ERS': 'PHI', 'PHOENIX SUNS': 'PHO',
+    'PORTLAND TRAIL BLAZERS': 'POR', 'SACRAMENTO KINGS': 'SAC', 'SAN ANTONIO SPURS': 'SAS',
+    'TORONTO RAPTORS': 'TOR', 'UTAH JAZZ': 'UTA', 'WASHINGTON WIZARDS': 'WAS',
+  }
+
+  const mySet  = new Set(my_nba_teams)
+  const oppSet = new Set(opp_nba_teams)
+
+  return (
+    <div className="sg-wrap">
+      <div className="sg-legend">
+        <span className="sg-legend-my">■</span> {my_team_name || 'My Team'}
+        {opp_team_name && <><span className="sg-legend-opp" style={{marginLeft:16}}>■</span> {opp_team_name}</>}
+      </div>
+      <div className="sg-scroll">
+        <table className="sg-table">
+          <thead>
+            <tr>
+              <th className="sg-col-week">Week</th>
+              {all_teams.map(t => (
+                <th
+                  key={t}
+                  className={`sg-col-team${mySet.has(t) ? ' sg-my-team' : oppSet.has(t) ? ' sg-opp-team' : ''}`}
+                  title={t}
+                >
+                  {ABBREV[t] || t.slice(0, 3)}
+                </th>
+              ))}
+              <th className="sg-col-total sg-col-my-total" title={my_team_name || 'My Team'}>My GP</th>
+              <th className="sg-col-total sg-col-opp-total" title={opp_team_name || 'Opponent'}>Opp GP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map(w => (
+              <tr key={w.start}>
+                <td className="sg-col-week">{w.label}</td>
+                {all_teams.map(t => {
+                  const count = w.games[t] || 0
+                  const isMy  = mySet.has(t)
+                  const isOpp = oppSet.has(t)
+                  return (
+                    <td
+                      key={t}
+                      className={`sg-cell${isMy ? ' sg-my-team' : isOpp ? ' sg-opp-team' : ''}`}
+                    >
+                      {count > 0 ? count : <span className="sg-zero">–</span>}
+                    </td>
+                  )
+                })}
+                <td className={`sg-col-total sg-col-my-total${w.my_total > w.opp_total ? ' sg-total-win' : w.my_total < w.opp_total ? ' sg-total-loss' : ''}`}>
+                  {w.my_total}
+                </td>
+                <td className={`sg-col-total sg-col-opp-total${w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
+                  {w.opp_total}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 function FantasyPage({ onSelectPlayer }) {
@@ -3199,6 +3293,7 @@ function FantasyPage({ onSelectPlayer }) {
         <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
         <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
+        <button className={`fantasy-tab${tab === 'schedule'  ? ' active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
       </div>
       {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
       {tab === 'standings' && <ProjectedStandings />}
@@ -3212,6 +3307,7 @@ function FantasyPage({ onSelectPlayer }) {
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
+      {tab === 'schedule' && <ScheduleGrid />}
     </div>
   )
 }

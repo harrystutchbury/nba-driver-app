@@ -3811,3 +3811,54 @@ td.bs-name {
   font-weight: 500;
   color: #ffaaaa;
 }
+
+/* ── Schedule Grid ─────────────────────────────────────────────────────────── */
+.sg-wrap { padding: 16px; }
+
+.sg-legend { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.sg-legend-my  { color: var(--skill); }
+.sg-legend-opp { color: var(--opponent); }
+
+.sg-scroll { overflow-x: auto; }
+
+.sg-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 100%;
+}
+
+.sg-table th, .sg-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.sg-col-week {
+  text-align: left !important;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 2;
+  min-width: 110px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sg-table thead .sg-col-week { z-index: 3; }
+
+.sg-col-team { font-weight: 600; color: var(--muted); font-size: 11px; }
+.sg-col-team.sg-my-team  { color: var(--skill);    background: rgba(77,255,180,0.06); }
+.sg-col-team.sg-opp-team { color: var(--opponent); background: rgba(255,184,77,0.06); }
+
+.sg-cell { color: var(--text); }
+.sg-cell.sg-my-team  { background: rgba(77,255,180,0.06); }
+.sg-cell.sg-opp-team { background: rgba(255,184,77,0.06); }
+.sg-zero { color: var(--muted); }
+
+.sg-col-total { font-weight: 700; border-left: 2px solid var(--border); }
+.sg-col-my-total  { color: var(--skill); }
+.sg-col-opp-total { color: var(--opponent); }
+.sg-total-win  { font-weight: 700; }
+.sg-total-loss { opacity: 0.6; }
