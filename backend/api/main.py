@@ -3545,8 +3545,6 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         # team.schedule is an ordered list of Matchup objects (one per scoring week).
         # Index 0 = week 1 = season_start_monday, so calendar date = season_start_monday + idx weeks.
         team_sched = getattr(my_team_obj, 'schedule', []) or []
-        _debug_schedule["schedule_len"] = len(team_sched)
-        _debug_schedule["current_period_espn"] = getattr(league, 'current_matchup_period', None)
         date_to_opp = {}
         for week_idx, matchup in enumerate(team_sched):
             home_team = getattr(matchup, 'home_team', None)
