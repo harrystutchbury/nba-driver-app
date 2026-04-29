@@ -3608,7 +3608,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             "schedule_sample":      _debug_schedule["schedule_sample"],
             "team_schedule_len":    len(getattr(my_team_obj, 'schedule', [])) if my_team_obj else -1,
             "team_outcomes_len":    len(getattr(my_team_obj, 'outcomes', [])) if my_team_obj else -1,
-            "team_schedule_sample": [str(getattr(t, 'team_id', '?')) for t in (getattr(my_team_obj, 'schedule', []) or [])[:5]] if my_team_obj else [],
+            "team_schedule_sample": [{"type": type(t).__name__, "attrs": [a for a in dir(t) if not a.startswith('_')][:15], "repr": repr(t)[:100]} for t in (getattr(my_team_obj, 'schedule', []) or [])[:2]] if my_team_obj else [],
         }
     }
 
