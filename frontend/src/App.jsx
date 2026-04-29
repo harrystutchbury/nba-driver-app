@@ -3156,6 +3156,299 @@ function PlayerMapping({ provider }) {
   )
 }
 
+// ── MatchupProjection ──────────────────────────────────────────────────────────
+
+const TEAM_ABBREV = {
+  'ATLANTA HAWKS':'ATL','BOSTON CELTICS':'BOS','BROOKLYN NETS':'BKN',
+  'CHARLOTTE HORNETS':'CHA','CHICAGO BULLS':'CHI','CLEVELAND CAVALIERS':'CLE',
+  'DALLAS MAVERICKS':'DAL','DENVER NUGGETS':'DEN','DETROIT PISTONS':'DET',
+  'GOLDEN STATE WARRIORS':'GSW','HOUSTON ROCKETS':'HOU','INDIANA PACERS':'IND',
+  'LOS ANGELES CLIPPERS':'LAC','LOS ANGELES LAKERS':'LAL','MEMPHIS GRIZZLIES':'MEM',
+  'MIAMI HEAT':'MIA','MILWAUKEE BUCKS':'MIL','MINNESOTA TIMBERWOLVES':'MIN',
+  'NEW ORLEANS PELICANS':'NOP','NEW YORK KNICKS':'NYK','OKLAHOMA CITY THUNDER':'OKC',
+  'ORLANDO MAGIC':'ORL','PHILADELPHIA 76ERS':'PHI','PHOENIX SUNS':'PHO',
+  'PORTLAND TRAIL BLAZERS':'POR','SACRAMENTO KINGS':'SAC','SAN ANTONIO SPURS':'SAS',
+  'TORONTO RAPTORS':'TOR','UTAH JAZZ':'UTA','WASHINGTON WIZARDS':'WAS',
+}
+
+function MatchupProjection() {
+  const [data,       setData]       = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
+  const [week,       setWeek]       = useState(null)
+  // Simulation state
+  const [searchQ,    setSearchQ]    = useState('')
+  const [searchRes,  setSearchRes]  = useState([])
+  const [searching,  setSearching]  = useState(false)
+  const [addSlug,    setAddSlug]    = useState(null)
+  const [addName,    setAddName]    = useState('')
+  const [dropSlug,   setDropSlug]   = useState(null)
+  const [dropName,   setDropName]   = useState('')
+  const [simLoading, setSimLoading] = useState(false)
+  const [simData,    setSimData]    = useState(null)
+
+  function load(w) {
+    setLoading(true); setError(null); setSimData(null)
+    const url = `/api/fantasy/espn/matchup-projection${w ? `?week=${w}` : ''}`
+    apiFetch(url)
+      .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail || r.statusText)))
+      .then(d => { setData(d); setWeek(d.week); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }
+
+  useEffect(() => { load(null) }, [])
+
+  function searchPlayers(q) {
+    if (!q || q.length < 2) { setSearchRes([]); return }
+    setSearching(true)
+    apiFetch(`/api/fantasy/espn/roster-analysis/search-player?q=${encodeURIComponent(q)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setSearchRes(d?.players || []) })
+      .catch(() => setSearchRes([]))
+      .finally(() => setSearching(false))
+  }
+
+  function runSimulate() {
+    if (!addSlug && !dropSlug) return
+    setSimLoading(true); setSimData(null)
+    apiFetch('/api/fantasy/espn/matchup-projection/simulate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        week: week,
+        add_slugs:  addSlug  ? [addSlug]  : [],
+        drop_slugs: dropSlug ? [dropSlug] : [],
+      }),
+    })
+      .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail)))
+      .then(d => setSimData(d))
+      .catch(e => alert(`Simulation failed: ${e}`))
+      .finally(() => setSimLoading(false))
+  }
+
+  function clearSim() {
+    setAddSlug(null); setAddName(''); setDropSlug(null); setDropName('')
+    setSearchQ(''); setSearchRes([]); setSimData(null)
+  }
+
+  if (loading) return <div className="dash-empty">Loading matchup projection…</div>
+  if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
+  if (!data)   return <div className="dash-empty">No data.</div>
+
+  const d = simData || data
+
+  function WinProbBadge({ wp }) {
+    const pct = Math.round(wp * 100)
+    const cls  = pct >= 55 ? 'mp-wp-win' : pct <= 45 ? 'mp-wp-loss' : 'mp-wp-toss'
+    return <span className={`mp-wp-badge ${cls}`}>{pct}%</span>
+  }
+
+  function DayGrid({ players, label }) {
+    return (
+      <div className="mp-grid-section">
+        <div className="mp-grid-label">{label} <span className="mp-grid-gp-total">({players.reduce((s,p)=>s+p.games,0)} total GP)</span></div>
+        <div className="mp-grid-scroll">
+          <table className="mp-grid-table">
+            <thead>
+              <tr>
+                <th className="mp-col-player">Player</th>
+                <th className="mp-col-team">Team</th>
+                <th className="mp-col-gp">GP</th>
+                {d.day_labels.map((lbl, i) => <th key={i} className="mp-col-day">{lbl}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {players.map(p => (
+                <tr
+                  key={p.slug || p.name}
+                  className={label.startsWith('My') && dropSlug === p.slug ? 'mp-row-drop' : ''}
+                  onClick={label.startsWith('My') ? () => {
+                    if (dropSlug === p.slug) { setDropSlug(null); setDropName('') }
+                    else { setDropSlug(p.slug); setDropName(p.name) }
+                  } : undefined}
+                  style={label.startsWith('My') ? {cursor:'pointer'} : {}}
+                  title={label.startsWith('My') ? 'Click to mark as drop' : ''}
+                >
+                  <td className="mp-col-player">{p.name}{label.startsWith('My') && dropSlug===p.slug && <span className="mp-drop-tag"> ✕ drop</span>}</td>
+                  <td className="mp-col-team">{TEAM_ABBREV[p.nba_team] || p.nba_team?.slice(0,3) || '—'}</td>
+                  <td className={`mp-col-gp mp-gp-${p.games}`}>{p.games}</td>
+                  {p.days.map((plays, i) => (
+                    <td key={i} className={`mp-col-day${plays ? ' mp-plays' : ' mp-off'}`}>
+                      {plays ? '●' : ''}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const overallPct = Math.round(d.overall_win_prob * 100)
+  const overallCls = overallPct >= 55 ? 'mp-overall-win' : overallPct <= 45 ? 'mp-overall-loss' : 'mp-overall-toss'
+
+  return (
+    <div className="mp-wrap">
+      {/* Header + week selector */}
+      <div className="mp-header">
+        <div className="mp-matchup-title">
+          <span className="mp-team-name mp-my-team">{d.my_team_name}</span>
+          <span className={`mp-overall-badge ${overallCls}`}>{d.cat_wins}–{d.cat_total - d.cat_wins} ({overallPct}%)</span>
+          <span className="mp-team-name mp-opp-team">{d.opp_team_name}</span>
+        </div>
+        <select
+          className="mp-week-select"
+          value={week || ''}
+          onChange={e => { const w = Number(e.target.value); setWeek(w); load(w); clearSim() }}
+        >
+          {data.all_weeks.map(w => (
+            <option key={w.week} value={w.week}>Week {w.week}: {w.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Category projections */}
+      <div className="mp-cats-section">
+        <table className="mp-cats-table">
+          <thead>
+            <tr>
+              <th>Cat</th>
+              <th className="mp-cat-side mp-cat-my">My Team</th>
+              <th className="mp-cat-range mp-cat-my">Range</th>
+              <th className="mp-cat-side mp-cat-opp">Opp Team</th>
+              <th className="mp-cat-range mp-cat-opp">Range</th>
+              <th>Win%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.categories.map(c => {
+              const wp  = c.win_prob
+              const cls = wp >= 0.55 ? 'mp-cat-winning' : wp <= 0.45 ? 'mp-cat-losing' : 'mp-cat-toss'
+              return (
+                <tr key={c.stat} className={cls}>
+                  <td className="mp-cat-name">{c.stat}</td>
+                  <td className="mp-cat-proj mp-cat-my">{c.my_proj}</td>
+                  <td className="mp-cat-range mp-cat-my">{c.my_lo}–{c.my_hi}</td>
+                  <td className="mp-cat-proj mp-cat-opp">{c.opp_proj}</td>
+                  <td className="mp-cat-range mp-cat-opp">{c.opp_lo}–{c.opp_hi}</td>
+                  <td><WinProbBadge wp={wp} /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Day grids */}
+      <DayGrid players={d.my_players}  label="My Roster" />
+      <DayGrid players={d.opp_players} label="Opponent Roster" />
+
+      {/* Simulate section */}
+      <div className="mp-sim-section">
+        <div className="mp-sim-title">Simulate Pickup</div>
+        <div className="mp-sim-controls">
+          <div className="mp-sim-search">
+            <input
+              className="mp-sim-input"
+              placeholder="Search player to add…"
+              value={searchQ}
+              onChange={e => { setSearchQ(e.target.value); searchPlayers(e.target.value) }}
+            />
+            {searching && <span className="mp-sim-searching">…</span>}
+          </div>
+          {addSlug && (
+            <div className="mp-sim-chips">
+              <span className="mp-chip mp-chip-add">+ {addName} <button onClick={() => { setAddSlug(null); setAddName('') }}>×</button></span>
+              {dropSlug && <span className="mp-chip mp-chip-drop">− {dropName} <button onClick={() => { setDropSlug(null); setDropName('') }}>×</button></span>}
+            </div>
+          )}
+          {!addSlug && dropSlug && (
+            <div className="mp-sim-chips">
+              <span className="mp-chip mp-chip-drop">− {dropName} <button onClick={() => { setDropSlug(null); setDropName('') }}>×</button></span>
+            </div>
+          )}
+          <div className="mp-sim-actions">
+            {(addSlug || dropSlug) && (
+              <>
+                <button className="mp-sim-run" onClick={runSimulate} disabled={simLoading}>
+                  {simLoading ? 'Simulating…' : 'Run Simulation'}
+                </button>
+                <button className="mp-sim-clear" onClick={clearSim}>Clear</button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Search results */}
+        {searchRes.length > 0 && !addSlug && (
+          <div className="mp-search-results">
+            {searchRes.slice(0, 8).map(p => {
+              const nbaTeam = TEAM_ABBREV[p.team] || p.team?.slice(0,3) || '?'
+              return (
+                <div
+                  key={p.slug}
+                  className="mp-search-row"
+                  onClick={() => { setAddSlug(p.slug); setAddName(p.full_name); setSearchQ(''); setSearchRes([]) }}
+                >
+                  <span className="mp-sr-name">{p.full_name}</span>
+                  <span className="mp-sr-team">{nbaTeam}</span>
+                  <span className="mp-sr-stat">{Math.round(p.pts||0)} PTS</span>
+                  <span className="mp-sr-stat">{Math.round(p.reb||0)} REB</span>
+                  <span className="mp-sr-stat">{Math.round(p.ast||0)} AST</span>
+                  <span className="mp-sr-games">{p.games} G</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Simulation result delta */}
+        {simData && (
+          <div className="mp-sim-result">
+            <div className="mp-sim-result-title">Simulated Result</div>
+            <div className="mp-sim-result-matchup">
+              <span className="mp-my-team">{simData.my_team_name}</span>
+              <span className={`mp-overall-badge ${Math.round(simData.overall_win_prob*100)>=55?'mp-overall-win':Math.round(simData.overall_win_prob*100)<=45?'mp-overall-loss':'mp-overall-toss'}`}>
+                {simData.cat_wins}–{simData.cat_total - simData.cat_wins} ({Math.round(simData.overall_win_prob*100)}%)
+              </span>
+              <span className="mp-opp-team">{simData.opp_team_name}</span>
+            </div>
+            <table className="mp-cats-table mp-sim-cats-table">
+              <thead>
+                <tr><th>Cat</th><th>Before</th><th>After</th><th>Δ</th><th>Win%</th></tr>
+              </thead>
+              <tbody>
+                {simData.categories.map((c, i) => {
+                  const before = data.categories[i]
+                  const delta  = +(c.my_proj - (before?.my_proj || 0)).toFixed(1)
+                  const neg    = c.neg
+                  const better = neg ? delta < 0 : delta > 0
+                  const worse  = neg ? delta > 0 : delta < 0
+                  return (
+                    <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
+                      <td className="mp-cat-name">{c.stat}</td>
+                      <td>{before?.my_proj}</td>
+                      <td>{c.my_proj}</td>
+                      <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta}</td>
+                      <td><WinProbBadge wp={c.win_prob} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!addSlug && !dropSlug && (
+          <p className="mp-sim-hint">Click a player in your roster to mark as drop, then search for a pickup above.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 // ── ScheduleGrid ───────────────────────────────────────────────────────────────
 
 function ScheduleGrid() {
@@ -3298,6 +3591,7 @@ function FantasyPage({ onSelectPlayer }) {
         <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
         <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
+        <button className={`fantasy-tab${tab === 'matchup'   ? ' active' : ''}`} onClick={() => setTab('matchup')}>Matchup</button>
         <button className={`fantasy-tab${tab === 'schedule'  ? ' active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
       </div>
       {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
@@ -3312,6 +3606,7 @@ function FantasyPage({ onSelectPlayer }) {
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
+      {tab === 'matchup'  && <MatchupProjection />}
       {tab === 'schedule' && <ScheduleGrid />}
     </div>
   )

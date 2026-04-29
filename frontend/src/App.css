@@ -3880,3 +3880,181 @@ td.bs-name {
   border-left: 2px solid var(--border);
   min-width: 100px;
 }
+
+/* ── Matchup Projection ─────────────────────────────────────────────────────── */
+
+.mp-wrap { padding: 16px; max-width: 1100px; }
+
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.mp-matchup-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.mp-team-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-my-team  { color: var(--skill); }
+.mp-opp-team { color: var(--opponent); }
+
+.mp-overall-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mp-overall-win  { background: rgba(77,255,180,0.15); color: var(--skill); }
+.mp-overall-loss { background: rgba(255,107,107,0.15); color: var(--neg); }
+.mp-overall-toss { background: rgba(255,208,96,0.12);  color: var(--pos); }
+
+.mp-week-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+/* Category table */
+.mp-cats-section { margin-bottom: 24px; overflow-x: auto; }
+
+.mp-cats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mp-cats-table th, .mp-cats-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+.mp-cats-table th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.mp-cat-name { text-align: left !important; font-weight: 700; color: var(--text); min-width: 40px; }
+.mp-cat-proj { font-weight: 700; font-size: 14px; }
+.mp-cat-range { color: var(--muted); font-size: 11px; }
+
+.mp-cat-my  { color: var(--skill);    }
+.mp-cat-opp { color: var(--opponent); }
+
+.mp-cat-winning { background: rgba(77,255,180,0.06); }
+.mp-cat-losing  { background: rgba(255,107,107,0.06); }
+.mp-cat-toss    { background: transparent; }
+
+.mp-wp-badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.mp-wp-win   { background: rgba(77,255,180,0.18); color: var(--skill);    }
+.mp-wp-loss  { background: rgba(255,107,107,0.18); color: var(--neg);     }
+.mp-wp-toss  { background: rgba(255,208,96,0.12);  color: var(--pos);     }
+
+/* Day grids */
+.mp-grid-section   { margin-bottom: 20px; }
+.mp-grid-label     { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.mp-grid-gp-total  { font-weight: 400; color: var(--muted); }
+.mp-grid-scroll    { overflow-x: auto; }
+
+.mp-grid-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 600px;
+}
+.mp-grid-table th, .mp-grid-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+.mp-col-player { text-align: left !important; min-width: 140px; font-weight: 600; }
+.mp-col-team   { color: var(--muted); font-size: 11px; min-width: 40px; }
+.mp-col-gp     { font-weight: 700; min-width: 30px; }
+.mp-col-day    { min-width: 44px; }
+
+.mp-gp-0 { color: var(--muted); }
+.mp-gp-1 { color: var(--text); }
+.mp-gp-2 { color: var(--pos); }
+.mp-gp-3 { color: var(--skill); font-weight: 700; }
+.mp-gp-4 { color: var(--skill); font-weight: 700; }
+
+.mp-plays { color: var(--skill); font-size: 14px; }
+.mp-off   { color: transparent; }
+
+.mp-row-drop { background: rgba(255,107,107,0.08); }
+.mp-drop-tag { color: var(--neg); font-size: 10px; font-weight: 600; margin-left: 4px; }
+
+/* Simulate section */
+.mp-sim-section {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  margin-top: 8px;
+}
+.mp-sim-title {
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;
+}
+.mp-sim-controls { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.mp-sim-search { display: flex; align-items: center; gap: 6px; }
+.mp-sim-input {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 6px; font-size: 13px; width: 220px;
+}
+.mp-sim-input:focus { outline: none; border-color: var(--skill); }
+.mp-sim-searching { color: var(--muted); font-size: 12px; }
+
+.mp-sim-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mp-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;
+}
+.mp-chip button { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; font-size: 13px; }
+.mp-chip-add  { background: rgba(77,255,180,0.15);  color: var(--skill);    }
+.mp-chip-add button  { color: var(--skill);    }
+.mp-chip-drop { background: rgba(255,107,107,0.15); color: var(--neg);      }
+.mp-chip-drop button { color: var(--neg);      }
+
+.mp-sim-actions { display: flex; gap: 8px; align-items: center; }
+.mp-sim-run {
+  background: var(--skill); color: #000; border: none; padding: 6px 14px;
+  border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.mp-sim-run:disabled { opacity: 0.5; cursor: not-allowed; }
+.mp-sim-clear {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+
+.mp-search-results {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; margin-bottom: 12px; max-width: 500px;
+}
+.mp-search-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.mp-search-row:last-child { border-bottom: none; }
+.mp-search-row:hover { background: var(--bg); }
+.mp-sr-name  { flex: 1; font-weight: 600; font-size: 13px; }
+.mp-sr-team  { color: var(--muted); font-size: 11px; min-width: 28px; }
+.mp-sr-stat  { color: var(--text); font-size: 11px; min-width: 50px; }
+.mp-sr-games { color: var(--pos); font-size: 11px; font-weight: 600; min-width: 30px; }
+
+.mp-sim-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+.mp-sim-result { margin-top: 16px; }
+.mp-sim-result-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.mp-sim-result-matchup { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-weight: 700; }
+.mp-sim-cats-table { max-width: 500px; }
+.mp-delta-pos { color: var(--skill); font-weight: 700; }
+.mp-delta-neg { color: var(--neg);   font-weight: 700; }

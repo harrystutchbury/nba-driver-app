@@ -3411,6 +3411,369 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
     }
 
 
+# ── Matchup Projection ──────────────────────────────────────────────────────
+
+def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slugs=None):
+    """
+    Core logic for the matchup projection view. Called from GET (browse) and POST (simulate).
+    add_slugs / drop_slugs: slugs to add/remove from MY roster before computing projection.
+    """
+    import json as _json
+    from collections import defaultdict
+    from datetime import date, timedelta
+    from rapidfuzz import process as rfprocess
+
+    add_slugs  = set(add_slugs  or [])
+    drop_slugs = set(drop_slugs or [])
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT scoring_settings, team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user],
+    ).fetchone()
+    if not fc or not fc["team_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No team selected")
+
+    scoring      = _json.loads(fc["scoring_settings"]) if fc and fc["scoring_settings"] else {}
+    my_team_id   = str(fc["team_key"])
+    scoring_type = scoring.get("scoring_type", "H2H_CATEGORY")
+
+    NEG_CATS = {"TO", "TOV"}
+    stat_name_map = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+        "BLK": "blk", "TO": "tov", "TOV": "tov", "3PM": "fg3m",
+        "FG%": "fg_pct", "FT%": "ft_pct",
+    }
+    if scoring_type == "H2H_CATEGORY":
+        items = scoring.get("items", [])
+        tracked_cats = [it["stat"] for it in items if it.get("points", 0) != 0] if items else \
+                       ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+    else:
+        tracked_cats = [it["stat"] for it in scoring.get("items", []) if it.get("points", 0) != 0]
+
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    # Full-season distinct game dates per team (for week buckets + day grid)
+    game_team_rows = conn.execute("""
+        SELECT DISTINCT game_date, team FROM game_logs WHERE season=? ORDER BY game_date
+    """, [season]).fetchall()
+
+    # Most-recent NBA team per player slug
+    slug_to_team = {
+        r["player_slug"]: r["team"]
+        for r in conn.execute("""
+            SELECT g.player_slug, g.team
+            FROM game_logs g
+            INNER JOIN (
+                SELECT player_slug, MAX(game_date) AS last_date
+                FROM game_logs WHERE season=? GROUP BY player_slug
+            ) lm ON g.player_slug=lm.player_slug AND g.game_date=lm.last_date
+            WHERE g.season=? GROUP BY g.player_slug
+        """, [season, season]).fetchall()
+    }
+
+    # Player ID → slug mappings
+    espn_id_to_slug = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    slug_to_name = {v: k for k, v in name_to_slug.items()}
+    all_names    = list(name_to_slug.keys())
+
+    # Per-game stats for all players (to compute mean + std dev)
+    stat_rows = conn.execute("""
+        SELECT player_slug, pts, reb, ast, stl, blk, tov, fg3m, fgm, fga, ftm, fta
+        FROM game_logs WHERE season=? AND min>5
+        ORDER BY player_slug, game_date
+    """, [season]).fetchall()
+    conn.close()
+
+    # Compute per-player season averages + std dev
+    def _stdev(vals):
+        n = len(vals)
+        if n < 2: return 0.0
+        mu = sum(vals) / n
+        return math.sqrt(sum((x - mu) ** 2 for x in vals) / (n - 1))
+
+    raw_by_slug = defaultdict(list)
+    for r in stat_rows:
+        raw_by_slug[r["player_slug"]].append(r)
+
+    player_stats = {}
+    for slug, games in raw_by_slug.items():
+        if len(games) < 5:
+            continue
+        def _avg(k): return sum(g[k] or 0 for g in games) / len(games)
+        fga_sum = sum(g["fga"] or 0 for g in games)
+        fta_sum = sum(g["fta"] or 0 for g in games)
+        fgm_sum = sum(g["fgm"] or 0 for g in games)
+        ftm_sum = sum(g["ftm"] or 0 for g in games)
+        player_stats[slug] = {
+            "pts":    _avg("pts"),  "pts_sd":  _stdev([g["pts"]  or 0 for g in games]),
+            "reb":    _avg("reb"),  "reb_sd":  _stdev([g["reb"]  or 0 for g in games]),
+            "ast":    _avg("ast"),  "ast_sd":  _stdev([g["ast"]  or 0 for g in games]),
+            "stl":    _avg("stl"),  "stl_sd":  _stdev([g["stl"]  or 0 for g in games]),
+            "blk":    _avg("blk"),  "blk_sd":  _stdev([g["blk"]  or 0 for g in games]),
+            "tov":    _avg("tov"),  "tov_sd":  _stdev([g["tov"]  or 0 for g in games]),
+            "fg3m":   _avg("fg3m"), "fg3m_sd": _stdev([g["fg3m"] or 0 for g in games]),
+            "fga_pg": fga_sum / len(games),
+            "fta_pg": fta_sum / len(games),
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0.0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0.0,
+        }
+
+    # Build weeks list from game data
+    if not game_team_rows:
+        raise HTTPException(status_code=400, detail="No schedule data available")
+
+    all_dates = [date.fromisoformat(r["game_date"]) for r in game_team_rows]
+    season_start = min(all_dates)
+    season_end   = max(all_dates)
+    season_start_monday = season_start - timedelta(days=season_start.weekday())
+
+    all_weeks = []
+    ws = season_start_monday
+    while ws <= season_end:
+        we = ws + timedelta(days=6)
+        wnum = (ws - season_start_monday).days // 7 + 1
+        all_weeks.append({
+            "week":  wnum,
+            "start": ws.isoformat(),
+            "end":   we.isoformat(),
+            "label": f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+        })
+        ws += timedelta(weeks=1)
+
+    # Determine which week to show (default: current)
+    if week is None:
+        today = date.today()
+        cur_monday = today - timedelta(days=today.weekday())
+        week_idx   = max(0, min((cur_monday - season_start_monday).days // 7, len(all_weeks) - 1))
+        week = week_idx + 1
+
+    week_idx = week - 1
+    if week_idx < 0 or week_idx >= len(all_weeks):
+        raise HTTPException(status_code=400, detail="Invalid week number")
+
+    wi             = all_weeks[week_idx]
+    week_start_dt  = date.fromisoformat(wi["start"])
+    week_end_dt    = date.fromisoformat(wi["end"])
+
+    # Day metadata for this week
+    day_dates   = [week_start_dt + timedelta(days=i) for i in range(7)]
+    day_labels  = [d.strftime('%a %-d') for d in day_dates]
+
+    # Which dates each NBA team plays this week
+    team_week_dates = defaultdict(set)
+    for row in game_team_rows:
+        gd = date.fromisoformat(row["game_date"])
+        if week_start_dt <= gd <= week_end_dt:
+            team_week_dates[row["team"]].add(gd)
+
+    # Load ESPN league
+    conn2 = get_conn()
+    try:
+        league = _espn_league(conn2, current_user)
+    finally:
+        conn2.close()
+
+    def _resolve_slug(player):
+        slug = espn_id_to_slug.get(str(player.playerId))
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
+    if not my_team_obj:
+        raise HTTPException(status_code=400, detail="Team not found in league")
+
+    # Determine opponent for this week
+    opp_team_obj = None
+    team_sched   = getattr(my_team_obj, "schedule", []) or []
+    if week_idx < len(team_sched):
+        matchup  = team_sched[week_idx]
+        home     = getattr(matchup, "home_team", None)
+        away     = getattr(matchup, "away_team", None)
+        if home and away:
+            home_id = str(getattr(home, "team_id", ""))
+            away_id = str(getattr(away, "team_id", ""))
+            opp_id  = away_id if home_id == my_team_id else (home_id if away_id == my_team_id else None)
+            if opp_id:
+                opp_team_obj = next((t for t in league.teams if str(t.team_id) == opp_id), None)
+
+    # Helper: build player info dict
+    def _player_info(name, slug):
+        nba_team   = slug_to_team.get(slug, "") if slug else ""
+        week_dates = team_week_dates.get(nba_team, set())
+        games      = len(week_dates)
+        days       = [d in week_dates for d in day_dates]
+        s          = player_stats.get(slug) if slug else None
+        avg_stats  = {}
+        if s:
+            for cat in tracked_cats:
+                sk = stat_name_map.get(cat)
+                if sk and sk in s:
+                    avg_stats[cat] = round(s[sk], 1)
+        return {
+            "name":     name,
+            "slug":     slug,
+            "nba_team": nba_team,
+            "games":    games,
+            "days":     days,
+            "avg_stats": avg_stats,
+        }
+
+    # Build my roster (with add/drop overrides)
+    my_players   = []
+    roster_slugs = set()
+    for p in (my_team_obj.roster or []):
+        slug = _resolve_slug(p)
+        if slug in drop_slugs:
+            continue
+        roster_slugs.add(slug)
+        my_players.append(_player_info(p.name, slug))
+    for slug in add_slugs:
+        if slug not in roster_slugs:
+            my_players.append(_player_info(slug_to_name.get(slug, slug), slug))
+
+    # Build opp roster
+    opp_players = []
+    for p in (opp_team_obj.roster if opp_team_obj else []):
+        slug = _resolve_slug(p)
+        opp_players.append(_player_info(p.name, slug))
+
+    # Sort by games desc
+    my_players.sort(key=lambda p: -p["games"])
+    opp_players.sort(key=lambda p: -p["games"])
+
+    # Compute category projections with ranges
+    def _project(players):
+        cat_data = {}
+        for cat in tracked_cats:
+            neg = cat in NEG_CATS
+            if cat in ("FG%", "FT%"):
+                total_made = total_att = 0.0
+                for p in players:
+                    s = player_stats.get(p["slug"]) if p["slug"] else None
+                    if not s: continue
+                    g = p["games"]
+                    if cat == "FG%":
+                        total_att  += s["fga_pg"] * g
+                        total_made += s["fga_pg"] * (s["fg_pct"] / 100) * g
+                    else:
+                        total_att  += s["fta_pg"] * g
+                        total_made += s["fta_pg"] * (s["ft_pct"] / 100) * g
+                proj  = (total_made / total_att * 100) if total_att else 0.0
+                p_val = proj / 100
+                sigma = math.sqrt(p_val * (1 - p_val) / total_att) * 100 if total_att > 0 else 0.0
+                cat_data[cat] = {
+                    "proj": round(proj, 1), "lo": round(max(0.0, proj - sigma), 1),
+                    "hi": round(min(100.0, proj + sigma), 1), "sigma": sigma, "neg": neg,
+                }
+            else:
+                sk = stat_name_map.get(cat, "pts")
+                tp = tv = 0.0
+                for p in players:
+                    s = player_stats.get(p["slug"]) if p["slug"] else None
+                    if not s: continue
+                    g  = p["games"]
+                    mu = s.get(sk) or 0.0
+                    sd = s.get(f"{sk}_sd") or (mu * 0.3)
+                    tp += mu * g
+                    tv += sd * sd * g
+                sigma = math.sqrt(tv) if tv > 0 else 0.0
+                cat_data[cat] = {
+                    "proj": round(tp, 1), "lo": round(max(0.0, tp - sigma), 1),
+                    "hi": round(tp + sigma, 1), "sigma": sigma, "neg": neg,
+                }
+        return cat_data
+
+    def _norm_cdf(z):
+        return (1 + math.erf(z / math.sqrt(2))) / 2
+
+    my_cats  = _project(my_players)
+    opp_cats = _project(opp_players)
+
+    categories = []
+    for cat in tracked_cats:
+        m   = my_cats.get(cat,  {})
+        o   = opp_cats.get(cat, {})
+        neg = cat in NEG_CATS
+        my_proj  = m.get("proj", 0.0)
+        opp_proj = o.get("proj", 0.0)
+        my_sig   = m.get("sigma", 0.0)
+        opp_sig  = o.get("sigma", 0.0)
+        combined = math.sqrt(my_sig ** 2 + opp_sig ** 2)
+        if combined < 1e-6:
+            wp = 0.5 if my_proj == opp_proj else (0.0 if my_proj > opp_proj else 1.0) if neg else (1.0 if my_proj > opp_proj else 0.0)
+        else:
+            mu_diff = (opp_proj - my_proj) if neg else (my_proj - opp_proj)
+            wp      = _norm_cdf(mu_diff / combined)
+        categories.append({
+            "stat":     cat,
+            "neg":      neg,
+            "my_proj":  my_proj,
+            "my_lo":    m.get("lo", 0.0),
+            "my_hi":    m.get("hi", 0.0),
+            "opp_proj": opp_proj,
+            "opp_lo":   o.get("lo", 0.0),
+            "opp_hi":   o.get("hi", 0.0),
+            "win_prob": round(wp, 3),
+        })
+
+    cat_wins        = sum(1 for c in categories if c["win_prob"] > 0.5)
+    overall_win_prob = round(cat_wins / max(1, len(categories)), 3)
+
+    return {
+        "week":             week,
+        "week_label":       wi["label"],
+        "week_start":       wi["start"],
+        "week_end":         wi["end"],
+        "all_weeks":        all_weeks,
+        "my_team_name":     getattr(my_team_obj, "team_name", ""),
+        "opp_team_name":    getattr(opp_team_obj, "team_name", "") if opp_team_obj else "—",
+        "tracked_cats":     tracked_cats,
+        "categories":       categories,
+        "my_players":       my_players,
+        "opp_players":      opp_players,
+        "day_labels":       day_labels,
+        "overall_win_prob": overall_win_prob,
+        "cat_wins":         cat_wins,
+        "cat_total":        len(categories),
+    }
+
+
+@fantasy_router.get("/espn/matchup-projection")
+def espn_matchup_projection(
+    week: Optional[int] = Query(None),
+    current_user: str = Depends(get_current_user),
+):
+    """Return matchup projection for the given scoring week (defaults to current week)."""
+    return _espn_matchup_projection_inner(current_user=current_user, week=week)
+
+
+@fantasy_router.post("/espn/matchup-projection/simulate")
+def espn_matchup_projection_simulate(
+    body: dict = Body(...),
+    current_user: str = Depends(get_current_user),
+):
+    """Simulate matchup projection with roster changes (add/drop players)."""
+    return _espn_matchup_projection_inner(
+        current_user=current_user,
+        week=body.get("week"),
+        add_slugs=body.get("add_slugs", []),
+        drop_slugs=body.get("drop_slugs", []),
+    )
+
+
 @fantasy_router.get("/ownership")
 def fantasy_ownership(current_user: str = Depends(get_current_user)):
     """Return slug → {team, is_mine} for every rostered player. Supports ESPN and Yahoo."""
