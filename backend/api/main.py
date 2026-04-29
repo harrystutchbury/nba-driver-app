@@ -3044,11 +3044,16 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         conn.close()
         raise HTTPException(status_code=400, detail="No team selected")
     my_team_id = fc["team_key"]
-    map_rows = conn.execute(
-        "SELECT provider_id, provider_name, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
-    ).fetchall()
-    slug_by_id   = {r["provider_id"]:   r["br_slug"] for r in map_rows}
-    slug_by_name = {r["provider_name"]: r["br_slug"] for r in map_rows}
+    from rapidfuzz import process as rfprocess
+    espn_id_to_slug = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
     try:
         league = _espn_league(conn, current_user)
     finally:
@@ -3056,13 +3061,20 @@ def espn_roster(current_user: str = Depends(get_current_user)):
     my_team = next((t for t in league.teams if str(t.team_id) == str(my_team_id)), None)
     if not my_team:
         raise HTTPException(status_code=404, detail="Team not found in league")
+
+    def _resolve(player):
+        slug = espn_id_to_slug.get(str(player.playerId))
+        if not slug:
+            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
     players = []
     for p in my_team.roster:
-        pid    = str(getattr(p, "playerId", "") or "")
-        br_slug = slug_by_id.get(pid) or slug_by_name.get(p.name)
         players.append({
             "name": p.name,
-            "br_slug": br_slug,
+            "br_slug": _resolve(p),
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": getattr(p, "injuryStatus", "Active"),

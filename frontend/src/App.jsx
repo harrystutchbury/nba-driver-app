@@ -2099,7 +2099,7 @@ function ManagerDashboard({ onSelectPlayer }) {
               <tbody>
                 {(league.standings || []).map((t, i) => {
                   const total = t.wins + t.losses + (t.ties || 0)
-                  const pct   = total > 0 ? (t.wins / total).toFixed(3).replace(/^0/, '') : '.000'
+                  const pct   = total > 0 ? (t.wins / total * 100).toFixed(1) + '%' : '0.0%'
                   return (
                     <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
                       <td style={{textAlign:'center'}}>{i + 1}</td>
