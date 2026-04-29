@@ -474,8 +474,8 @@ const CATEGORY_COLORS = {
   team:     '#ff7cf5',
 }
 
-const BASELINE_COLOR = 'rgba(255,255,255,0.07)'
 const TOTAL_COLOR    = '#555555'
+function isDark() { return document.documentElement.getAttribute('data-theme') !== 'light' }
 
 function getBarColor(category) {
   return CATEGORY_COLORS[category] ?? '#888'
@@ -495,9 +495,10 @@ function buildWaterfall(result) {
   const tipLabels    = []
   const displayLabels = []
 
+  const baselineColor = isDark() ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'
   floatData.push(0)
   barData.push(period_a.value)
-  colors.push(BASELINE_COLOR)
+  colors.push(baselineColor)
   tipLabels.push(`Baseline: ${period_a.value.toFixed(2)}`)
   displayLabels.push(period_a.value.toFixed(1))
 
@@ -3597,12 +3598,12 @@ function AppMain({ onLogout, onOpenAccount }) {
     },
     scales: {
       x: {
-        grid:   { color: '#1a1a1a', drawTicks: false },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
         ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
       },
       y: {
-        grid:   { color: '#1a1a1a', drawTicks: false },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
         ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
       },
@@ -3672,7 +3673,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     },
     scales: {
       x: {
-        grid:   { color: '#1a1a1a', drawTicks: false },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
         ticks: {
           color: '#555',
@@ -3682,7 +3683,7 @@ function AppMain({ onLogout, onOpenAccount }) {
         },
       },
       y: {
-        grid:   { color: '#1a1a1a', drawTicks: false },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
         ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
       },
@@ -3788,10 +3789,10 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   function zColor(z, key) {
     if (z === null || z === undefined) return ''
-    // For TOV, lower is better — invert
     const v = key === 'tov' ? -z : z
-    if (v >= 1.5)  return '#4dffb4'
-    if (v >= 0.5)  return '#9affda'
+    const dark = isDark()
+    if (v >= 1.5)  return dark ? '#4dffb4' : '#0a7a36'
+    if (v >= 0.5)  return dark ? '#9affda' : '#2d8c5a'
     if (v <= -1.5) return '#ff6b6b'
     if (v <= -0.5) return '#ff9e9e'
     return '#555'
@@ -3811,10 +3812,11 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   function StatsRow({ label, data, highlight }) {
     if (!data) return null
+    const dark = isDark()
     const rankColor = data.rank && data.rank_n
-      ? data.rank / data.rank_n <= 0.1 ? '#4dffb4'
-      : data.rank / data.rank_n <= 0.25 ? '#9affda'
-      : data.rank / data.rank_n >= 0.9 ? '#ff6b6b'
+      ? data.rank / data.rank_n <= 0.1  ? (dark ? '#4dffb4' : '#0a7a36')
+      : data.rank / data.rank_n <= 0.25 ? (dark ? '#9affda' : '#2d8c5a')
+      : data.rank / data.rank_n >= 0.9  ? '#ff6b6b'
       : data.rank / data.rank_n >= 0.75 ? '#ff9e9e'
       : '#aaa'
       : '#555'
@@ -3836,7 +3838,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   function ProjectionRow({ label, data, note, scenario }) {
     if (!data) return null
     const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Baseline'
-    const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : '#4dffb4'
+    const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#4dffb4' : '#0a7a36'
     return (
       <tr className="stats-row-projection">
         <td className="stats-period-cell">
@@ -4005,7 +4007,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
               </div>
               {cmpExpanded && (() => {
-                const CMP_COLORS = ['#4dffb4', '#ff9e64', '#64b5ff', '#c084fc']
+                const CMP_COLORS = [isDark() ? '#4dffb4' : '#0a7a36', '#ff9e64', '#64b5ff', '#c084fc']
                 const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
                 const canAdd = cmpPlayers.length < 3
 
@@ -4042,8 +4044,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                     r: {
                       min: 0, max: 100,
                       ticks: { display: false },
-                      grid: { color: 'rgba(255,255,255,0.07)' },
-                      angleLines: { color: 'rgba(255,255,255,0.07)' },
+                      grid: { color: isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.1)' },
+                      angleLines: { color: isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.1)' },
                       pointLabels: { color: '#aaa', font: { size: 11 } },
                     },
                   },
@@ -4496,8 +4498,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                       },
                     },
                     scales: {
-                      x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#1e2235' } },
-                      y: { ticks: { color: '#666' }, grid: { color: '#1e2235' }, beginAtZero: true },
+                      x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' } },
+                      y: { ticks: { color: '#666' }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
                     },
                   }
 
