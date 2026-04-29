@@ -3504,9 +3504,11 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     current_monday = today - timedelta(days=today.weekday())
 
     # ESPN league for rosters + schedule
-    my_team_obj      = None
-    fantasy_team_nba = {}
-    date_to_opp      = {}
+    my_team_obj        = None
+    fantasy_team_nba   = {}
+    date_to_opp        = {}
+    _debug_schedule    = {"schedule_len": 0, "schedule_sample": [], "current_period_espn": None}
+    _league_ref        = [None]  # mutable container so debug block can read it
     try:
         conn2 = get_conn()
         try:
@@ -3545,17 +3547,26 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         # Calibrate ESPN periods to calendar dates via current_matchup_period.
         # ESPN period N → Monday = current_monday + (N - current_period_espn) * 7 days
         current_period_espn = getattr(league, 'current_matchup_period', None) or 0
+        _league_ref[0] = league
+        schedule_raw = league.schedule or []
+        _debug_schedule["schedule_len"]         = len(schedule_raw)
+        _debug_schedule["current_period_espn"]  = current_period_espn
         date_to_opp = {}  # week-start date → opp fantasy team id
-        for matchup in (league.schedule or []):
+        for matchup in schedule_raw:
             home_id     = str(getattr(matchup.home_team, 'team_id', ''))
             away_id     = str(getattr(matchup.away_team, 'team_id', ''))
             espn_period = getattr(matchup, 'matchup_period', None)
+            if len(_debug_schedule["schedule_sample"]) < 3:
+                _debug_schedule["schedule_sample"].append({
+                    "home_id": home_id, "away_id": away_id,
+                    "matchup_period": espn_period,
+                    "attrs": [a for a in dir(matchup) if not a.startswith('_')][:10],
+                })
             if espn_period is None:
                 continue
             if current_period_espn:
                 week_mon = current_monday + timedelta(weeks=(espn_period - current_period_espn))
             else:
-                # Fallback: assume period 1 = season_start_monday
                 week_mon = season_start_monday + timedelta(weeks=(espn_period - 1))
             if home_id == my_team_id:
                 date_to_opp[week_mon] = away_id
@@ -3584,14 +3595,17 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         "my_nba_teams": my_nba_teams,
         "my_team_name": getattr(my_team_obj, 'team_name', '') if my_team_obj else '',
         "_debug": {
-            "my_team_id":         my_team_id,
-            "my_team_obj_found":  my_team_obj is not None,
-            "fantasy_teams":      list(fantasy_team_nba.keys()),
-            "date_to_opp_count":  len(date_to_opp),
-            "date_to_opp_sample": {str(k): v for k, v in list(date_to_opp.items())[:5]},
-            "my_nba_teams":       my_nba_teams,
-            "current_monday":     current_monday.isoformat(),
-            "season_start_monday": season_start_monday.isoformat(),
+            "my_team_id":           my_team_id,
+            "my_team_obj_found":    my_team_obj is not None,
+            "fantasy_teams":        list(fantasy_team_nba.keys()),
+            "date_to_opp_count":    len(date_to_opp),
+            "date_to_opp_sample":   {str(k): v for k, v in list(date_to_opp.items())[:5]},
+            "my_nba_teams":         my_nba_teams,
+            "current_monday":       current_monday.isoformat(),
+            "season_start_monday":  season_start_monday.isoformat(),
+            "current_period_espn":  _debug_schedule["current_period_espn"],
+            "schedule_len":         _debug_schedule["schedule_len"],
+            "schedule_sample":      _debug_schedule["schedule_sample"],
         }
     }
 
