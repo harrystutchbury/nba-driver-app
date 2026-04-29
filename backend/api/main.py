@@ -3427,7 +3427,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No team selected")
     my_team_id = str(fc["team_key"])
 
-    # Most-recent NBA team per player slug
+    # Most-recent NBA team per player slug (used to map fantasy roster → NBA team)
     season_year = _current_season_end_year()
     season = f"{season_year - 1}-{str(season_year)[2:]}"
     team_rows = conn.execute("""
@@ -3443,15 +3443,16 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     """, [season, season]).fetchall()
     slug_to_team = {r["player_slug"]: r["team"] for r in team_rows}
 
-    # Full season schedule
-    all_schedule = conn.execute("""
-        SELECT game_date, home_team, away_team
-        FROM nba_schedule
+    # Use game_logs to reconstruct the full season schedule (all 30 teams covered)
+    # DISTINCT game_date + team gives every game each team played
+    game_team_rows = conn.execute("""
+        SELECT DISTINCT game_date, team
+        FROM game_logs
         WHERE season=?
         ORDER BY game_date
-    """, [season_year]).fetchall()
+    """, [season]).fetchall()
 
-    # Player ID → slug mappings
+    # Player ID → slug mappings for fantasy roster resolution
     espn_id_to_slug = {
         r["provider_id"]: r["br_slug"]
         for r in conn.execute(
@@ -3463,109 +3464,105 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     all_names    = list(name_to_slug.keys())
     conn.close()
 
-    # ESPN league data
-    conn2 = get_conn()
-    try:
-        league = _espn_league(conn2, current_user)
-    finally:
-        conn2.close()
+    if not game_team_rows:
+        return {"weeks": [], "all_teams": [], "my_nba_teams": [], "my_team_name": ""}
 
-    # Derive season start Monday from current matchup period + today's Monday
-    today = date.today()
-    current_monday = today - timedelta(days=today.weekday())
-    current_period = getattr(league, 'current_matchup_period', 1) or 1
-    season_start_monday = current_monday - timedelta(weeks=(current_period - 1))
+    all_dates = [date.fromisoformat(r["game_date"]) for r in game_team_rows]
+    season_start = min(all_dates)
+    season_end   = max(all_dates)
+    # Snap season start back to the Monday of that week
+    season_start_monday = season_start - timedelta(days=season_start.weekday())
 
-    # Build Mon–Sun week buckets for the whole season
-    all_dates = [date.fromisoformat(r["game_date"]) for r in all_schedule]
-    if not all_dates:
-        return {"weeks": [], "all_teams": [], "my_nba_teams": []}
-
-    season_end = max(all_dates)
-    # Walk from season start in weekly steps
+    # Build Mon–Sun week buckets covering the full data range
     weeks = []
     ws = season_start_monday
     while ws <= season_end:
         we = ws + timedelta(days=6)
+        period = (ws - season_start_monday).days // 7 + 1
         weeks.append({
-            "start":     ws.isoformat(),
-            "end":       we.isoformat(),
-            "label":     f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
-            "games":     {},
-            "period":    (ws - season_start_monday).days // 7 + 1,
+            "start":  ws.isoformat(),
+            "end":    we.isoformat(),
+            "label":  f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+            "games":  {},
+            "period": period,
         })
         ws += timedelta(weeks=1)
 
-    # Fill game counts
-    week_start_dates = [date.fromisoformat(w["start"]) for w in weeks]
+    # Fill game counts per team per week
     all_teams = set()
-    for row in all_schedule:
+    for row in game_team_rows:
         gd   = date.fromisoformat(row["game_date"])
-        home, away = row["home_team"], row["away_team"]
-        all_teams.add(home)
-        all_teams.add(away)
-        # Find which week bucket
+        team = row["team"]
+        all_teams.add(team)
         idx = (gd - season_start_monday).days // 7
         if 0 <= idx < len(weeks):
-            weeks[idx]["games"][home] = weeks[idx]["games"].get(home, 0) + 1
-            weeks[idx]["games"][away] = weeks[idx]["games"].get(away, 0) + 1
+            weeks[idx]["games"][team] = weeks[idx]["games"].get(team, 0) + 1
 
     weeks = [w for w in weeks if w["games"]]
 
-    # Resolve slug → NBA teams helper
-    my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
+    # ESPN league for rosters + schedule
+    my_team_obj    = None
+    fantasy_team_nba = {}
+    period_to_opp  = {}
+    try:
+        conn2 = get_conn()
+        try:
+            league = _espn_league(conn2, current_user)
+        finally:
+            conn2.close()
 
-    def _resolve_slug(player):
-        slug = espn_id_to_slug.get(str(player.playerId))
-        if not slug:
-            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
-            if m:
-                slug = name_to_slug[m[0]]
-        return slug
+        my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
 
-    def _roster_nba_teams(team_obj):
-        if not team_obj:
-            return []
-        nba_teams = set()
-        for p in (team_obj.roster or []):
-            slug = _resolve_slug(p)
-            if slug and slug in slug_to_team:
-                nba_teams.add(slug_to_team[slug])
-        return sorted(nba_teams)
+        def _resolve_slug(player):
+            slug = espn_id_to_slug.get(str(player.playerId))
+            if not slug:
+                m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
+                if m:
+                    slug = name_to_slug[m[0]]
+            return slug
 
-    # Build NBA teams map for every fantasy team
-    fantasy_team_nba = {
-        str(t.team_id): {
-            "name":      t.team_name,
-            "nba_teams": _roster_nba_teams(t),
+        def _roster_nba_teams(team_obj):
+            if not team_obj:
+                return []
+            nba_teams = set()
+            for p in (team_obj.roster or []):
+                slug = _resolve_slug(p)
+                if slug and slug in slug_to_team:
+                    nba_teams.add(slug_to_team[slug])
+            return sorted(nba_teams)
+
+        fantasy_team_nba = {
+            str(t.team_id): {
+                "name":      t.team_name,
+                "nba_teams": _roster_nba_teams(t),
+            }
+            for t in league.teams
         }
-        for t in league.teams
-    }
+
+        for matchup in (league.schedule or []):
+            home_id = str(getattr(matchup.home_team, 'team_id', ''))
+            away_id = str(getattr(matchup.away_team, 'team_id', ''))
+            period  = getattr(matchup, 'matchup_period', None)
+            if period is None:
+                continue
+            if home_id == my_team_id:
+                period_to_opp[period] = away_id
+            elif away_id == my_team_id:
+                period_to_opp[period] = home_id
+
+    except Exception:
+        logger.exception("ESPN API error in schedule-grid; returning schedule without opponent data")
 
     my_nba_teams = fantasy_team_nba.get(my_team_id, {}).get("nba_teams", [])
 
-    # Map matchup period → opponent fantasy team id + name
-    period_to_opp = {}
-    for matchup in (league.schedule or []):
-        home_id = str(getattr(matchup.home_team, 'team_id', ''))
-        away_id = str(getattr(matchup.away_team, 'team_id', ''))
-        period  = getattr(matchup, 'matchup_period', None)
-        if period is None:
-            continue
-        if home_id == my_team_id:
-            period_to_opp[period] = away_id
-        elif away_id == my_team_id:
-            period_to_opp[period] = home_id
-
-    # Attach per-week opponent info and totals
     for w in weeks:
         period   = w.pop("period")
         opp_id   = period_to_opp.get(period)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
-        w["my_total"]    = sum(w["games"].get(t, 0) for t in my_nba_teams)
-        w["opp_total"]   = sum(w["games"].get(t, 0) for t in opp_nba)
-        w["opp_name"]    = opp_info.get("name", "")
+        w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
+        w["opp_total"] = sum(w["games"].get(t, 0) for t in opp_nba) if opp_nba else None
+        w["opp_name"]  = opp_info.get("name", "")
 
     return {
         "weeks":        weeks,

@@ -3152,7 +3152,7 @@ function ScheduleGrid() {
 
   useEffect(() => {
     apiFetch('/api/fantasy/espn/schedule-grid')
-      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail || r.statusText)))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [])
@@ -3215,8 +3215,8 @@ function ScheduleGrid() {
                 <td className={`sg-col-total sg-col-my-total${w.my_total > w.opp_total ? ' sg-total-win' : w.my_total < w.opp_total ? ' sg-total-loss' : ''}`}>
                   {w.my_total}
                 </td>
-                <td className={`sg-col-total sg-col-opp-total${w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
-                  {w.opp_total || '–'}
+                <td className={`sg-col-total sg-col-opp-total${w.opp_total != null && w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total != null && w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
+                  {w.opp_total != null ? w.opp_total : '–'}
                 </td>
                 <td className="sg-col-opp-name">{w.opp_name || '–'}</td>
               </tr>
