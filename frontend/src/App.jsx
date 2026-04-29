@@ -3384,7 +3384,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   }, [])
 
   useEffect(() => {
-    apiFetch('/api/fantasy/espn/ownership')
+    apiFetch('/api/fantasy/ownership')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.by_slug) setOwnership(d.by_slug) })
       .catch(() => {})

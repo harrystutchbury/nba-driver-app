@@ -3411,58 +3411,109 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
     }
 
 
-@fantasy_router.get("/espn/ownership")
-def espn_ownership(current_user: str = Depends(get_current_user)):
-    """Return slug → {team, is_mine} for every rostered player in the league."""
+@fantasy_router.get("/ownership")
+def fantasy_ownership(current_user: str = Depends(get_current_user)):
+    """Return slug → {team, is_mine} for every rostered player. Supports ESPN and Yahoo."""
     from rapidfuzz import process as rfprocess
 
     conn = get_conn()
-    fc = conn.execute(
-        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
-        [current_user]
-    ).fetchone()
-    if not fc or not fc["team_key"]:
-        conn.close()
-        return {"by_slug": {}}
-    my_team_id = str(fc["team_key"])
-
-    espn_id_to_slug = {
-        r["provider_id"]: r["br_slug"]
-        for r in conn.execute(
-            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
-        ).fetchall()
-    }
     name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
     name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
     all_names    = list(name_to_slug.keys())
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    # ── ESPN ────────────────────────────────────────────────────────────────
+    fc_espn = conn.execute(
+        "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+
+    if fc_espn and fc_espn["team_key"]:
+        my_team_id = str(fc_espn["team_key"])
+        espn_id_to_slug = {
+            r["provider_id"]: r["br_slug"]
+            for r in conn.execute(
+                "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+            ).fetchall()
+        }
+        conn.close()
+
+        try:
+            conn2 = get_conn()
+            try:
+                league = _espn_league(conn2, current_user)
+            finally:
+                conn2.close()
+
+            def _resolve_espn(player):
+                slug = espn_id_to_slug.get(str(player.playerId))
+                return slug or _slug_by_name(player.name)
+
+            by_slug = {}
+            for team in league.teams:
+                is_mine = str(team.team_id) == my_team_id
+                for player in (team.roster or []):
+                    slug = _resolve_espn(player)
+                    if slug:
+                        by_slug[slug] = {"team": team.team_name, "is_mine": is_mine}
+            return {"by_slug": by_slug}
+        except Exception:
+            logger.exception("ESPN ownership fetch failed")
+            return {"by_slug": {}}
+
+    # ── Yahoo ───────────────────────────────────────────────────────────────
+    fc_yahoo = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+
+    if fc_yahoo and fc_yahoo["league_key"]:
+        my_team_key = fc_yahoo["team_key"]
+        league_key  = fc_yahoo["league_key"]
+        try:
+            token = _refresh_yahoo_token(conn, current_user)
+            conn.close()
+            data = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        except Exception:
+            conn.close()
+            logger.exception("Yahoo ownership fetch failed")
+            return {"by_slug": {}}
+
+        by_slug = {}
+        try:
+            teams = (data.get("fantasy_content", {})
+                        .get("league", [{}])[1]
+                        .get("teams", {}))
+            for tk, tv in teams.items():
+                if tk == "count":
+                    continue
+                team_data = tv.get("team", [{}, {}])
+                team_info = team_data[0] if isinstance(team_data[0], list) else []
+                team_name = next((d["name"] for d in team_info if isinstance(d, dict) and "name" in d), "")
+                team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+                is_mine = team_key_val == my_team_key
+                players_data = team_data[1].get("roster", {}).get("players", {}) if len(team_data) > 1 else {}
+                for pk, pv in players_data.items():
+                    if pk == "count":
+                        continue
+                    p_list = pv.get("player", [[]])[0]
+                    if not isinstance(p_list, list):
+                        continue
+                    name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                    if name:
+                        slug = _slug_by_name(name)
+                        if slug:
+                            by_slug[slug] = {"team": team_name, "is_mine": is_mine}
+        except Exception:
+            logger.exception("Yahoo ownership parse failed")
+
+        return {"by_slug": by_slug}
+
     conn.close()
-
-    conn2 = get_conn()
-    try:
-        league = _espn_league(conn2, current_user)
-    except Exception:
-        conn2.close()
-        return {"by_slug": {}}
-    finally:
-        conn2.close()
-
-    def _resolve_slug(player):
-        slug = espn_id_to_slug.get(str(player.playerId))
-        if not slug:
-            m = rfprocess.extractOne(player.name, all_names, score_cutoff=75)
-            if m:
-                slug = name_to_slug[m[0]]
-        return slug
-
-    by_slug = {}
-    for team in league.teams:
-        is_mine = str(team.team_id) == my_team_id
-        for player in (team.roster or []):
-            slug = _resolve_slug(player)
-            if slug:
-                by_slug[slug] = {"team": team.team_name, "is_mine": is_mine}
-
-    return {"by_slug": by_slug}
+    return {"by_slug": {}}
 
 
 @fantasy_router.get("/espn/schedule-grid")
