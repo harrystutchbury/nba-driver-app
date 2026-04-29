@@ -3501,9 +3501,9 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     weeks = [w for w in weeks if w["games"]]
 
     # ESPN league for rosters + schedule
-    my_team_obj    = None
+    my_team_obj      = None
     fantasy_team_nba = {}
-    period_to_opp  = {}
+    date_to_opp      = {}
     try:
         conn2 = get_conn()
         try:
@@ -3539,25 +3539,36 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             for t in league.teams
         }
 
+        # Calibrate ESPN periods to calendar dates via current_matchup_period.
+        # ESPN period N → Monday = current_monday + (N - current_period_espn) * 7 days
+        current_period_espn = getattr(league, 'current_matchup_period', None) or 0
+        date_to_opp = {}  # week-start date → opp fantasy team id
         for matchup in (league.schedule or []):
-            home_id = str(getattr(matchup.home_team, 'team_id', ''))
-            away_id = str(getattr(matchup.away_team, 'team_id', ''))
-            period  = getattr(matchup, 'matchup_period', None)
-            if period is None:
+            home_id     = str(getattr(matchup.home_team, 'team_id', ''))
+            away_id     = str(getattr(matchup.away_team, 'team_id', ''))
+            espn_period = getattr(matchup, 'matchup_period', None)
+            if espn_period is None:
                 continue
+            if current_period_espn:
+                week_mon = current_monday + timedelta(weeks=(espn_period - current_period_espn))
+            else:
+                # Fallback: assume period 1 = season_start_monday
+                week_mon = season_start_monday + timedelta(weeks=(espn_period - 1))
             if home_id == my_team_id:
-                period_to_opp[period] = away_id
+                date_to_opp[week_mon] = away_id
             elif away_id == my_team_id:
-                period_to_opp[period] = home_id
+                date_to_opp[week_mon] = home_id
 
     except Exception:
         logger.exception("ESPN API error in schedule-grid; returning schedule without opponent data")
+        date_to_opp = {}
 
     my_nba_teams = fantasy_team_nba.get(my_team_id, {}).get("nba_teams", [])
 
     for w in weeks:
-        period   = w.pop("period")
-        opp_id   = period_to_opp.get(period)
+        w.pop("period", None)
+        ws_date  = date.fromisoformat(w["start"])
+        opp_id   = date_to_opp.get(ws_date)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
         w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
