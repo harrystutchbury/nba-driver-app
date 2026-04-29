@@ -3580,6 +3580,16 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         "all_teams":    sorted(all_teams),
         "my_nba_teams": my_nba_teams,
         "my_team_name": getattr(my_team_obj, 'team_name', '') if my_team_obj else '',
+        "_debug": {
+            "my_team_id":         my_team_id,
+            "my_team_obj_found":  my_team_obj is not None,
+            "fantasy_teams":      list(fantasy_team_nba.keys()),
+            "date_to_opp_count":  len(date_to_opp),
+            "date_to_opp_sample": {str(k): v for k, v in list(date_to_opp.items())[:5]},
+            "my_nba_teams":       my_nba_teams,
+            "current_monday":     current_monday.isoformat(),
+            "season_start_monday": season_start_monday.isoformat(),
+        }
     }
 
 
