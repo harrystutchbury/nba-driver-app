@@ -5088,7 +5088,7 @@ app.include_router(auth_router)
 def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depends(get_current_user)):
     conn = get_conn()
     rows = conn.execute("""
-        SELECT c.id, c.player_slug, c.body, c.created_at,
+        SELECT c.id, c.player_slug, c.body, c.created_at AS created_at,
                COALESCE(u.display_name, c.username) AS author,
                COALESCE(
                    (SELECT full_name FROM players WHERE slug = c.player_slug ORDER BY season DESC LIMIT 1),
@@ -5098,7 +5098,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
         FROM comments c
         LEFT JOIN users u ON u.username = c.username
         UNION ALL
-        SELECT bc.id, NULL AS player_slug, bc.body, bc.created_at,
+        SELECT bc.id, NULL AS player_slug, bc.body, bc.created_at AS created_at,
                COALESCE(u.display_name, bc.username) AS author,
                NULL AS player_name,
                bp.slug AS post_slug, bp.title AS post_title, 'blog' AS comment_type
@@ -5106,7 +5106,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
         JOIN blog_posts bp ON bp.id = bc.post_id
         LEFT JOIN users u ON u.username = bc.username
         WHERE bp.is_published = 1
-        ORDER BY created_at DESC
+        ORDER BY 4 DESC
         LIMIT ?
     """, [limit]).fetchall()
     conn.close()
