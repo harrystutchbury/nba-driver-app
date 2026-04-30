@@ -2020,7 +2020,7 @@ function BlogPage({ setPage, initSlug, onMount }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: commentDraft.trim() }),
     }).catch(() => null)
-    if (res?.ok) { setBlogComments(prev => [await res.json(), ...prev]); setCommentDraft('') }
+    if (res?.ok) { const c = await res.json(); setBlogComments(prev => [c, ...prev]); setCommentDraft('') }
     setPosting(false)
   }
 
