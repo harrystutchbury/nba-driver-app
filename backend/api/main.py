@@ -1684,6 +1684,51 @@ def admin_upload_schedule(games: list = Body(...)):
 _proj_cache: dict = {}   # (start, end) -> (ts, payload)
 _PROJ_CACHE_TTL = 600    # 10 minutes
 
+
+# ── Player adjustment helper ─────────────────────────────────────────────────
+
+_ADJ_FIELDS = ["min_pg", "fga_pg", "fg_pct", "fg3a_pg", "fg3_pct",
+               "fta_pg", "ft_pct", "reb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg"]
+
+
+def _apply_player_adjustment(row: dict, adj: dict) -> dict:
+    """
+    Overlay adjustment values onto a player baseline row dict.
+    Recomputes pts and fg3m from shooting drivers when any shooting field changes.
+    fg_pct / ft_pct / fg3_pct are on the 0-100 scale.
+    """
+    row = dict(row)
+    any_shooting = False
+
+    if adj.get("min_pg") is not None:
+        row["min_pg"] = adj["min_pg"]
+    for field, row_key in [("reb_pg", "reb"), ("ast_pg", "ast"),
+                            ("stl_pg", "stl"), ("blk_pg", "blk"), ("tov_pg", "tov")]:
+        if adj.get(field) is not None:
+            row[row_key] = adj[field]
+
+    for field in ("fga_pg", "fg_pct", "fg3a_pg", "fg3_pct", "fta_pg", "ft_pct"):
+        if adj.get(field) is not None:
+            row[field] = adj[field]
+            any_shooting = True
+
+    if any_shooting:
+        fga    = row.get("fga_pg") or 0
+        fg_pct = row.get("fg_pct") or 0     # 0-100
+        fg3a   = row.get("fg3a_pg") or 0
+        fg3_pct = row.get("fg3_pct") or 0   # 0-100
+        fta    = row.get("fta_pg") or 0
+        ft_pct = row.get("ft_pct") or 0     # 0-100
+
+        fg3m = fg3a * fg3_pct / 100
+        non3_fga = max(fga - fg3a, 0)
+        pts = non3_fga * fg_pct / 100 * 2 + fg3m * 3 + fta * ft_pct / 100
+
+        row["fg3m"] = fg3m
+        row["pts"]  = pts
+
+    return row
+
 @router.get("/projections")
 def get_projections(
     start: str = Query(..., description="Window start date YYYY-MM-DD"),
@@ -1757,6 +1802,8 @@ def get_projections(
                    SUM(g.fgm) * 100.0 / NULLIF(SUM(g.fga), 0) AS fg_pct,
                    SUM(g.ftm) * 100.0 / NULLIF(SUM(g.fta), 0) AS ft_pct,
                    AVG(g.fga) AS fga_pg, AVG(g.fta) AS fta_pg,
+                   AVG(g.fg3a) AS fg3a_pg,
+                   SUM(g.fg3m) * 100.0 / NULLIF(SUM(g.fg3a), 0) AS fg3_pct,
                    SQRT(MAX(0, AVG(g.pts*g.pts)  - AVG(g.pts)*AVG(g.pts)))  AS pts_sd,
                    SQRT(MAX(0, AVG(g.reb*g.reb)  - AVG(g.reb)*AVG(g.reb)))  AS reb_sd,
                    SQRT(MAX(0, AVG(g.ast*g.ast)  - AVG(g.ast)*AVG(g.ast)))  AS ast_sd,
@@ -1797,9 +1844,19 @@ def get_projections(
             return []
         injury_map = _get_injury_map(conn)
 
+        # ── 4b. Active player adjustments for this window ───────────────────
+        adj_rows = conn.execute("""
+            SELECT * FROM player_adjustments
+            WHERE is_active = 1
+              AND (start_date IS NULL OR start_date <= ?)
+              AND (end_date   IS NULL OR end_date   >= ?)
+        """, [end, start]).fetchall()
+        adj_map = {r["player_slug"]: dict(r) for r in adj_rows}
+
         # ── 5. Compute projections ──────────────────────────────────────────
         results = []
         for r in player_rows:
+            r = dict(r)
             slug     = r["player_slug"]
             team     = r["team"]
             position = r["position_group"] or "Guard"
@@ -1823,6 +1880,11 @@ def get_projections(
             else:
                 avg_factor = {stat: 1.0 for stat in SCHED_STATS}
 
+            # Apply player adjustment overrides before projecting
+            adj = adj_map.get(slug)
+            if adj:
+                r = _apply_player_adjustment(r, adj)
+
             # Apply factor to baseline (counting stats only; pcts unadjusted)
             proj = {
                 stat: round((r[stat] or 0.0) * avg_factor[stat], 1)
@@ -1833,6 +1895,7 @@ def get_projections(
             proj["fga_pg"] = r["fga_pg"] or 0.0
             proj["fta_pg"] = r["fta_pg"] or 0.0
             proj["min_pg"] = round(r["min_pg"], 1) if r["min_pg"] is not None else None
+            proj["is_adjusted"] = adj is not None
 
             # Per-player opponent-adjusted SD → outcome ranges (blended with last season)
             gp_current = r["gp_current"]
@@ -1857,6 +1920,7 @@ def get_projections(
                 "position":     position,
                 "gp":           gp,
                 "injury":       injury_map.get(slug),
+                "is_adjusted":  adj is not None,
                 "z_total":      round(z_total, 2) if z_total is not None else None,
                 "period_value": round(z_total * gp, 2) if z_total is not None else None,
                 **{k: v for k, v in proj_z.items()},
@@ -5449,6 +5513,302 @@ def vote_blog_comment(comment_id: int, body: dict = Body(...), current_user: str
 
 
 app.include_router(blog_router)
+
+
+# ── Player Projection Adjustments ────────────────────────────────────────────
+
+adjust_router = APIRouter(prefix="/api/adjustments")
+
+
+def _adj_row(row) -> dict:
+    return {
+        "id":         row["id"],
+        "player_slug": row["player_slug"],
+        "min_pg":     row["min_pg"],
+        "fga_pg":     row["fga_pg"],
+        "fg_pct":     row["fg_pct"],
+        "fg3a_pg":    row["fg3a_pg"],
+        "fg3_pct":    row["fg3_pct"],
+        "fta_pg":     row["fta_pg"],
+        "ft_pct":     row["ft_pct"],
+        "reb_pg":     row["reb_pg"],
+        "ast_pg":     row["ast_pg"],
+        "stl_pg":     row["stl_pg"],
+        "blk_pg":     row["blk_pg"],
+        "tov_pg":     row["tov_pg"],
+        "start_date": row["start_date"],
+        "end_date":   row["end_date"],
+        "is_active":  bool(row["is_active"]),
+        "notes":      row["notes"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+@adjust_router.get("/is-admin")
+def adj_is_admin(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    admin = _is_admin(current_user, conn)
+    conn.close()
+    return {"is_admin": admin}
+
+
+@adjust_router.get("/league-params")
+def adj_league_params(current_user: str = Depends(get_current_user)):
+    """Return league mean/std per Z-score stat + league FG/FT means for client-side Z computation."""
+    conn = get_conn()
+    try:
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+        league, _ = _league_data(conn, season=season, min_games=10)
+        if not league:
+            return {"stats": {}, "fg_mean": None, "ft_mean": None}
+        stats = {}
+        for key in Z_KEYS:
+            mean, std = league.get(key, (None, None))
+            stats[key] = {"mean": mean, "std": std}
+        return {
+            "stats":   stats,
+            "fg_mean": league.get("_fg_mean"),
+            "ft_mean": league.get("_ft_mean"),
+        }
+    finally:
+        conn.close()
+
+
+@adjust_router.get("/teams")
+def adj_teams(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+        rows = conn.execute(
+            "SELECT DISTINCT team FROM players WHERE season=? AND team IS NOT NULL ORDER BY team",
+            [season]
+        ).fetchall()
+        return {"teams": [r["team"] for r in rows]}
+    finally:
+        conn.close()
+
+
+@adjust_router.get("/team-players/{team}")
+def adj_team_players(team: str, current_user: str = Depends(get_current_user)):
+    """Return all players on a team with their season baselines and current active adjustments."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        player_rows = conn.execute("""
+            SELECT g.player_slug, p.full_name, COALESCE(b.position_group, 'Guard') AS position,
+                   COUNT(*) AS gp,
+                   ROUND(AVG(g.min), 1)  AS min_pg,
+                   ROUND(AVG(g.pts), 1)  AS pts,
+                   ROUND(AVG(g.reb), 1)  AS reb_pg,
+                   ROUND(AVG(g.ast), 1)  AS ast_pg,
+                   ROUND(AVG(g.stl), 1)  AS stl_pg,
+                   ROUND(AVG(g.blk), 1)  AS blk_pg,
+                   ROUND(AVG(g.tov), 1)  AS tov_pg,
+                   ROUND(AVG(g.fg3m), 2) AS fg3m,
+                   ROUND(AVG(g.fga),  1) AS fga_pg,
+                   ROUND(AVG(g.fta),  1) AS fta_pg,
+                   ROUND(AVG(g.fg3a), 2) AS fg3a_pg,
+                   ROUND(SUM(g.fgm)  * 100.0 / NULLIF(SUM(g.fga),  0), 1) AS fg_pct,
+                   ROUND(SUM(g.ftm)  * 100.0 / NULLIF(SUM(g.fta),  0), 1) AS ft_pct,
+                   ROUND(SUM(g.fg3m) * 100.0 / NULLIF(SUM(g.fg3a), 0), 1) AS fg3_pct
+            FROM game_logs g
+            JOIN players p ON p.slug = g.player_slug AND p.season = ?
+            LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            WHERE g.season = ? AND p.team = ? AND g.min >= 5
+            GROUP BY g.player_slug
+            HAVING COUNT(*) >= 3
+            ORDER BY AVG(g.min) DESC
+        """, [season, season, team]).fetchall()
+
+        # Load active adjustments for these players
+        slugs = [r["player_slug"] for r in player_rows]
+        adj_map = {}
+        if slugs:
+            ph = ",".join("?" * len(slugs))
+            today = str(__import__("datetime").date.today())
+            adj_rows = conn.execute(f"""
+                SELECT * FROM player_adjustments
+                WHERE player_slug IN ({ph}) AND is_active = 1
+                  AND (start_date IS NULL OR start_date <= ?)
+                  AND (end_date   IS NULL OR end_date   >= ?)
+                ORDER BY updated_at DESC
+            """, slugs + [today, today]).fetchall()
+            for r in adj_rows:
+                if r["player_slug"] not in adj_map:
+                    adj_map[r["player_slug"]] = _adj_row(r)
+
+        result = []
+        for r in player_rows:
+            slug = r["player_slug"]
+            baseline = {
+                "min_pg":  r["min_pg"],
+                "fga_pg":  r["fga_pg"],
+                "fg_pct":  r["fg_pct"],
+                "fg3a_pg": r["fg3a_pg"],
+                "fg3_pct": r["fg3_pct"],
+                "fta_pg":  r["fta_pg"],
+                "ft_pct":  r["ft_pct"],
+                "reb_pg":  r["reb_pg"],
+                "ast_pg":  r["ast_pg"],
+                "stl_pg":  r["stl_pg"],
+                "blk_pg":  r["blk_pg"],
+                "tov_pg":  r["tov_pg"],
+            }
+            result.append({
+                "slug":       slug,
+                "name":       r["full_name"],
+                "position":   r["position"],
+                "gp":         r["gp"],
+                "baseline":   baseline,
+                "adjustment": adj_map.get(slug),
+            })
+
+        return {"players": result}
+    finally:
+        conn.close()
+
+
+@adjust_router.get("/player/{slug}")
+def adj_player_list(slug: str, current_user: str = Depends(get_current_user)):
+    """All adjustments (any status) for a single player."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        rows = conn.execute(
+            "SELECT * FROM player_adjustments WHERE player_slug=? ORDER BY updated_at DESC",
+            [slug]
+        ).fetchall()
+        return {"adjustments": [_adj_row(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@adjust_router.post("")
+def adj_create(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """Create or replace the active adjustment for a player."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+
+        slug = (body.get("player_slug") or "").strip()
+        if not slug:
+            raise HTTPException(status_code=400, detail="player_slug required")
+
+        # Deactivate any existing open-ended active adjustment for this player
+        # (date-bounded ones remain)
+        conn.execute("""
+            UPDATE player_adjustments SET is_active=0, updated_at=datetime('now')
+            WHERE player_slug=? AND is_active=1
+              AND start_date IS NULL AND end_date IS NULL
+        """, [slug])
+
+        cols = ["player_slug"] + _ADJ_FIELDS + ["start_date", "end_date", "notes", "is_active"]
+        vals = [slug]
+        for f in _ADJ_FIELDS:
+            v = body.get(f)
+            vals.append(float(v) if v is not None else None)
+        vals += [
+            body.get("start_date") or None,
+            body.get("end_date") or None,
+            (body.get("notes") or "").strip() or None,
+            1,
+        ]
+        ph = ",".join("?" * len(cols))
+        cur = conn.execute(
+            f"INSERT INTO player_adjustments ({','.join(cols)}) VALUES ({ph})",
+            vals
+        )
+        adj_id = cur.lastrowid
+        conn.commit()
+        row = conn.execute("SELECT * FROM player_adjustments WHERE id=?", [adj_id]).fetchone()
+        _proj_cache.clear()  # invalidate projection cache
+        return _adj_row(row)
+    finally:
+        conn.close()
+
+
+@adjust_router.put("/{adj_id}")
+def adj_update(adj_id: int, body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        row = conn.execute("SELECT id FROM player_adjustments WHERE id=?", [adj_id]).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Adjustment not found")
+
+        sets = []
+        vals = []
+        for f in _ADJ_FIELDS:
+            v = body.get(f)
+            sets.append(f"{f}=?")
+            vals.append(float(v) if v is not None else None)
+        for f in ("start_date", "end_date"):
+            sets.append(f"{f}=?")
+            vals.append(body.get(f) or None)
+        sets.append("notes=?")
+        vals.append((body.get("notes") or "").strip() or None)
+        sets.append("is_active=?")
+        vals.append(1 if body.get("is_active", True) else 0)
+        sets.append("updated_at=datetime('now')")
+
+        conn.execute(f"UPDATE player_adjustments SET {','.join(sets)} WHERE id=?", vals + [adj_id])
+        conn.commit()
+        row = conn.execute("SELECT * FROM player_adjustments WHERE id=?", [adj_id]).fetchone()
+        _proj_cache.clear()
+        return _adj_row(row)
+    finally:
+        conn.close()
+
+
+@adjust_router.delete("/{adj_id}")
+def adj_delete(adj_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        conn.execute("DELETE FROM player_adjustments WHERE id=?", [adj_id])
+        conn.commit()
+        _proj_cache.clear()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@adjust_router.patch("/{adj_id}/toggle")
+def adj_toggle(adj_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        row = conn.execute("SELECT is_active FROM player_adjustments WHERE id=?", [adj_id]).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        conn.execute(
+            "UPDATE player_adjustments SET is_active=?, updated_at=datetime('now') WHERE id=?",
+            [0 if row["is_active"] else 1, adj_id]
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM player_adjustments WHERE id=?", [adj_id]).fetchone()
+        _proj_cache.clear()
+        return _adj_row(row)
+    finally:
+        conn.close()
+
+
+app.include_router(adjust_router)
 
 
 # Must come AFTER all API routes so /api/* is never caught here.

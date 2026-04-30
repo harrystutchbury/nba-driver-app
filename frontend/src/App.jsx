@@ -1610,6 +1610,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   <td className="name-col">
                     <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
                       {p.name}
+                      {p.is_adjusted && <span className="adj-proj-badge" title="Projection adjusted">adj</span>}
                       {p.injury && <InjuryBadge injury={p.injury} compact />}
                       <OwnBadge slug={p.slug} ownership={ownership} />
                     </div>
@@ -1893,6 +1894,298 @@ function CommentsSection({ playerSlug }) {
     </div>
   )
 }
+
+// ── Adjustments page (admin only) ────────────────────────────────────────────
+
+const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct','reb_pg','ast_pg','stl_pg','blk_pg','tov_pg']
+
+function AdjustmentsPage() {
+  const [isAdmin,       setIsAdmin]       = useState(false)
+  const [checked,       setChecked]       = useState(false)
+  const [teams,         setTeams]         = useState([])
+  const [selectedTeam,  setSelectedTeam]  = useState('')
+  const [players,       setPlayers]       = useState([])
+  const [leagueParams,  setLeagueParams]  = useState(null)
+  const [edits,         setEdits]         = useState({})
+  const [adjIds,        setAdjIds]        = useState({})
+  const [saving,        setSaving]        = useState({})
+  const [msgs,          setMsgs]          = useState({})
+  const [loading,       setLoading]       = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/adjustments/is-admin')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setIsAdmin(!!d?.is_admin); setChecked(true) })
+      .catch(() => setChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    apiFetch('/api/adjustments/league-params').then(r => r.ok ? r.json() : null).then(d => { if (d) setLeagueParams(d) })
+    apiFetch('/api/adjustments/teams').then(r => r.ok ? r.json() : null).then(d => { if (d) setTeams(d.teams) })
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!selectedTeam) return
+    setLoading(true)
+    apiFetch(`/api/adjustments/team-players/${encodeURIComponent(selectedTeam)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        setPlayers(d.players)
+        const newEdits = {}, newIds = {}
+        for (const p of d.players) {
+          newEdits[p.slug] = { ...(p.adjustment || p.baseline) }
+          if (p.adjustment?.id) newIds[p.slug] = p.adjustment.id
+        }
+        setEdits(newEdits)
+        setAdjIds(newIds)
+        setMsgs({})
+      })
+      .finally(() => setLoading(false))
+  }, [selectedTeam])
+
+  function computePts(e) {
+    const fga = +e.fga_pg || 0, fgPct = +e.fg_pct || 0
+    const fg3a = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
+    const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
+    const non3 = Math.max(fga - fg3a, 0)
+    return (non3 * fgPct / 100 * 2 + fg3a * fg3Pct / 100 * 3 + fta * ftPct / 100).toFixed(1)
+  }
+
+  function computeZ(e) {
+    if (!leagueParams) return null
+    const fga = +e.fga_pg || 0, fgPct = +e.fg_pct || 0
+    const fg3a = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
+    const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
+    const fg3m = fg3a * fg3Pct / 100
+    const pts  = Math.max(fga - fg3a, 0) * fgPct / 100 * 2 + fg3m * 3 + fta * ftPct / 100
+    const statVals = {
+      pts, reb: +e.reb_pg || 0, ast: +e.ast_pg || 0, stl: +e.stl_pg || 0,
+      blk: +e.blk_pg || 0, tov: +e.tov_pg || 0, fg3m,
+    }
+    const { fg_mean, ft_mean, stats } = leagueParams
+    let total = 0, count = 0
+    for (const [key, { mean, std }] of Object.entries(stats || {})) {
+      if (!std) continue
+      let z
+      if (key === 'fg_pct') {
+        z = ((fgPct - fg_mean) * fga - mean) / std
+      } else if (key === 'ft_pct') {
+        z = ((ftPct - ft_mean) * fta - mean) / std
+      } else {
+        const v = statVals[key]; if (v == null) continue
+        z = (v - mean) / std
+        if (key === 'tov') z = -z
+      }
+      total += z; count++
+    }
+    return count > 0 ? total.toFixed(2) : null
+  }
+
+  function isEdited(slug) {
+    const p = players.find(x => x.slug === slug)
+    if (!p) return false
+    return ADJ_FIELDS.some(k => String(edits[slug]?.[k] ?? '') !== String(p.baseline[k] ?? ''))
+  }
+
+  function setField(slug, field, val) {
+    setEdits(prev => ({ ...prev, [slug]: { ...(prev[slug] || {}), [field]: val } }))
+  }
+
+  function resetPlayer(slug) {
+    const p = players.find(x => x.slug === slug)
+    if (p) setEdits(prev => ({ ...prev, [slug]: { ...p.baseline } }))
+    setMsgs(prev => ({ ...prev, [slug]: null }))
+  }
+
+  async function savePlayer(slug) {
+    const e = edits[slug] || {}
+    setSaving(prev => ({ ...prev, [slug]: true }))
+    try {
+      const body = { player_slug: slug }
+      for (const f of ADJ_FIELDS) {
+        const v = e[f]; body[f] = v !== '' && v != null ? parseFloat(v) : null
+      }
+      body.start_date = e.start_date || null
+      body.end_date   = e.end_date   || null
+      body.notes      = e.notes      || null
+
+      const adjId = adjIds[slug]
+      const res = await apiFetch(adjId ? `/api/adjustments/${adjId}` : '/api/adjustments', {
+        method: adjId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Save failed') }
+      const adj = await res.json()
+      setAdjIds(prev => ({ ...prev, [slug]: adj.id }))
+      setPlayers(prev => prev.map(p => p.slug === slug ? { ...p, adjustment: adj } : p))
+      setMsgs(prev => ({ ...prev, [slug]: { type: 'ok', text: 'Saved' } }))
+    } catch (err) {
+      setMsgs(prev => ({ ...prev, [slug]: { type: 'err', text: err.message } }))
+    }
+    setSaving(prev => ({ ...prev, [slug]: false }))
+  }
+
+  async function deleteAdj(slug) {
+    const adjId = adjIds[slug]
+    if (!adjId || !confirm('Remove this adjustment?')) return
+    await apiFetch(`/api/adjustments/${adjId}`, { method: 'DELETE' })
+    setAdjIds(prev => { const n = { ...prev }; delete n[slug]; return n })
+    const p = players.find(x => x.slug === slug)
+    if (p) setEdits(prev => ({ ...prev, [slug]: { ...p.baseline } }))
+    setPlayers(prev => prev.map(pp => pp.slug === slug ? { ...pp, adjustment: null } : pp))
+    setMsgs(prev => ({ ...prev, [slug]: null }))
+  }
+
+  const totalMins = players.reduce((s, p) => s + (+edits[p.slug]?.min_pg || 0), 0)
+  const minsOk    = Math.abs(totalMins - 240) < 1
+
+  function numInput(slug, field, w = '52px') {
+    return (
+      <input
+        type="number" step="0.1" min="0"
+        className="adj-input" style={{ width: w }}
+        value={edits[slug]?.[field] ?? ''}
+        onChange={ev => setField(slug, field, ev.target.value)}
+      />
+    )
+  }
+
+  if (!checked) return null
+  if (!isAdmin) return <div className="adj-page"><p className="adj-no-access">Admin access required.</p></div>
+
+  return (
+    <div className="adj-page">
+      <div className="adj-header">
+        <h2 className="adj-title">Projection Adjustments</h2>
+        <div className="adj-team-row">
+          <label className="adj-label">Team</label>
+          <select className="adj-team-select" value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}>
+            <option value="">— select team —</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {selectedTeam && (
+        <>
+          <div className={`adj-val-bar ${minsOk ? 'adj-val-ok' : 'adj-val-bad'}`}>
+            <span>Team minutes: <strong>{totalMins.toFixed(1)}</strong> / 240</span>
+            {!minsOk && <span className="adj-val-hint">Adjust totals to sum to 240</span>}
+            {minsOk  && <span className="adj-val-hint">✓ Minutes balanced</span>}
+          </div>
+
+          {loading ? <div className="adj-loading">Loading…</div> : (
+            <div className="adj-table-wrap">
+              <table className="adj-table">
+                <thead>
+                  <tr>
+                    <th className="adj-th adj-th-name">Player</th>
+                    <th className="adj-th">MIN</th>
+                    <th className="adj-th">FGA</th>
+                    <th className="adj-th">FG%</th>
+                    <th className="adj-th">3PA</th>
+                    <th className="adj-th">3P%</th>
+                    <th className="adj-th">FTA</th>
+                    <th className="adj-th">FT%</th>
+                    <th className="adj-th">REB</th>
+                    <th className="adj-th">AST</th>
+                    <th className="adj-th">STL</th>
+                    <th className="adj-th">BLK</th>
+                    <th className="adj-th">TOV</th>
+                    <th className="adj-th adj-th-pts">PTS*</th>
+                    <th className="adj-th adj-th-z">Z</th>
+                    <th className="adj-th">From</th>
+                    <th className="adj-th">To</th>
+                    <th className="adj-th adj-th-act"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {players.map(p => {
+                    const e    = edits[p.slug] || {}
+                    const pts  = computePts(e)
+                    const z    = computeZ(e)
+                    const bz   = computeZ(p.baseline)
+                    const hasAdj = !!adjIds[p.slug]
+                    const edited = isEdited(p.slug)
+                    const msg    = msgs[p.slug]
+                    const zDelta = z != null && bz != null ? (z - bz).toFixed(2) : null
+                    return (
+                      <tr key={p.slug} className={`adj-row${hasAdj ? ' adj-row-live' : ''}`}>
+                        <td className="adj-td adj-td-name">
+                          <div className="adj-name-cell">
+                            <span className="adj-pname">{p.name}</span>
+                            <span className="adj-ppos">{p.position?.charAt(0)}</span>
+                            {hasAdj && <span className="adj-live-dot" title="Active adjustment" />}
+                          </div>
+                        </td>
+                        <td className="adj-td">{numInput(p.slug, 'min_pg',  '52px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fga_pg',  '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg_pct',  '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3a_pg', '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3_pct', '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fta_pg',  '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'ft_pct',  '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'reb_pg',  '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'ast_pg',  '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'stl_pg',  '40px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'blk_pg',  '40px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'tov_pg',  '40px')}</td>
+                        <td className="adj-td adj-td-pts">{pts}</td>
+                        <td className="adj-td adj-td-z">
+                          <span className={zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}>
+                            {z ?? '—'}
+                          </span>
+                          {zDelta != null && (
+                            <span className={`adj-z-delta ${zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}`}>
+                              {zDelta > 0 ? `+${zDelta}` : zDelta}
+                            </span>
+                          )}
+                        </td>
+                        <td className="adj-td">
+                          <input type="date" className="adj-date-input"
+                            value={e.start_date || ''}
+                            onChange={ev => setField(p.slug, 'start_date', ev.target.value)} />
+                        </td>
+                        <td className="adj-td">
+                          <input type="date" className="adj-date-input"
+                            value={e.end_date || ''}
+                            onChange={ev => setField(p.slug, 'end_date', ev.target.value)} />
+                        </td>
+                        <td className="adj-td adj-td-act">
+                          <div className="adj-act-btns">
+                            <button className="adj-save-btn" onClick={() => savePlayer(p.slug)} disabled={saving[p.slug]}>
+                              {saving[p.slug] ? '…' : 'Save'}
+                            </button>
+                            {edited && <button className="adj-reset-btn" onClick={() => resetPlayer(p.slug)}>Reset</button>}
+                            {hasAdj && <button className="adj-del-btn" onClick={() => deleteAdj(p.slug)}>✕</button>}
+                          </div>
+                          {msg && <div className={`adj-msg ${msg.type === 'ok' ? 'adj-msg-ok' : 'adj-msg-err'}`}>{msg.text}</div>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="adj-tfoot">
+                    <td className="adj-td adj-td-name"><strong>Total</strong></td>
+                    <td className="adj-td"><strong className={minsOk ? 'adj-z-pos' : 'adj-z-neg'}>{totalMins.toFixed(1)}</strong></td>
+                    {Array.from({ length: 16 }, (_, i) => <td key={i} className="adj-td" />)}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          <div className="adj-footnote">* PTS computed from FGA × FG% + 3PA × 3P% + FTA × FT%. Z-score vs current season population.</div>
+        </>
+      )}
+    </div>
+  )
+}
+
 
 // ── Blog page ─────────────────────────────────────────────────────────────────
 
@@ -4101,6 +4394,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
   const [blogInitSlug, setBlogInitSlug] = useState(null)
+  const [isAdmin, setIsAdmin]           = useState(false)
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -4156,6 +4450,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   useEffect(() => {
     if (yahooConnected) window.history.replaceState({}, '', '/')
+    apiFetch('/api/adjustments/is-admin').then(r => r.ok ? r.json() : null).then(d => { if (d?.is_admin) setIsAdmin(true) }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -4769,6 +5064,7 @@ function AppMain({ onLogout, onOpenAccount }) {
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
             <button className={`nav-btn${page === 'fantasy' ? ' active' : ''}`} onClick={() => setPage('fantasy')}>Fantasy</button>
             <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => setPage('blog')}>Blog</button>
+            {isAdmin && <button className={`nav-btn${page === 'adjustments' ? ' active' : ''}`} onClick={() => setPage('adjustments')}>Adjustments</button>}
           </nav>
           <div className="header-search-wrap" ref={searchRef}>
             <input
@@ -4822,6 +5118,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
+
+      {page === 'adjustments' && <AdjustmentsPage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

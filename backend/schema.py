@@ -290,6 +290,31 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS player_adjustments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_slug TEXT NOT NULL,
+            min_pg      REAL,
+            fga_pg      REAL,
+            fg_pct      REAL,   -- 0-100 scale
+            fg3a_pg     REAL,
+            fg3_pct     REAL,   -- 0-100 scale
+            fta_pg      REAL,
+            ft_pct      REAL,   -- 0-100 scale
+            reb_pg      REAL,
+            ast_pg      REAL,
+            stl_pg      REAL,
+            blk_pg      REAL,
+            tov_pg      REAL,
+            start_date  TEXT,   -- YYYY-MM-DD, NULL = open start
+            end_date    TEXT,   -- YYYY-MM-DD, NULL = open end
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            notes       TEXT,
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     # Migrations
     try:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
