@@ -3748,6 +3748,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         "overall_win_prob": overall_win_prob,
         "cat_wins":         cat_wins,
         "cat_total":        len(categories),
+        "team_week_games":  {team: len(dates) for team, dates in team_week_dates.items()},
     }
 
 
@@ -4668,6 +4669,19 @@ def espn_free_agents(size: int = Query(150, le=300),
     name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
     name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
     all_names    = list(name_to_slug.keys())
+
+    slug_to_team_fa = {
+        r["player_slug"]: r["team"]
+        for r in conn.execute("""
+            SELECT g.player_slug, g.team
+            FROM game_logs g
+            INNER JOIN (
+                SELECT player_slug, MAX(game_date) AS last_date
+                FROM game_logs WHERE season=? GROUP BY player_slug
+            ) lm ON g.player_slug=lm.player_slug AND g.game_date=lm.last_date
+            WHERE g.season=? GROUP BY g.player_slug
+        """, [season, season]).fetchall()
+    }
     conn.close()
 
     conn = get_conn()
@@ -4700,7 +4714,10 @@ def espn_free_agents(size: int = Query(150, le=300),
                      + stats["fg3m"] - stats["tov"]
                      + (stats["fg_pct"] - 46) * 0.3
                      + (stats["ft_pct"] - 76) * 0.2)
-        result.append({"espn_name": p.name, "br_slug": slug, "stats": stats, "value": round(value, 1)})
+        result.append({
+            "espn_name": p.name, "br_slug": slug, "stats": stats, "value": round(value, 1),
+            "nba_team": slug_to_team_fa.get(slug, "") if slug else "",
+        })
 
     result.sort(key=lambda x: -x["value"])
     return {"free_agents": result}

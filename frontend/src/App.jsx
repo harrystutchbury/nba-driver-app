@@ -3171,11 +3171,13 @@ const TEAM_ABBREV = {
   'TORONTO RAPTORS':'TOR','UTAH JAZZ':'UTA','WASHINGTON WIZARDS':'WAS',
 }
 
-function MatchupProjection() {
+function MatchupProjection({ onSelectPlayer }) {
   const [data,       setData]       = useState(null)
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
   const [week,       setWeek]       = useState(null)
+  const [freeAgents, setFreeAgents] = useState([])
+  const [faLoading,  setFaLoading]  = useState(false)
   // Simulation state
   const [searchQ,    setSearchQ]    = useState('')
   const [searchRes,  setSearchRes]  = useState([])
@@ -3183,7 +3185,6 @@ function MatchupProjection() {
   const [addSlug,    setAddSlug]    = useState(null)
   const [addName,    setAddName]    = useState('')
   const [dropSlug,   setDropSlug]   = useState(null)
-  const [dropName,   setDropName]   = useState('')
   const [simLoading, setSimLoading] = useState(false)
   const [simData,    setSimData]    = useState(null)
 
@@ -3196,14 +3197,22 @@ function MatchupProjection() {
       .catch(e => { setError(String(e)); setLoading(false) })
   }
 
-  useEffect(() => { load(null) }, [])
+  useEffect(() => {
+    load(null)
+    setFaLoading(true)
+    apiFetch('/api/fantasy/espn/free-agents')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setFreeAgents(d?.free_agents || []))
+      .catch(() => {})
+      .finally(() => setFaLoading(false))
+  }, [])
 
   function searchPlayers(q) {
     if (!q || q.length < 2) { setSearchRes([]); return }
     setSearching(true)
     apiFetch(`/api/fantasy/espn/roster-analysis/search-player?q=${encodeURIComponent(q)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setSearchRes(d?.players || []) })
+      .then(d => setSearchRes(d?.players || []))
       .catch(() => setSearchRes([]))
       .finally(() => setSearching(false))
   }
@@ -3214,7 +3223,7 @@ function MatchupProjection() {
     apiFetch('/api/fantasy/espn/matchup-projection/simulate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        week: week,
+        week,
         add_slugs:  addSlug  ? [addSlug]  : [],
         drop_slugs: dropSlug ? [dropSlug] : [],
       }),
@@ -3226,7 +3235,7 @@ function MatchupProjection() {
   }
 
   function clearSim() {
-    setAddSlug(null); setAddName(''); setDropSlug(null); setDropName('')
+    setAddSlug(null); setAddName(''); setDropSlug(null)
     setSearchQ(''); setSearchRes([]); setSimData(null)
   }
 
@@ -3236,39 +3245,56 @@ function MatchupProjection() {
 
   const d = simData || data
 
+  // Outcome probability distribution via DP on per-category win probs
+  function outcomeDistribution(categories) {
+    const n = categories.length
+    let dp = new Array(n + 1).fill(0); dp[0] = 1
+    for (const c of categories) {
+      const wp = c.win_prob
+      const next = new Array(n + 1).fill(0)
+      for (let w = 0; w <= n; w++) {
+        if (!dp[w]) continue
+        next[w + 1] += dp[w] * wp
+        next[w]     += dp[w] * (1 - wp)
+      }
+      dp = next
+    }
+    return dp.map((prob, wins) => ({ wins, losses: n - wins, prob }))
+  }
+
   function WinProbBadge({ wp }) {
     const pct = Math.round(wp * 100)
     const cls  = pct >= 55 ? 'mp-wp-win' : pct <= 45 ? 'mp-wp-loss' : 'mp-wp-toss'
     return <span className={`mp-wp-badge ${cls}`}>{pct}%</span>
   }
 
-  function DayGrid({ players, label }) {
+  function DayGrid({ players, label, isMyTeam }) {
+    const totalGP = players.reduce((s, p) => s + p.games, 0)
+    const dayTotals = d.day_labels.map((_, i) => players.filter(p => p.days[i]).length)
     return (
       <div className="mp-grid-section">
-        <div className="mp-grid-label">{label} <span className="mp-grid-gp-total">({players.reduce((s,p)=>s+p.games,0)} total GP)</span></div>
+        <div className="mp-grid-label">
+          {label} <span className="mp-grid-gp-total">({totalGP} GP)</span>
+        </div>
         <div className="mp-grid-scroll">
           <table className="mp-grid-table">
             <thead>
               <tr>
                 <th className="mp-col-player">Player</th>
-                <th className="mp-col-team">Team</th>
+                <th className="mp-col-team">Tm</th>
                 <th className="mp-col-gp">GP</th>
                 {d.day_labels.map((lbl, i) => <th key={i} className="mp-col-day">{lbl}</th>)}
               </tr>
             </thead>
             <tbody>
               {players.map(p => (
-                <tr
-                  key={p.slug || p.name}
-                  className={label.startsWith('My') && dropSlug === p.slug ? 'mp-row-drop' : ''}
-                  onClick={label.startsWith('My') ? () => {
-                    if (dropSlug === p.slug) { setDropSlug(null); setDropName('') }
-                    else { setDropSlug(p.slug); setDropName(p.name) }
-                  } : undefined}
-                  style={label.startsWith('My') ? {cursor:'pointer'} : {}}
-                  title={label.startsWith('My') ? 'Click to mark as drop' : ''}
-                >
-                  <td className="mp-col-player">{p.name}{label.startsWith('My') && dropSlug===p.slug && <span className="mp-drop-tag"> ✕ drop</span>}</td>
+                <tr key={p.slug || p.name} className={isMyTeam && dropSlug === p.slug ? 'mp-row-drop' : ''}>
+                  <td className="mp-col-player">
+                    {p.slug
+                      ? <button className="mp-player-link" onClick={() => onSelectPlayer?.(p.slug)}>{p.name}</button>
+                      : p.name
+                    }
+                  </td>
                   <td className="mp-col-team">{TEAM_ABBREV[p.nba_team] || p.nba_team?.slice(0,3) || '—'}</td>
                   <td className={`mp-col-gp mp-gp-${p.games}`}>{p.games}</td>
                   {p.days.map((plays, i) => (
@@ -3279,6 +3305,18 @@ function MatchupProjection() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="mp-totals-row">
+                <td className="mp-col-player mp-totals-label">Games/day</td>
+                <td className="mp-col-team"></td>
+                <td className="mp-col-gp">{totalGP}</td>
+                {dayTotals.map((n, i) => (
+                  <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}`}>
+                    {n > 0 ? n : ''}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -3287,6 +3325,20 @@ function MatchupProjection() {
 
   const overallPct = Math.round(d.overall_win_prob * 100)
   const overallCls = overallPct >= 55 ? 'mp-overall-win' : overallPct <= 45 ? 'mp-overall-loss' : 'mp-overall-toss'
+  const outcomes   = outcomeDistribution(d.categories)
+  const maxOutcomeProb = Math.max(...outcomes.map(o => o.prob))
+
+  // Rostered slugs (for filtering free agents not on either roster)
+  const rosteredSlugs = new Set([
+    ...d.my_players.map(p => p.slug),
+    ...d.opp_players.map(p => p.slug),
+  ])
+  const teamWeekGames = d.team_week_games || {}
+
+  // Free agents filtered to those with stats, sorted by value, top 25
+  const topFreeAgents = freeAgents
+    .filter(fa => fa.br_slug && fa.stats)
+    .slice(0, 25)
 
   return (
     <div className="mp-wrap">
@@ -3308,115 +3360,144 @@ function MatchupProjection() {
         </select>
       </div>
 
-      {/* Category projections */}
-      <div className="mp-cats-section">
-        <table className="mp-cats-table">
-          <thead>
-            <tr>
-              <th>Cat</th>
-              <th className="mp-cat-side mp-cat-my">My Team</th>
-              <th className="mp-cat-range mp-cat-my">Range</th>
-              <th className="mp-cat-side mp-cat-opp">Opp Team</th>
-              <th className="mp-cat-range mp-cat-opp">Range</th>
-              <th>Win%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.categories.map(c => {
-              const wp  = c.win_prob
-              const cls = wp >= 0.55 ? 'mp-cat-winning' : wp <= 0.45 ? 'mp-cat-losing' : 'mp-cat-toss'
-              return (
-                <tr key={c.stat} className={cls}>
-                  <td className="mp-cat-name">{c.stat}</td>
-                  <td className="mp-cat-proj mp-cat-my">{c.my_proj}</td>
-                  <td className="mp-cat-range mp-cat-my">{c.my_lo}–{c.my_hi}</td>
-                  <td className="mp-cat-proj mp-cat-opp">{c.opp_proj}</td>
-                  <td className="mp-cat-range mp-cat-opp">{c.opp_lo}–{c.opp_hi}</td>
-                  <td><WinProbBadge wp={wp} /></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Day grids */}
-      <DayGrid players={d.my_players}  label="My Roster" />
-      <DayGrid players={d.opp_players} label="Opponent Roster" />
-
-      {/* Simulate section */}
-      <div className="mp-sim-section">
-        <div className="mp-sim-title">Simulate Pickup</div>
-        <div className="mp-sim-controls">
-          <div className="mp-sim-search">
-            <input
-              className="mp-sim-input"
-              placeholder="Search player to add…"
-              value={searchQ}
-              onChange={e => { setSearchQ(e.target.value); searchPlayers(e.target.value) }}
-            />
-            {searching && <span className="mp-sim-searching">…</span>}
-          </div>
-          {addSlug && (
-            <div className="mp-sim-chips">
-              <span className="mp-chip mp-chip-add">+ {addName} <button onClick={() => { setAddSlug(null); setAddName('') }}>×</button></span>
-              {dropSlug && <span className="mp-chip mp-chip-drop">− {dropName} <button onClick={() => { setDropSlug(null); setDropName('') }}>×</button></span>}
-            </div>
-          )}
-          {!addSlug && dropSlug && (
-            <div className="mp-sim-chips">
-              <span className="mp-chip mp-chip-drop">− {dropName} <button onClick={() => { setDropSlug(null); setDropName('') }}>×</button></span>
-            </div>
-          )}
-          <div className="mp-sim-actions">
-            {(addSlug || dropSlug) && (
-              <>
-                <button className="mp-sim-run" onClick={runSimulate} disabled={simLoading}>
-                  {simLoading ? 'Simulating…' : 'Run Simulation'}
-                </button>
-                <button className="mp-sim-clear" onClick={clearSim}>Clear</button>
-              </>
-            )}
-          </div>
+      {/* Category projections + outcome distribution side by side */}
+      <div className="mp-cats-outcome-row">
+        <div className="mp-cats-section">
+          <table className="mp-cats-table">
+            <thead>
+              <tr>
+                <th>Cat</th>
+                <th className="mp-cat-my">My Team</th>
+                <th className="mp-cat-range mp-cat-my">Range</th>
+                <th className="mp-cat-opp">Opp Team</th>
+                <th className="mp-cat-range mp-cat-opp">Range</th>
+                <th>Win%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.categories.map(c => {
+                const wp  = c.win_prob
+                const cls = wp >= 0.55 ? 'mp-cat-winning' : wp <= 0.45 ? 'mp-cat-losing' : 'mp-cat-toss'
+                return (
+                  <tr key={c.stat} className={cls}>
+                    <td className="mp-cat-name">{c.stat}</td>
+                    <td className="mp-cat-proj mp-cat-my">{c.my_proj}</td>
+                    <td className="mp-cat-range mp-cat-my">{c.my_lo}–{c.my_hi}</td>
+                    <td className="mp-cat-proj mp-cat-opp">{c.opp_proj}</td>
+                    <td className="mp-cat-range mp-cat-opp">{c.opp_lo}–{c.opp_hi}</td>
+                    <td><WinProbBadge wp={wp} /></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
 
-        {/* Search results */}
-        {searchRes.length > 0 && !addSlug && (
-          <div className="mp-search-results">
-            {searchRes.slice(0, 8).map(p => {
-              const nbaTeam = TEAM_ABBREV[p.team] || p.team?.slice(0,3) || '?'
+        {/* Outcome distribution */}
+        <div className="mp-outcome-section">
+          <div className="mp-grid-label">Result Distribution</div>
+          <div className="mp-outcomes">
+            {outcomes.slice().reverse().map(o => {
+              const pct      = Math.round(o.prob * 100)
+              const barW     = maxOutcomeProb > 0 ? (o.prob / maxOutcomeProb) * 100 : 0
+              const isProj   = o.wins === d.cat_wins
+              const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
               return (
-                <div
-                  key={p.slug}
-                  className="mp-search-row"
-                  onClick={() => { setAddSlug(p.slug); setAddName(p.full_name); setSearchQ(''); setSearchRes([]) }}
-                >
-                  <span className="mp-sr-name">{p.full_name}</span>
-                  <span className="mp-sr-team">{nbaTeam}</span>
-                  <span className="mp-sr-stat">{Math.round(p.pts||0)} PTS</span>
-                  <span className="mp-sr-stat">{Math.round(p.reb||0)} REB</span>
-                  <span className="mp-sr-stat">{Math.round(p.ast||0)} AST</span>
-                  <span className="mp-sr-games">{p.games} G</span>
+                <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
+                  <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
+                  <div className="mp-out-bar-wrap">
+                    <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
+                  </div>
+                  <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
+                  {isProj && <span className="mp-out-proj-tag">proj</span>}
                 </div>
               )
             })}
           </div>
-        )}
+        </div>
+      </div>
+
+      {/* Day grids side by side */}
+      <div className="mp-grids-row">
+        <div className="mp-grid-col">
+          <DayGrid players={d.my_players}  label="My Roster"       isMyTeam={true}  />
+        </div>
+        <div className="mp-grid-col">
+          <DayGrid players={d.opp_players} label="Opponent Roster"  isMyTeam={false} />
+        </div>
+      </div>
+
+      {/* Simulate section */}
+      <div className="mp-sim-section">
+        <div className="mp-sim-title">Simulate Pickup</div>
+        <div className="mp-sim-row">
+          {/* Controls */}
+          <div className="mp-sim-controls">
+            <div className="mp-sim-field">
+              <label className="mp-sim-label">Add</label>
+              <input
+                className="mp-sim-input"
+                placeholder="Search player…"
+                value={searchQ}
+                onChange={e => { setSearchQ(e.target.value); searchPlayers(e.target.value) }}
+              />
+              {searching && <span className="mp-sim-searching">…</span>}
+              {addSlug && <span className="mp-chip mp-chip-add">+ {addName} <button onClick={() => { setAddSlug(null); setAddName(''); setSearchQ(''); setSearchRes([]) }}>×</button></span>}
+            </div>
+            <div className="mp-sim-field">
+              <label className="mp-sim-label">Drop</label>
+              <select
+                className="mp-sim-select"
+                value={dropSlug || ''}
+                onChange={e => setDropSlug(e.target.value || null)}
+              >
+                <option value=''>— select player to drop —</option>
+                {d.my_players.map(p => (
+                  <option key={p.slug} value={p.slug}>{p.name} ({p.games} GP)</option>
+                ))}
+              </select>
+            </div>
+            <div className="mp-sim-actions">
+              <button className="mp-sim-run" onClick={runSimulate} disabled={simLoading || (!addSlug && !dropSlug)}>
+                {simLoading ? 'Simulating…' : 'Run'}
+              </button>
+              {(addSlug || dropSlug) && <button className="mp-sim-clear" onClick={clearSim}>Clear</button>}
+            </div>
+          </div>
+
+          {/* Search results */}
+          {searchRes.length > 0 && !addSlug && (
+            <div className="mp-search-results">
+              {searchRes.slice(0, 8).map(p => {
+                const nbaTeam = TEAM_ABBREV[p.team] || p.team?.slice(0,3) || '?'
+                const gp = teamWeekGames[p.team] || 0
+                return (
+                  <div key={p.slug} className="mp-search-row" onClick={() => { setAddSlug(p.slug); setAddName(p.full_name); setSearchQ(''); setSearchRes([]) }}>
+                    <span className="mp-sr-name">{p.full_name}</span>
+                    <span className="mp-sr-team">{nbaTeam}</span>
+                    <span className={`mp-sr-gp mp-gp-${gp}`}>{gp} GP</span>
+                    <span className="mp-sr-stat">{(p.pts||0).toFixed(1)}</span>
+                    <span className="mp-sr-stat">{(p.reb||0).toFixed(1)}</span>
+                    <span className="mp-sr-stat">{(p.ast||0).toFixed(1)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Simulation result delta */}
         {simData && (
           <div className="mp-sim-result">
-            <div className="mp-sim-result-title">Simulated Result</div>
-            <div className="mp-sim-result-matchup">
-              <span className="mp-my-team">{simData.my_team_name}</span>
-              <span className={`mp-overall-badge ${Math.round(simData.overall_win_prob*100)>=55?'mp-overall-win':Math.round(simData.overall_win_prob*100)<=45?'mp-overall-loss':'mp-overall-toss'}`}>
+            <div className="mp-sim-result-title">
+              Simulated: {simData.my_team_name}
+              <span className={`mp-overall-badge mp-sim-badge ${Math.round(simData.overall_win_prob*100)>=55?'mp-overall-win':Math.round(simData.overall_win_prob*100)<=45?'mp-overall-loss':'mp-overall-toss'}`}>
                 {simData.cat_wins}–{simData.cat_total - simData.cat_wins} ({Math.round(simData.overall_win_prob*100)}%)
               </span>
-              <span className="mp-opp-team">{simData.opp_team_name}</span>
             </div>
             <table className="mp-cats-table mp-sim-cats-table">
               <thead>
-                <tr><th>Cat</th><th>Before</th><th>After</th><th>Δ</th><th>Win%</th></tr>
+                <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th></tr>
               </thead>
               <tbody>
                 {simData.categories.map((c, i) => {
@@ -3428,9 +3509,9 @@ function MatchupProjection() {
                   return (
                     <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
                       <td className="mp-cat-name">{c.stat}</td>
-                      <td>{before?.my_proj}</td>
-                      <td>{c.my_proj}</td>
-                      <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta}</td>
+                      <td className="mp-cat-my">{before?.my_proj}</td>
+                      <td className="mp-cat-my">{c.my_proj}</td>
+                      <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}</td>
                       <td><WinProbBadge wp={c.win_prob} /></td>
                     </tr>
                   )
@@ -3440,9 +3521,62 @@ function MatchupProjection() {
           </div>
         )}
 
-        {!addSlug && !dropSlug && (
-          <p className="mp-sim-hint">Click a player in your roster to mark as drop, then search for a pickup above.</p>
-        )}
+        {/* Top free agents */}
+        <div className="mp-fa-section">
+          <div className="mp-grid-label">Top Available Free Agents</div>
+          {faLoading
+            ? <div className="dash-empty" style={{padding:'12px 0'}}>Loading…</div>
+            : topFreeAgents.length === 0
+              ? <div className="mp-sim-hint">No free agent data.</div>
+              : (
+                <div className="mp-fa-list">
+                  <div className="mp-fa-header-row">
+                    <span className="mp-fa-name">Player</span>
+                    <span className="mp-fa-team">Tm</span>
+                    <span className="mp-fa-gp">GP</span>
+                    <span className="mp-fa-stat">PTS</span>
+                    <span className="mp-fa-stat">REB</span>
+                    <span className="mp-fa-stat">AST</span>
+                    <span className="mp-fa-stat">STL</span>
+                    <span className="mp-fa-stat">BLK</span>
+                    <span className="mp-fa-stat">3PM</span>
+                    <span className="mp-fa-stat">FG%</span>
+                    <span className="mp-fa-val">Val</span>
+                  </div>
+                  {topFreeAgents.map(fa => {
+                    const gp  = teamWeekGames[fa.nba_team] || 0
+                    const tm  = TEAM_ABBREV[fa.nba_team] || fa.nba_team?.slice(0,3) || '?'
+                    const s   = fa.stats || {}
+                    const isAdd = addSlug === fa.br_slug
+                    return (
+                      <div
+                        key={fa.br_slug}
+                        className={`mp-fa-row${isAdd ? ' mp-fa-selected' : ''}`}
+                        onClick={() => { setAddSlug(fa.br_slug); setAddName(fa.espn_name); setSearchQ(''); setSearchRes([]) }}
+                      >
+                        <span className="mp-fa-name">
+                          {fa.br_slug
+                            ? <button className="mp-player-link" onClick={e => { e.stopPropagation(); onSelectPlayer?.(fa.br_slug) }}>{fa.espn_name}</button>
+                            : fa.espn_name
+                          }
+                        </span>
+                        <span className="mp-fa-team">{tm}</span>
+                        <span className={`mp-fa-gp mp-gp-${gp}`}>{gp}</span>
+                        <span className="mp-fa-stat">{s.pts ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.reb ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.ast ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.stl ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.blk ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.fg3m ?? '—'}</span>
+                        <span className="mp-fa-stat">{s.fg_pct ?? '—'}</span>
+                        <span className="mp-fa-val">{fa.value}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+          }
+        </div>
       </div>
     </div>
   )
@@ -3606,7 +3740,7 @@ function FantasyPage({ onSelectPlayer }) {
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
-      {tab === 'matchup'  && <MatchupProjection />}
+      {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
       {tab === 'schedule' && <ScheduleGrid />}
     </div>
   )

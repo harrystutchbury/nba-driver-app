@@ -4058,3 +4058,81 @@ td.bs-name {
 .mp-sim-cats-table { max-width: 500px; }
 .mp-delta-pos { color: var(--skill); font-weight: 700; }
 .mp-delta-neg { color: var(--neg);   font-weight: 700; }
+
+/* Cats + outcome side by side */
+.mp-cats-outcome-row { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; }
+.mp-cats-section { flex: 1; min-width: 0; overflow-x: auto; }
+
+/* Outcome distribution */
+.mp-outcome-section { width: 230px; flex-shrink: 0; }
+.mp-outcomes { display: flex; flex-direction: column; gap: 4px; }
+.mp-outcome-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 4px; border-radius: 4px;
+  font-size: 12px;
+}
+.mp-out-projected { background: rgba(255,208,96,0.1); font-weight: 700; }
+.mp-out-label { min-width: 32px; font-weight: 600; font-family: var(--mono); }
+.mp-out-win  { color: var(--skill); }
+.mp-out-loss { color: var(--neg); }
+.mp-out-toss { color: var(--pos); }
+.mp-out-bar-wrap { flex: 1; background: var(--border); border-radius: 2px; height: 6px; overflow: hidden; }
+.mp-out-bar { height: 100%; border-radius: 2px; min-width: 2px; transition: width 0.3s; }
+.mp-out-bar.mp-out-win  { background: var(--skill); }
+.mp-out-bar.mp-out-loss { background: var(--neg); }
+.mp-out-bar.mp-out-toss { background: var(--pos); }
+.mp-out-pct { min-width: 30px; text-align: right; color: var(--muted); font-size: 11px; }
+.mp-out-proj-tag { font-size: 9px; color: var(--pos); font-weight: 700; text-transform: uppercase; margin-left: 2px; }
+
+/* Side by side grids */
+.mp-grids-row { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; }
+.mp-grid-col { flex: 1; min-width: 280px; overflow: hidden; }
+
+/* Totals row */
+.mp-totals-row td { border-top: 2px solid var(--border); font-weight: 700; font-size: 11px; padding: 4px 8px; }
+.mp-totals-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.mp-day-total { color: var(--muted); }
+.mp-day-total-has { color: var(--text); font-weight: 700; }
+
+/* Clickable player names */
+.mp-player-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--text); font-size: inherit; font-weight: inherit;
+  text-decoration: underline; text-decoration-color: var(--border);
+  text-align: left;
+}
+.mp-player-link:hover { color: var(--skill); }
+
+/* Simulate section layout */
+.mp-sim-row { display: flex; flex-direction: column; gap: 12px; }
+.mp-sim-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.mp-sim-field { display: flex; flex-direction: column; gap: 4px; }
+.mp-sim-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+.mp-sim-select {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  min-width: 220px;
+}
+.mp-sim-select:focus { outline: none; border-color: var(--skill); }
+
+/* Free agents */
+.mp-fa-section { margin-top: 20px; }
+.mp-fa-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.mp-fa-header-row, .mp-fa-row {
+  display: flex; align-items: center; gap: 0;
+  padding: 6px 10px; font-size: 12px;
+}
+.mp-fa-header-row { background: var(--bg); border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; font-size: 10px; text-transform: uppercase; }
+.mp-fa-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+.mp-fa-row:last-child { border-bottom: none; }
+.mp-fa-row:hover { background: var(--bg); }
+.mp-fa-selected { background: rgba(77,255,180,0.08) !important; }
+.mp-fa-name { flex: 1; min-width: 120px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-fa-team { min-width: 34px; color: var(--muted); }
+.mp-fa-gp   { min-width: 30px; font-weight: 700; text-align: center; }
+.mp-fa-stat { min-width: 40px; text-align: right; color: var(--text); }
+.mp-fa-val  { min-width: 40px; text-align: right; color: var(--pos); font-weight: 700; }
+
+/* badge inside sim result title */
+.mp-sim-badge { font-size: 11px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+.mp-sim-result-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; }
