@@ -3643,9 +3643,9 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
             if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
                 slot_instances.extend([_sid] * _cnt)
         active_capacity = len(slot_instances)
-        log.info(f"Lineup slot capacity: {active_capacity} active slots")
+        logger.info(f"Lineup slot capacity: {active_capacity} active slots")
     except Exception as _e:
-        log.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
+        logger.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
 
     def _resolve_slug(player):
         slug = espn_id_to_slug.get(str(player.playerId))
