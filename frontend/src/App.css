@@ -4143,3 +4143,81 @@ td.bs-name {
 /* badge inside sim result title */
 .mp-sim-badge { font-size: 11px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
 .mp-sim-result-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; }
+
+
+/* ── Blog page ─────────────────────────────────────────────────────────────── */
+
+.blog-page { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+
+/* List header */
+.blog-list-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.blog-page-title  { margin: 0; font-size: 26px; font-weight: 800; }
+.blog-new-btn { padding: 7px 16px; background: var(--skill); color: #000; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; }
+.blog-new-btn:hover { opacity: 0.85; }
+
+/* Category pills */
+.blog-cat-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.blog-cat-pill { padding: 4px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.blog-cat-pill.active, .blog-cat-pill:hover { border-color: var(--skill); color: var(--skill); }
+
+/* Post cards */
+.blog-post-list { display: flex; flex-direction: column; gap: 16px; }
+.blog-post-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
+.blog-post-card:hover { border-color: var(--skill); }
+.blog-draft-card { opacity: 0.7; border-style: dashed; }
+.blog-card-cover { width: 100%; height: 200px; object-fit: cover; display: block; }
+.blog-card-body { padding: 16px; }
+.blog-card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.blog-cat-tag { background: var(--skill-bg); color: var(--skill); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.blog-draft-tag { background: rgba(255,107,107,0.15); color: var(--neg); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+.blog-card-date { color: var(--muted); font-size: 12px; margin-left: auto; }
+.blog-card-title { margin: 0 0 8px; font-size: 18px; font-weight: 700; line-height: 1.3; }
+.blog-card-excerpt { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.blog-card-comments { font-size: 12px; color: var(--muted); }
+
+/* Post nav bar */
+.blog-post-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.blog-back-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; color: var(--text); font-size: 13px; }
+.blog-back-btn:hover { border-color: var(--skill); color: var(--skill); }
+.blog-admin-actions { display: flex; gap: 8px; }
+.blog-edit-btn { padding: 5px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); font-size: 13px; }
+.blog-edit-btn:hover { border-color: var(--skill); color: var(--skill); }
+.blog-delete-btn { padding: 5px 14px; background: none; border: 1px solid var(--neg); border-radius: 6px; cursor: pointer; color: var(--neg); font-size: 13px; }
+.blog-edit-heading { font-size: 14px; font-weight: 700; color: var(--muted); }
+
+/* Post view */
+.blog-post-cover { width: 100%; max-height: 360px; object-fit: cover; border-radius: 10px; margin-bottom: 20px; display: block; }
+.blog-post-header { margin-bottom: 24px; }
+.blog-post-title { margin: 8px 0 4px; font-size: 28px; font-weight: 800; line-height: 1.2; }
+.blog-post-byline { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* Post content */
+.blog-post-content { line-height: 1.75; font-size: 15px; margin-bottom: 40px; }
+.blog-para { margin: 0 0 1.2em; }
+.blog-content-img { display: block; max-width: 100%; border-radius: 8px; margin: 16px auto; }
+.blog-inline-img { max-width: 100%; border-radius: 6px; }
+
+/* Comments section on blog post */
+.blog-comments { border-top: 1px solid var(--border); padding-top: 24px; }
+
+/* Editor */
+.blog-editor { display: flex; flex-direction: column; gap: 16px; }
+.blog-editor-row { display: flex; flex-direction: column; gap: 6px; }
+.blog-editor-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.blog-editor-input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 14px; font-family: var(--sans); }
+.blog-editor-input:focus { outline: none; border-color: var(--skill); }
+.blog-editor-half { max-width: 260px; }
+.blog-editor-content-row { gap: 8px; }
+.blog-editor-toolbar { display: flex; align-items: center; justify-content: space-between; }
+.blog-editor-toolbar-btns { display: flex; gap: 8px; }
+.blog-toolbar-btn { padding: 4px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text); }
+.blog-toolbar-btn:hover, .blog-toolbar-btn.active { border-color: var(--skill); color: var(--skill); }
+.blog-editor-textarea { width: 100%; min-height: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; color: var(--text); font-size: 14px; font-family: var(--mono); line-height: 1.6; resize: vertical; box-sizing: border-box; }
+.blog-editor-textarea:focus { outline: none; border-color: var(--skill); }
+.blog-preview-pane { min-height: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; line-height: 1.75; font-size: 15px; }
+.blog-preview-empty { color: var(--muted); font-style: italic; }
+.blog-editor-footer { flex-direction: row; align-items: center; gap: 12px; justify-content: flex-end; padding-top: 4px; }
+.blog-publish-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; margin-right: auto; }
+.blog-save-btn { padding: 8px 20px; background: var(--skill); color: #000; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; }
+.blog-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.blog-save-error { color: var(--neg); font-size: 12px; }

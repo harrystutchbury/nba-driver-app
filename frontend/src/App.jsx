@@ -1658,7 +1658,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
 // ── Dashboard page ────────────────────────────────────────────────────────────
 
-function DashboardPage({ onSelectPlayer }) {
+function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
   const todayET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
   const [games,    setGames]    = useState(null)
   const [injuries, setInjuries] = useState(null)
@@ -1731,12 +1731,17 @@ function DashboardPage({ onSelectPlayer }) {
         {!comments ? <div className="dash-loading">Loading…</div>
           : comments.length === 0 ? <div className="dash-empty">No comments yet.</div>
           : comments.map(c => (
-            <div key={c.id} className="dash-comment">
+            <div key={`${c.comment_type}-${c.id}`} className="dash-comment">
               <div className="dash-comment-header">
-                <span className="dash-comment-player rank-player-link"
-                  onClick={() => onSelectPlayer({ slug: c.player_slug, name: c.player_name })}>
-                  {c.player_name}
-                </span>
+                {c.comment_type === 'blog'
+                  ? <span className="dash-comment-player rank-player-link" onClick={() => onSelectBlogPost?.(c.post_slug)}>
+                      {c.post_title}
+                    </span>
+                  : <span className="dash-comment-player rank-player-link"
+                      onClick={() => onSelectPlayer({ slug: c.player_slug, name: c.player_name })}>
+                      {c.player_name}
+                    </span>
+                }
                 <span className="dash-comment-meta">{c.author} · {timeAgo(c.created_at)}</span>
               </div>
               <p className="dash-comment-body">{c.body}</p>
@@ -1887,6 +1892,300 @@ function CommentsSection({ playerSlug }) {
       }
     </div>
   )
+}
+
+// ── Blog page ─────────────────────────────────────────────────────────────────
+
+function BlogPage({ setPage, initSlug, onMount }) {
+  const [view, setView]             = useState('list')
+  const [posts, setPosts]           = useState([])
+  const [categories, setCategories] = useState([])
+  const [isAdmin, setIsAdmin]       = useState(false)
+  const [selCategory, setSelCategory] = useState(null)
+  const [currentPost, setCurrentPost] = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [editDraft, setEditDraft]   = useState(null)
+  const [preview, setPreview]       = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [saveError, setSaveError]   = useState('')
+  const [blogComments, setBlogComments] = useState([])
+  const [commentDraft, setCommentDraft] = useState('')
+  const [posting, setPosting]       = useState(false)
+  const textareaRef                 = useRef(null)
+
+  useEffect(() => {
+    if (initSlug) { onMount?.(); openPost(initSlug) }
+    else loadList()
+  }, [])
+  useEffect(() => { if (!initSlug) loadList() }, [selCategory])
+
+  function loadList() {
+    setLoading(true)
+    const q = selCategory ? `?category=${encodeURIComponent(selCategory)}` : ''
+    apiFetch(`/api/blog/posts${q}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { setPosts(d.posts); setCategories(d.categories); setIsAdmin(d.is_admin) } })
+      .finally(() => setLoading(false))
+  }
+
+  function openPost(slug) {
+    apiFetch(`/api/blog/posts/${slug}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        setCurrentPost(d)
+        setBlogComments(d.comments || [])
+        setCommentDraft('')
+        setView('post')
+      })
+  }
+
+  function startEdit(post = null) {
+    setEditDraft(post
+      ? { id: post.id, title: post.title, content: post.content, cover_image: post.cover_image || '', category: post.category || '', is_published: post.is_published }
+      : { title: '', content: '', cover_image: '', category: '', is_published: false }
+    )
+    setPreview(false)
+    setSaveError('')
+    setView('edit')
+  }
+
+  async function savePost() {
+    setSaving(true); setSaveError('')
+    const isNew = !editDraft.id
+    const res = await apiFetch(isNew ? '/api/blog/posts' : `/api/blog/posts/${editDraft.id}`, {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editDraft),
+    }).catch(() => null)
+    if (res?.ok) {
+      const saved = await res.json()
+      setSaving(false)
+      openPost(saved.slug)
+    } else {
+      setSaveError('Save failed. Please try again.')
+      setSaving(false)
+    }
+  }
+
+  async function deletePost() {
+    if (!window.confirm('Delete this post?')) return
+    await apiFetch(`/api/blog/posts/${currentPost.id}`, { method: 'DELETE' })
+    setView('list')
+    loadList()
+  }
+
+  function insertImage() {
+    const url = window.prompt('Image URL:')
+    if (!url) return
+    const alt = window.prompt('Alt text (optional):') || ''
+    const tag = `\n\n![${alt}](${url})\n\n`
+    const el  = textareaRef.current
+    if (el) {
+      const s = el.selectionStart, e = el.selectionEnd
+      const next = editDraft.content.slice(0, s) + tag + editDraft.content.slice(e)
+      setEditDraft(d => ({ ...d, content: next }))
+      setTimeout(() => { el.selectionStart = el.selectionEnd = s + tag.length }, 0)
+    } else {
+      setEditDraft(d => ({ ...d, content: d.content + tag }))
+    }
+  }
+
+  // Render markdown-lite: paragraphs separated by blank lines, images via ![alt](url)
+  function renderContent(text) {
+    if (!text) return null
+    const IMG = /!\[([^\]]*)\]\(([^)]+)\)/g
+    return text.split(/\n\n+/).map((para, pi) => {
+      const trimmed = para.trim()
+      // Standalone image
+      const solo = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+      if (solo) return <img key={pi} src={solo[2]} alt={solo[1]} className="blog-content-img" />
+      // Mixed inline
+      const parts = []; let last = 0; let m; IMG.lastIndex = 0
+      while ((m = IMG.exec(para)) !== null) {
+        if (m.index > last) parts.push(para.slice(last, m.index))
+        parts.push(<img key={m.index} src={m[2]} alt={m[1]} className="blog-inline-img" />)
+        last = m.index + m[0].length
+      }
+      if (last < para.length) parts.push(para.slice(last))
+      return <p key={pi} className="blog-para">{parts}</p>
+    })
+  }
+
+  async function submitComment(e) {
+    e.preventDefault()
+    if (!commentDraft.trim()) return
+    setPosting(true)
+    const res = await apiFetch(`/api/blog/posts/${currentPost.id}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: commentDraft.trim() }),
+    }).catch(() => null)
+    if (res?.ok) { setBlogComments(prev => [await res.json(), ...prev]); setCommentDraft('') }
+    setPosting(false)
+  }
+
+  async function voteComment(commentId, vote) {
+    const res = await apiFetch(`/api/blog/comments/${commentId}/vote`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote }),
+    }).catch(() => null)
+    if (res?.ok) {
+      const updated = await res.json()
+      setBlogComments(prev => prev.map(c => c.id === commentId ? { ...c, ...updated } : c))
+    }
+  }
+
+  // ── List view ──────────────────────────────────────────────────────────────
+  if (view === 'list') return (
+    <div className="blog-page">
+      <div className="blog-list-header">
+        <h1 className="blog-page-title">Blog</h1>
+        {isAdmin && <button className="blog-new-btn" onClick={() => startEdit()}>+ New Post</button>}
+      </div>
+      {categories.length > 0 && (
+        <div className="blog-cat-pills">
+          <button className={`blog-cat-pill${!selCategory ? ' active' : ''}`} onClick={() => setSelCategory(null)}>All</button>
+          {categories.map(c => (
+            <button key={c} className={`blog-cat-pill${selCategory === c ? ' active' : ''}`} onClick={() => setSelCategory(c)}>{c}</button>
+          ))}
+        </div>
+      )}
+      {loading
+        ? <div className="dash-loading">Loading…</div>
+        : posts.length === 0
+          ? <div className="dash-empty">No posts yet.</div>
+          : <div className="blog-post-list">
+              {posts.map(p => (
+                <div key={p.id} className={`blog-post-card${!p.is_published ? ' blog-draft-card' : ''}`} onClick={() => openPost(p.slug)}>
+                  {p.cover_image && <img src={p.cover_image} alt="" className="blog-card-cover" />}
+                  <div className="blog-card-body">
+                    <div className="blog-card-meta">
+                      {p.category && <span className="blog-cat-tag">{p.category}</span>}
+                      {!p.is_published && <span className="blog-draft-tag">Draft</span>}
+                      <span className="blog-card-date">{timeAgo(p.created_at)}</span>
+                    </div>
+                    <h2 className="blog-card-title">{p.title}</h2>
+                    <p className="blog-card-excerpt">
+                      {p.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '').replace(/\n+/g, ' ').trim().slice(0, 180)}
+                      {p.content.length > 180 ? '…' : ''}
+                    </p>
+                    <span className="blog-card-comments">{p.comment_count} comment{p.comment_count !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+      }
+    </div>
+  )
+
+  // ── Post view ──────────────────────────────────────────────────────────────
+  if (view === 'post' && currentPost) return (
+    <div className="blog-page">
+      <div className="blog-post-nav">
+        <button className="blog-back-btn" onClick={() => { setView('list'); loadList() }}>← Back to Blog</button>
+        {currentPost.is_admin && (
+          <div className="blog-admin-actions">
+            <button className="blog-edit-btn" onClick={() => startEdit(currentPost)}>Edit</button>
+            <button className="blog-delete-btn" onClick={deletePost}>Delete</button>
+          </div>
+        )}
+      </div>
+      {currentPost.cover_image && <img src={currentPost.cover_image} alt="" className="blog-post-cover" />}
+      <div className="blog-post-header">
+        {currentPost.category && <span className="blog-cat-tag">{currentPost.category}</span>}
+        {!currentPost.is_published && <span className="blog-draft-tag">Draft</span>}
+        <h1 className="blog-post-title">{currentPost.title}</h1>
+        <p className="blog-post-byline">{timeAgo(currentPost.created_at)}</p>
+      </div>
+      <div className="blog-post-content">{renderContent(currentPost.content)}</div>
+      <div className="blog-comments">
+        <h3 className="panel-title" style={{ marginBottom: 12 }}>Comments</h3>
+        <form onSubmit={submitComment} className="comment-form">
+          <textarea className="comment-input" placeholder="Add a comment…" value={commentDraft}
+            onChange={e => setCommentDraft(e.target.value)} rows={2} />
+          <button className="comment-post-btn" type="submit" disabled={posting || !commentDraft.trim()}>
+            {posting ? '…' : 'Post'}
+          </button>
+        </form>
+        {blogComments.length === 0
+          ? <p className="comment-empty">No comments yet. Be the first!</p>
+          : blogComments.map(c => (
+            <div key={c.id} className="comment-row">
+              <div className="comment-meta">
+                <span className="comment-author">{c.author}</span>
+                <span className="comment-time">{timeAgo(c.created_at)}</span>
+              </div>
+              <p className="comment-body">{c.body}</p>
+              <div className="comment-votes">
+                <button className={`vote-btn${c.my_vote === 1 ? ' active-up' : ''}`} onClick={() => voteComment(c.id, 1)}>👍 {c.thumbs_up > 0 ? c.thumbs_up : ''}</button>
+                <button className={`vote-btn${c.my_vote === -1 ? ' active-down' : ''}`} onClick={() => voteComment(c.id, -1)}>👎 {c.thumbs_down > 0 ? c.thumbs_down : ''}</button>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  )
+
+  // ── Edit / Create view ─────────────────────────────────────────────────────
+  if (view === 'edit' && editDraft !== null) return (
+    <div className="blog-page">
+      <div className="blog-post-nav">
+        <button className="blog-back-btn" onClick={() => editDraft.id ? openPost(currentPost?.slug) : (setView('list'), loadList())}>
+          ← {editDraft.id ? 'Back to Post' : 'Back to Blog'}
+        </button>
+        <span className="blog-edit-heading">{editDraft.id ? 'Edit Post' : 'New Post'}</span>
+      </div>
+      <div className="blog-editor">
+        <div className="blog-editor-row">
+          <label className="blog-editor-label">Title</label>
+          <input className="blog-editor-input" value={editDraft.title}
+            onChange={e => setEditDraft(d => ({ ...d, title: e.target.value }))} placeholder="Post title…" />
+        </div>
+        <div className="blog-editor-row">
+          <label className="blog-editor-label">Category</label>
+          <input className="blog-editor-input blog-editor-half" value={editDraft.category}
+            onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))} placeholder="e.g. Analysis" />
+        </div>
+        <div className="blog-editor-row">
+          <label className="blog-editor-label">Cover Image URL</label>
+          <input className="blog-editor-input" value={editDraft.cover_image}
+            onChange={e => setEditDraft(d => ({ ...d, cover_image: e.target.value }))} placeholder="https://…" />
+        </div>
+        <div className="blog-editor-row blog-editor-content-row">
+          <div className="blog-editor-toolbar">
+            <label className="blog-editor-label">Content</label>
+            <div className="blog-editor-toolbar-btns">
+              <button type="button" className="blog-toolbar-btn" onClick={insertImage}>🖼 Insert Image</button>
+              <button type="button" className={`blog-toolbar-btn${preview ? ' active' : ''}`} onClick={() => setPreview(p => !p)}>
+                {preview ? 'Edit' : 'Preview'}
+              </button>
+            </div>
+          </div>
+          {preview
+            ? <div className="blog-preview-pane">{renderContent(editDraft.content) || <span className="blog-preview-empty">Nothing to preview.</span>}</div>
+            : <textarea ref={textareaRef} className="blog-editor-textarea"
+                value={editDraft.content}
+                onChange={e => setEditDraft(d => ({ ...d, content: e.target.value }))}
+                placeholder="Write your post here…&#10;&#10;Separate paragraphs with a blank line.&#10;Insert images with the toolbar button." />
+          }
+        </div>
+        <div className="blog-editor-row blog-editor-footer">
+          <label className="blog-publish-toggle">
+            <input type="checkbox" checked={!!editDraft.is_published}
+              onChange={e => setEditDraft(d => ({ ...d, is_published: e.target.checked }))} />
+            Published
+          </label>
+          {saveError && <span className="blog-save-error">{saveError}</span>}
+          <button className="blog-save-btn" onClick={savePost} disabled={saving || !editDraft.title.trim()}>
+            {saving ? 'Saving…' : 'Save Post'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  return null
 }
 
 // ── Fantasy page ──────────────────────────────────────────────────────────────
@@ -3801,6 +4100,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     localStorage.setItem('theme', dark ? 'dark' : 'light')
   }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
+  const [blogInitSlug, setBlogInitSlug] = useState(null)
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -4468,6 +4768,7 @@ function AppMain({ onLogout, onOpenAccount }) {
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
             <button className={`nav-btn${page === 'fantasy' ? ' active' : ''}`} onClick={() => setPage('fantasy')}>Fantasy</button>
+            <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => setPage('blog')}>Blog</button>
           </nav>
           <div className="header-search-wrap" ref={searchRef}>
             <input
@@ -4503,7 +4804,10 @@ function AppMain({ onLogout, onOpenAccount }) {
       {/* ── Page body ──────────────────────────────────────── */}
       <main className="page-body">
 
-      {page === 'dashboard' && <DashboardPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'dashboard' && <DashboardPage
+        onSelectPlayer={p => { selectPlayer(p); setPage('player') }}
+        onSelectBlogPost={slug => { setBlogInitSlug(slug); setPage('blog') }}
+      />}
 
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
@@ -4516,6 +4820,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+
+      {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

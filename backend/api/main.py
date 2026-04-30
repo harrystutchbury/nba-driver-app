@@ -106,7 +106,21 @@ def _refresh_yahoo_token(conn, username: str) -> str:
 
 JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
-_http_bearer  = HTTPBearer()
+_http_bearer          = HTTPBearer()
+_http_bearer_optional = HTTPBearer(auto_error=False)
+
+
+def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_http_bearer_optional),
+) -> Optional[str]:
+    """Like get_current_user but returns None instead of raising if unauthenticated."""
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload["sub"]
+    except (JWTError, KeyError):
+        return None
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -5079,10 +5093,20 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
                COALESCE(
                    (SELECT full_name FROM players WHERE slug = c.player_slug ORDER BY season DESC LIMIT 1),
                    c.player_slug
-               ) AS player_name
+               ) AS player_name,
+               NULL AS post_slug, NULL AS post_title, 'player' AS comment_type
         FROM comments c
         LEFT JOIN users u ON u.username = c.username
-        ORDER BY c.created_at DESC
+        UNION ALL
+        SELECT bc.id, NULL AS player_slug, bc.body, bc.created_at,
+               COALESCE(u.display_name, bc.username) AS author,
+               NULL AS player_name,
+               bp.slug AS post_slug, bp.title AS post_title, 'blog' AS comment_type
+        FROM blog_comments bc
+        JOIN blog_posts bp ON bp.id = bc.post_id
+        LEFT JOIN users u ON u.username = bc.username
+        WHERE bp.is_published = 1
+        ORDER BY created_at DESC
         LIMIT ?
     """, [limit]).fetchall()
     conn.close()
@@ -5164,6 +5188,267 @@ def vote_comment(comment_id: int, body: dict = Body(...), current_user: str = De
 
 
 app.include_router(router)
+
+
+# ── Blog ─────────────────────────────────────────────────────────────────────
+
+blog_router = APIRouter(prefix="/api/blog")
+
+
+def _is_admin(username: str, conn) -> bool:
+    row = conn.execute("SELECT is_admin FROM users WHERE username=?", [username]).fetchone()
+    return bool(row and row["is_admin"])
+
+
+def _slug_from_title(title: str) -> str:
+    import re
+    s = title.lower().strip()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"[\s]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s or "post"
+
+
+def _unique_slug(base: str, conn, exclude_id: int = None) -> str:
+    slug = base
+    i = 1
+    while True:
+        row = conn.execute(
+            "SELECT id FROM blog_posts WHERE slug=?" + (" AND id!=?" if exclude_id else ""),
+            [slug, exclude_id] if exclude_id else [slug],
+        ).fetchone()
+        if not row:
+            return slug
+        slug = f"{base}-{i}"
+        i += 1
+
+
+def _post_row(row) -> dict:
+    return {
+        "id":          row["id"],
+        "slug":        row["slug"],
+        "title":       row["title"],
+        "content":     row["content"],
+        "cover_image": row["cover_image"],
+        "category":    row["category"],
+        "author":      row["author"],
+        "is_published": bool(row["is_published"]),
+        "created_at":  row["created_at"],
+        "updated_at":  row["updated_at"],
+    }
+
+
+def _comment_row(row, username: str = None) -> dict:
+    return {
+        "id":          row["id"],
+        "body":        row["body"],
+        "created_at":  row["created_at"],
+        "author":      row["author"],
+        "thumbs_up":   row["thumbs_up"],
+        "thumbs_down": row["thumbs_down"],
+        "my_vote":     row["my_vote"] if username else 0,
+    }
+
+
+@blog_router.get("/is-admin")
+def blog_is_admin(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    admin = _is_admin(current_user, conn)
+    conn.close()
+    return {"is_admin": admin}
+
+
+@blog_router.get("/posts")
+def list_blog_posts(
+    category: Optional[str] = Query(None),
+    current_user: Optional[str] = Depends(get_optional_user),
+):
+    conn = get_conn()
+    is_admin = _is_admin(current_user, conn) if current_user else False
+    where = "" if is_admin else "WHERE bp.is_published = 1"
+    cat_clause = ""
+    params = []
+    if category:
+        cat_clause = " AND bp.category = ?" if where else "WHERE bp.category = ?"
+        params.append(category)
+    rows = conn.execute(f"""
+        SELECT bp.*, COUNT(bc.id) AS comment_count
+        FROM blog_posts bp
+        LEFT JOIN blog_comments bc ON bc.post_id = bp.id
+        {where}{cat_clause}
+        GROUP BY bp.id
+        ORDER BY bp.created_at DESC
+    """, params).fetchall()
+    cats = conn.execute(
+        "SELECT DISTINCT category FROM blog_posts WHERE category IS NOT NULL AND is_published=1 ORDER BY category"
+    ).fetchall()
+    conn.close()
+    return {
+        "posts": [dict(**_post_row(r), comment_count=r["comment_count"]) for r in rows],
+        "categories": [r["category"] for r in cats],
+        "is_admin": is_admin,
+    }
+
+
+@blog_router.get("/posts/{slug}")
+def get_blog_post(slug: str, current_user: Optional[str] = Depends(get_optional_user)):
+    conn = get_conn()
+    is_admin = _is_admin(current_user, conn) if current_user else False
+    row = conn.execute("SELECT * FROM blog_posts WHERE slug=?", [slug]).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Post not found")
+    if not row["is_published"] and not is_admin:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Post not found")
+    post = _post_row(row)
+    # Comments
+    comments = conn.execute("""
+        SELECT bc.id, bc.body, bc.created_at,
+               COALESCE(u.display_name, bc.username) AS author,
+               COALESCE(SUM(CASE WHEN v.vote=1  THEN 1 ELSE 0 END), 0) AS thumbs_up,
+               COALESCE(SUM(CASE WHEN v.vote=-1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
+               MAX(CASE WHEN v.username=? THEN v.vote ELSE 0 END) AS my_vote
+        FROM blog_comments bc
+        LEFT JOIN users u ON u.username = bc.username
+        LEFT JOIN blog_comment_votes v ON v.comment_id = bc.id
+        WHERE bc.post_id = ?
+        GROUP BY bc.id
+        ORDER BY bc.created_at DESC
+    """, [current_user or "", row["id"]]).fetchall()
+    conn.close()
+    return {**post, "comments": [_comment_row(c, current_user) for c in comments], "is_admin": is_admin}
+
+
+@blog_router.post("/posts")
+def create_blog_post(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    title = (body.get("title") or "").strip()
+    if not title:
+        conn.close()
+        raise HTTPException(status_code=400, detail="title required")
+    base_slug = _slug_from_title(title)
+    slug = _unique_slug(base_slug, conn)
+    conn.execute("""
+        INSERT INTO blog_posts (slug, title, content, cover_image, category, author, is_published)
+        VALUES (?,?,?,?,?,?,?)
+    """, [
+        slug, title,
+        (body.get("content") or "").strip(),
+        (body.get("cover_image") or "").strip() or None,
+        (body.get("category") or "").strip() or None,
+        current_user,
+        1 if body.get("is_published") else 0,
+    ])
+    row = conn.execute("SELECT * FROM blog_posts WHERE slug=?", [slug]).fetchone()
+    conn.commit()
+    conn.close()
+    return _post_row(row)
+
+
+@blog_router.put("/posts/{post_id}")
+def update_blog_post(post_id: int, body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    row = conn.execute("SELECT * FROM blog_posts WHERE id=?", [post_id]).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Post not found")
+    title   = (body.get("title") or row["title"]).strip()
+    new_slug = _unique_slug(_slug_from_title(title), conn, exclude_id=post_id)
+    conn.execute("""
+        UPDATE blog_posts
+        SET slug=?, title=?, content=?, cover_image=?, category=?, is_published=?,
+            updated_at=datetime('now')
+        WHERE id=?
+    """, [
+        new_slug, title,
+        (body.get("content") or "").strip(),
+        (body.get("cover_image") or "").strip() or None,
+        (body.get("category") or "").strip() or None,
+        1 if body.get("is_published") else 0,
+        post_id,
+    ])
+    row = conn.execute("SELECT * FROM blog_posts WHERE id=?", [post_id]).fetchone()
+    conn.commit()
+    conn.close()
+    return _post_row(row)
+
+
+@blog_router.delete("/posts/{post_id}")
+def delete_blog_post(post_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    conn.execute("DELETE FROM blog_posts WHERE id=?", [post_id])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@blog_router.post("/posts/{post_id}/comments")
+def post_blog_comment(post_id: int, body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    text = (body.get("body") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="body required")
+    conn = get_conn()
+    post = conn.execute("SELECT id FROM blog_posts WHERE id=? AND is_published=1", [post_id]).fetchone()
+    if not post:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Post not found")
+    cur = conn.execute(
+        "INSERT INTO blog_comments (post_id, username, body) VALUES (?,?,?)",
+        [post_id, current_user, text],
+    )
+    cid = cur.lastrowid
+    row = conn.execute("""
+        SELECT bc.id, bc.body, bc.created_at,
+               COALESCE(u.display_name, bc.username) AS author,
+               0 AS thumbs_up, 0 AS thumbs_down, 0 AS my_vote
+        FROM blog_comments bc
+        LEFT JOIN users u ON u.username = bc.username
+        WHERE bc.id=?
+    """, [cid]).fetchone()
+    conn.commit()
+    conn.close()
+    return _comment_row(row, current_user)
+
+
+@blog_router.post("/comments/{comment_id}/vote")
+def vote_blog_comment(comment_id: int, body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    vote = body.get("vote")
+    if vote not in (1, -1):
+        raise HTTPException(status_code=400, detail="vote must be 1 or -1")
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT vote FROM blog_comment_votes WHERE comment_id=? AND username=?",
+        [comment_id, current_user],
+    ).fetchone()
+    if existing and existing["vote"] == vote:
+        conn.execute("DELETE FROM blog_comment_votes WHERE comment_id=? AND username=?", [comment_id, current_user])
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO blog_comment_votes (comment_id, username, vote) VALUES (?,?,?)",
+            [comment_id, current_user, vote],
+        )
+    conn.commit()
+    row = conn.execute("""
+        SELECT COALESCE(SUM(CASE WHEN vote=1  THEN 1 ELSE 0 END),0) AS thumbs_up,
+               COALESCE(SUM(CASE WHEN vote=-1 THEN 1 ELSE 0 END),0) AS thumbs_down,
+               MAX(CASE WHEN username=? THEN vote ELSE 0 END) AS my_vote
+        FROM blog_comment_votes WHERE comment_id=?
+    """, [current_user, comment_id]).fetchone()
+    conn.close()
+    return dict(row)
+
+
+app.include_router(blog_router)
 
 
 # Must come AFTER all API routes so /api/* is never caught here.

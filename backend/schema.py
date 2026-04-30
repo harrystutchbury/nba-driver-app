@@ -256,6 +256,46 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_posts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug         TEXT UNIQUE NOT NULL,
+            title        TEXT NOT NULL,
+            content      TEXT NOT NULL DEFAULT '',
+            cover_image  TEXT,
+            category     TEXT,
+            author       TEXT NOT NULL,
+            is_published INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_comments (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id    INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+            username   TEXT NOT NULL,
+            body       TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_comment_votes (
+            comment_id INTEGER NOT NULL,
+            username   TEXT NOT NULL,
+            vote       INTEGER NOT NULL,
+            PRIMARY KEY (comment_id, username)
+        )
+    """)
+
+    # Migrations
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # already exists
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")
