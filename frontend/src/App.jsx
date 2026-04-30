@@ -3269,12 +3269,13 @@ function MatchupProjection({ onSelectPlayer }) {
   }
 
   function DayGrid({ players, label, isMyTeam }) {
-    const totalGP = players.reduce((s, p) => s + p.games, 0)
-    const dayTotals = d.day_labels.map((_, i) => players.filter(p => p.days[i]).length)
+    const activeCapacity = d.active_capacity || 0
+    const totalEffGP = players.reduce((s, p) => s + (p.effective_games ?? p.games), 0)
+    const dayTotals  = d.day_labels.map((_, i) => players.filter(p => p.days[i]).length)
     return (
       <div className="mp-grid-section">
         <div className="mp-grid-label">
-          {label} <span className="mp-grid-gp-total">({totalGP} GP)</span>
+          {label} <span className="mp-grid-gp-total">({totalEffGP.toFixed(1)} eff. GP{activeCapacity ? ` · ${activeCapacity} slots` : ''})</span>
         </div>
         <div className="mp-grid-scroll">
           <table className="mp-grid-table">
@@ -3309,13 +3310,28 @@ function MatchupProjection({ onSelectPlayer }) {
               <tr className="mp-totals-row">
                 <td className="mp-col-player mp-totals-label">Games/day</td>
                 <td className="mp-col-team"></td>
-                <td className="mp-col-gp">{totalGP}</td>
-                {dayTotals.map((n, i) => (
-                  <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}`}>
-                    {n > 0 ? n : ''}
-                  </td>
-                ))}
+                <td className="mp-col-gp">{players.reduce((s, p) => s + p.games, 0)}</td>
+                {dayTotals.map((n, i) => {
+                  const overbooked = activeCapacity > 0 && n > activeCapacity
+                  return (
+                    <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}${overbooked ? ' mp-day-overbooked' : ''}`}>
+                      {n > 0 ? (overbooked ? `${n}↑` : n) : ''}
+                    </td>
+                  )
+                })}
               </tr>
+              {activeCapacity > 0 && (
+                <tr className="mp-slots-row">
+                  <td className="mp-col-player mp-totals-label">Slots avail.</td>
+                  <td className="mp-col-team"></td>
+                  <td className="mp-col-gp">{activeCapacity}</td>
+                  {dayTotals.map((n, i) => (
+                    <td key={i} className="mp-col-day mp-slot-cap">
+                      {n > 0 ? Math.min(n, activeCapacity) : ''}
+                    </td>
+                  ))}
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>
@@ -3495,6 +3511,7 @@ function MatchupProjection({ onSelectPlayer }) {
                 {simData.cat_wins}–{simData.cat_total - simData.cat_wins} ({Math.round(simData.overall_win_prob*100)}%)
               </span>
             </div>
+            <div className="mp-sim-body">
             <table className="mp-cats-table mp-sim-cats-table">
               <thead>
                 <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th></tr>
@@ -3518,6 +3535,35 @@ function MatchupProjection({ onSelectPlayer }) {
                 })}
               </tbody>
             </table>
+            {/* Simulated outcome distribution */}
+            {(() => {
+              const simOutcomes   = outcomeDistribution(simData.categories)
+              const simMaxProb    = Math.max(...simOutcomes.map(o => o.prob))
+              return (
+                <div className="mp-outcome-section mp-sim-outcome">
+                  <div className="mp-grid-label">Simulated Result Distribution</div>
+                  <div className="mp-outcomes">
+                    {simOutcomes.slice().reverse().map(o => {
+                      const pct    = Math.round(o.prob * 100)
+                      const barW   = simMaxProb > 0 ? (o.prob / simMaxProb) * 100 : 0
+                      const isProj = o.wins === simData.cat_wins
+                      const cls    = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
+                      return (
+                        <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
+                          <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
+                          <div className="mp-out-bar-wrap">
+                            <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
+                          </div>
+                          <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
+                          {isProj && <span className="mp-out-proj-tag">proj</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+            </div>{/* end mp-sim-body */}
           </div>
         )}
 

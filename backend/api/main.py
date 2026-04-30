@@ -3413,6 +3413,40 @@ def espn_matchup(current_user: str = Depends(get_current_user)):
 
 # ── Matchup Projection ──────────────────────────────────────────────────────
 
+# ESPN position slot ID mapping (matches espn_api POSITION_MAP)
+_SLOT_NAME_TO_ID = {
+    'PG': 0, 'SG': 1, 'SF': 2, 'PF': 3, 'C': 4, 'G': 5, 'F': 6,
+    'SG/SF': 7, 'G/F': 8, 'PF/C': 9, 'F/C': 10, 'UT': 11,
+}
+_ACTIVE_SLOT_IDS = set(_SLOT_NAME_TO_ID.values())  # excludes BE(12) and IR(13)
+
+
+def _max_bipartite_matching(player_eligible_sets: list, slot_instances: list) -> int:
+    """
+    Max bipartite matching between players (left) and slot instances (right).
+    player_eligible_sets: list of sets of active slot IDs (one per player).
+    slot_instances: list of slot IDs expanded from counts (e.g. [0,5,11,11,11]).
+    Returns the maximum number of players that can be slotted.
+    """
+    n_slots    = len(slot_instances)
+    match_slot = [-1] * n_slots  # match_slot[si] = player index, or -1
+
+    def _augment(pi, visited):
+        for si, sid in enumerate(slot_instances):
+            if sid in player_eligible_sets[pi] and not visited[si]:
+                visited[si] = True
+                if match_slot[si] == -1 or _augment(match_slot[si], visited):
+                    match_slot[si] = pi
+                    return True
+        return False
+
+    matched = 0
+    for pi in range(len(player_eligible_sets)):
+        if _augment(pi, [False] * n_slots):
+            matched += 1
+    return matched
+
+
 def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slugs=None):
     """
     Core logic for the matchup projection view. Called from GET (browse) and POST (simulate).
@@ -3428,7 +3462,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
 
     conn = get_conn()
     fc = conn.execute(
-        "SELECT scoring_settings, team_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        "SELECT scoring_settings, team_key, access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
         [current_user],
     ).fetchone()
     if not fc or not fc["team_key"]:
@@ -3583,6 +3617,36 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     finally:
         conn2.close()
 
+    # Fetch lineup slot counts from ESPN mSettings API
+    slot_instances: list = []   # expanded list of active slot IDs
+    active_capacity: int = 0
+    try:
+        import urllib.request as _urlreq2
+        _lid  = fc["league_key"]
+        _s2   = fc["access_token"]
+        _swid = fc["refresh_token"]
+        _murl = (
+            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}"
+            f"/segments/0/leagues/{_lid}?view=mSettings"
+        )
+        _mreq = _urlreq2.Request(_murl, headers={"Cookie": f"espn_s2={_s2}; SWID={_swid}"})
+        with _urlreq2.urlopen(_mreq, timeout=15) as _r:
+            _msettings = _json.loads(_r.read())
+        _raw_counts = (
+            _msettings.get("settings", {})
+            .get("rosterSettings", {})
+            .get("lineupSlotCounts", {})
+        )
+        # Expand active slots only (exclude BE=12, IR=13)
+        for _sid_str, _cnt in _raw_counts.items():
+            _sid = int(_sid_str)
+            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+                slot_instances.extend([_sid] * _cnt)
+        active_capacity = len(slot_instances)
+        log.info(f"Lineup slot capacity: {active_capacity} active slots")
+    except Exception as _e:
+        log.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
+
     def _resolve_slug(player):
         slug = espn_id_to_slug.get(str(player.playerId))
         if not slug:
@@ -3609,50 +3673,93 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
             if opp_id:
                 opp_team_obj = next((t for t in league.teams if str(t.team_id) == opp_id), None)
 
+    def _eligible_ids(player):
+        """Return set of active slot IDs a player is eligible for."""
+        return {
+            _SLOT_NAME_TO_ID[s]
+            for s in (getattr(player, "eligibleSlots", None) or [])
+            if s in _SLOT_NAME_TO_ID
+        }
+
+    def _compute_effective_games(players_raw):
+        """
+        players_raw: list of (name, slug, eligible_slot_ids)
+        Returns list of effective_games floats accounting for lineup slot constraints.
+        """
+        n = len(players_raw)
+        eff = [0.0] * n
+        for di, day_dt in enumerate(day_dates):
+            playing_indices = [
+                pi for pi, (_, slug, _elig) in enumerate(players_raw)
+                if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
+            ]
+            if not playing_indices:
+                continue
+            if not slot_instances:
+                # No slot constraint data: all players play
+                for pi in playing_indices:
+                    eff[pi] += 1.0
+                continue
+            elig_sets  = [players_raw[pi][2] for pi in playing_indices]
+            matching   = _max_bipartite_matching(elig_sets, slot_instances)
+            frac       = min(1.0, matching / len(playing_indices))
+            for pi in playing_indices:
+                eff[pi] += frac
+        return eff
+
     # Helper: build player info dict
-    def _player_info(name, slug):
-        nba_team   = slug_to_team.get(slug, "") if slug else ""
-        week_dates = team_week_dates.get(nba_team, set())
-        games      = len(week_dates)
-        days       = [d in week_dates for d in day_dates]
-        s          = player_stats.get(slug) if slug else None
-        avg_stats  = {}
+    def _player_info(name, slug, effective_games, raw_games, days):
+        s         = player_stats.get(slug) if slug else None
+        avg_stats = {}
         if s:
             for cat in tracked_cats:
                 sk = stat_name_map.get(cat)
                 if sk and sk in s:
                     avg_stats[cat] = round(s[sk], 1)
         return {
-            "name":     name,
-            "slug":     slug,
-            "nba_team": nba_team,
-            "games":    games,
-            "days":     days,
-            "avg_stats": avg_stats,
+            "name":            name,
+            "slug":            slug,
+            "nba_team":        slug_to_team.get(slug, "") if slug else "",
+            "games":           raw_games,
+            "effective_games": round(effective_games, 2),
+            "days":            days,
+            "avg_stats":       avg_stats,
         }
 
     # Build my roster (with add/drop overrides)
-    my_players   = []
+    my_raw   = []
     roster_slugs = set()
     for p in (my_team_obj.roster or []):
         slug = _resolve_slug(p)
         if slug in drop_slugs:
             continue
         roster_slugs.add(slug)
-        my_players.append(_player_info(p.name, slug))
+        my_raw.append((p.name, slug, _eligible_ids(p)))
     for slug in add_slugs:
         if slug not in roster_slugs:
-            my_players.append(_player_info(slug_to_name.get(slug, slug), slug))
+            # Added players: use broad eligible set (all active slots)
+            my_raw.append((slug_to_name.get(slug, slug), slug, set(_ACTIVE_SLOT_IDS)))
 
-    # Build opp roster
-    opp_players = []
+    opp_raw = []
     for p in (opp_team_obj.roster if opp_team_obj else []):
         slug = _resolve_slug(p)
-        opp_players.append(_player_info(p.name, slug))
+        opp_raw.append((p.name, slug, _eligible_ids(p)))
 
-    # Sort by games desc
-    my_players.sort(key=lambda p: -p["games"])
-    opp_players.sort(key=lambda p: -p["games"])
+    my_eff  = _compute_effective_games(my_raw)
+    opp_eff = _compute_effective_games(opp_raw)
+
+    def _build_players(raw_list, eff_list):
+        result = []
+        for (name, slug, _), eff in zip(raw_list, eff_list):
+            nba_team   = slug_to_team.get(slug, "") if slug else ""
+            week_dates = team_week_dates.get(nba_team, set())
+            raw_games  = len(week_dates)
+            days       = [d in week_dates for d in day_dates]
+            result.append(_player_info(name, slug, eff, raw_games, days))
+        return result
+
+    my_players  = sorted(_build_players(my_raw, my_eff),  key=lambda p: -p["effective_games"])
+    opp_players = sorted(_build_players(opp_raw, opp_eff), key=lambda p: -p["effective_games"])
 
     # Compute category projections with ranges
     def _project(players):
@@ -3664,7 +3771,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 for p in players:
                     s = player_stats.get(p["slug"]) if p["slug"] else None
                     if not s: continue
-                    g = p["games"]
+                    g = p.get("effective_games", p["games"])
                     if cat == "FG%":
                         total_att  += s["fga_pg"] * g
                         total_made += s["fga_pg"] * (s["fg_pct"] / 100) * g
@@ -3684,7 +3791,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 for p in players:
                     s = player_stats.get(p["slug"]) if p["slug"] else None
                     if not s: continue
-                    g  = p["games"]
+                    g  = p.get("effective_games", p["games"])
                     mu = s.get(sk) or 0.0
                     sd = s.get(f"{sk}_sd") or (mu * 0.3)
                     tp += mu * g
@@ -3749,6 +3856,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         "cat_wins":         cat_wins,
         "cat_total":        len(categories),
         "team_week_games":  {team: len(dates) for team, dates in team_week_dates.items()},
+        "active_capacity":  active_capacity,
     }
 
 

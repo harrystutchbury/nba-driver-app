@@ -4053,9 +4053,11 @@ td.bs-name {
 .mp-sim-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 
 .mp-sim-result { margin-top: 16px; }
+.mp-sim-body { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .mp-sim-result-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
 .mp-sim-result-matchup { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-weight: 700; }
 .mp-sim-cats-table { max-width: 500px; }
+.mp-sim-outcome { flex: 1; min-width: 200px; }
 .mp-delta-pos { color: var(--skill); font-weight: 700; }
 .mp-delta-neg { color: var(--neg);   font-weight: 700; }
 
@@ -4093,6 +4095,11 @@ td.bs-name {
 .mp-totals-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .mp-day-total { color: var(--muted); }
 .mp-day-total-has { color: var(--text); font-weight: 700; }
+.mp-day-overbooked { color: var(--neg) !important; }
+
+/* Slots row */
+.mp-slots-row td { font-size: 11px; padding: 2px 8px; color: var(--muted); }
+.mp-slot-cap { color: var(--skill) !important; font-weight: 600; }
 
 /* Clickable player names */
 .mp-player-link {
