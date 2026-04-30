@@ -2059,6 +2059,38 @@ function AdjustmentsPage() {
   const totalMins = players.reduce((s, p) => s + (+edits[p.slug]?.min_pg || 0), 0)
   const minsOk    = Math.abs(totalMins - 240) < 1
 
+  const teamTotals = (() => {
+    let fga = 0, fgaWtPct = 0, fg3a = 0, fg3aWtPct = 0, fta = 0, ftaWtPct = 0
+    let oreb = 0, dreb = 0, ast = 0, stl = 0, blk = 0, tov = 0, pts = 0, z = 0
+    for (const p of players) {
+      const e   = edits[p.slug] || {}
+      const min = +e.min_pg || 0
+      const thisFga  = +e.fga_pg  || 0; fga  += thisFga;  fgaWtPct  += thisFga  * (+e.fg_pct  || 0)
+      const thisFg3a = +e.fg3a_pg || 0; fg3a += thisFg3a; fg3aWtPct += thisFg3a * (+e.fg3_pct || 0)
+      const thisFta  = +e.fta_pg  || 0; fta  += thisFta;  ftaWtPct  += thisFta  * (+e.ft_pct  || 0)
+      oreb += (+e.oreb_rate || 0) * min / 36
+      dreb += (+e.dreb_rate || 0) * min / 36
+      ast  += (+e.ast_rate  || 0) * min / 36
+      stl  += (+e.stl_rate  || 0) * min / 36
+      blk  += (+e.blk_rate  || 0) * min / 36
+      tov  += (+e.tov_rate  || 0) * min / 36
+      pts  += parseFloat(computePts(e)) || 0
+      z    += parseFloat(computeZ(e)) || 0
+    }
+    return {
+      fga: fga.toFixed(1),
+      fg_pct: fga > 0 ? (fgaWtPct / fga).toFixed(1) : '—',
+      fg3a: fg3a.toFixed(1),
+      fg3_pct: fg3a > 0 ? (fg3aWtPct / fg3a).toFixed(1) : '—',
+      fta: fta.toFixed(1),
+      ft_pct: fta > 0 ? (ftaWtPct / fta).toFixed(1) : '—',
+      oreb: oreb.toFixed(1), dreb: dreb.toFixed(1),
+      ast: ast.toFixed(1), stl: stl.toFixed(1),
+      blk: blk.toFixed(1), tov: tov.toFixed(1),
+      pts: pts.toFixed(1), z: z.toFixed(2),
+    }
+  })()
+
   function numInput(slug, field, w = '52px') {
     return (
       <input type="number" step="0.1" min="0" className="adj-input" style={{ width: w }}
@@ -2187,9 +2219,23 @@ function AdjustmentsPage() {
                 </tbody>
                 <tfoot>
                   <tr className="adj-tfoot">
-                    <td className="adj-td adj-td-name"><strong>Total</strong></td>
+                    <td className="adj-td adj-td-name"><strong>Team total</strong></td>
                     <td className="adj-td"><strong className={minsOk ? 'adj-z-pos' : 'adj-z-neg'}>{totalMins.toFixed(1)}</strong></td>
-                    {Array.from({ length: 15 }, (_, i) => <td key={i} className="adj-td" />)}
+                    <td className="adj-td"><strong>{teamTotals.fga}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fg_pct}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fg3a}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fg3_pct}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fta}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.ft_pct}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.oreb}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.dreb}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.ast}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.stl}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.blk}</strong></td>
+                    <td className="adj-td adj-td-rate"><strong>{teamTotals.tov}</strong></td>
+                    <td className="adj-td adj-td-pts"><strong>{teamTotals.pts}</strong></td>
+                    <td className="adj-td adj-td-z"><strong>{teamTotals.z}</strong></td>
+                    <td className="adj-td" />
                   </tr>
                 </tfoot>
               </table>
