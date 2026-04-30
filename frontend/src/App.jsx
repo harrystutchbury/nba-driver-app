@@ -1897,7 +1897,8 @@ function CommentsSection({ playerSlug }) {
 
 // ── Adjustments page (admin only) ────────────────────────────────────────────
 
-const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct','reb_pg','ast_pg','stl_pg','blk_pg','tov_pg']
+const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct',
+                    'oreb_rate','dreb_rate','ast_rate','stl_rate','blk_rate','tov_rate']
 
 function AdjustmentsPage() {
   const [isAdmin,       setIsAdmin]       = useState(false)
@@ -1911,6 +1912,9 @@ function AdjustmentsPage() {
   const [saving,        setSaving]        = useState({})
   const [msgs,          setMsgs]          = useState({})
   const [loading,       setLoading]       = useState(false)
+  // Team-level date range applied to all saves
+  const [teamStart,     setTeamStart]     = useState('')
+  const [teamEnd,       setTeamEnd]       = useState('')
 
   useEffect(() => {
     apiFetch('/api/adjustments/is-admin')
@@ -1941,6 +1945,12 @@ function AdjustmentsPage() {
         setEdits(newEdits)
         setAdjIds(newIds)
         setMsgs({})
+        // Pre-fill team dates from any existing adjustment
+        const anyAdj = d.players.find(p => p.adjustment)?.adjustment
+        if (anyAdj) {
+          setTeamStart(anyAdj.start_date || '')
+          setTeamEnd(anyAdj.end_date || '')
+        }
       })
       .finally(() => setLoading(false))
   }, [selectedTeam])
@@ -1949,8 +1959,18 @@ function AdjustmentsPage() {
     const fga = +e.fga_pg || 0, fgPct = +e.fg_pct || 0
     const fg3a = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
     const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
-    const non3 = Math.max(fga - fg3a, 0)
-    return (non3 * fgPct / 100 * 2 + fg3a * fg3Pct / 100 * 3 + fta * ftPct / 100).toFixed(1)
+    return (Math.max(fga - fg3a, 0) * fgPct / 100 * 2 + fg3a * fg3Pct / 100 * 3 + fta * ftPct / 100).toFixed(1)
+  }
+
+  function computePerGame(e) {
+    const min = +e.min_pg || 0
+    return {
+      reb: ((+e.oreb_rate || 0) + (+e.dreb_rate || 0)) * min / 36,
+      ast:  (+e.ast_rate  || 0) * min / 36,
+      stl:  (+e.stl_rate  || 0) * min / 36,
+      blk:  (+e.blk_rate  || 0) * min / 36,
+      tov:  (+e.tov_rate  || 0) * min / 36,
+    }
   }
 
   function computeZ(e) {
@@ -1960,24 +1980,16 @@ function AdjustmentsPage() {
     const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
     const fg3m = fg3a * fg3Pct / 100
     const pts  = Math.max(fga - fg3a, 0) * fgPct / 100 * 2 + fg3m * 3 + fta * ftPct / 100
-    const statVals = {
-      pts, reb: +e.reb_pg || 0, ast: +e.ast_pg || 0, stl: +e.stl_pg || 0,
-      blk: +e.blk_pg || 0, tov: +e.tov_pg || 0, fg3m,
-    }
+    const pg   = computePerGame(e)
+    const statVals = { pts, fg3m, reb: pg.reb, ast: pg.ast, stl: pg.stl, blk: pg.blk, tov: pg.tov }
     const { fg_mean, ft_mean, stats } = leagueParams
     let total = 0, count = 0
     for (const [key, { mean, std }] of Object.entries(stats || {})) {
       if (!std) continue
       let z
-      if (key === 'fg_pct') {
-        z = ((fgPct - fg_mean) * fga - mean) / std
-      } else if (key === 'ft_pct') {
-        z = ((ftPct - ft_mean) * fta - mean) / std
-      } else {
-        const v = statVals[key]; if (v == null) continue
-        z = (v - mean) / std
-        if (key === 'tov') z = -z
-      }
+      if (key === 'fg_pct')      z = ((fgPct - fg_mean) * fga - mean) / std
+      else if (key === 'ft_pct') z = ((ftPct - ft_mean) * fta - mean) / std
+      else { const v = statVals[key]; if (v == null) continue; z = (v - mean) / std; if (key === 'tov') z = -z }
       total += z; count++
     }
     return count > 0 ? total.toFixed(2) : null
@@ -2007,9 +2019,8 @@ function AdjustmentsPage() {
       for (const f of ADJ_FIELDS) {
         const v = e[f]; body[f] = v !== '' && v != null ? parseFloat(v) : null
       }
-      body.start_date = e.start_date || null
-      body.end_date   = e.end_date   || null
-      body.notes      = e.notes      || null
+      body.start_date = teamStart || null
+      body.end_date   = teamEnd   || null
 
       const adjId = adjIds[slug]
       const res = await apiFetch(adjId ? `/api/adjustments/${adjId}` : '/api/adjustments', {
@@ -2028,6 +2039,12 @@ function AdjustmentsPage() {
     setSaving(prev => ({ ...prev, [slug]: false }))
   }
 
+  async function saveAll() {
+    for (const p of players) {
+      if (isEdited(p.slug) || adjIds[p.slug]) await savePlayer(p.slug)
+    }
+  }
+
   async function deleteAdj(slug) {
     const adjId = adjIds[slug]
     if (!adjId || !confirm('Remove this adjustment?')) return
@@ -2044,12 +2061,9 @@ function AdjustmentsPage() {
 
   function numInput(slug, field, w = '52px') {
     return (
-      <input
-        type="number" step="0.1" min="0"
-        className="adj-input" style={{ width: w }}
+      <input type="number" step="0.1" min="0" className="adj-input" style={{ width: w }}
         value={edits[slug]?.[field] ?? ''}
-        onChange={ev => setField(slug, field, ev.target.value)}
-      />
+        onChange={ev => setField(slug, field, ev.target.value)} />
     )
   }
 
@@ -2071,10 +2085,24 @@ function AdjustmentsPage() {
 
       {selectedTeam && (
         <>
-          <div className={`adj-val-bar ${minsOk ? 'adj-val-ok' : 'adj-val-bad'}`}>
-            <span>Team minutes: <strong>{totalMins.toFixed(1)}</strong> / 240</span>
-            {!minsOk && <span className="adj-val-hint">Adjust totals to sum to 240</span>}
-            {minsOk  && <span className="adj-val-hint">✓ Minutes balanced</span>}
+          {/* Team-level controls */}
+          <div className="adj-team-controls">
+            <div className="adj-val-bar-wrap">
+              <div className={`adj-val-bar ${minsOk ? 'adj-val-ok' : 'adj-val-bad'}`}>
+                <span>Team minutes: <strong>{totalMins.toFixed(1)}</strong> / 240</span>
+                {!minsOk && <span className="adj-val-hint">Adjust totals to sum to 240</span>}
+                {minsOk  && <span className="adj-val-hint">✓ Minutes balanced</span>}
+              </div>
+            </div>
+            <div className="adj-date-group">
+              <label className="adj-label">Period From</label>
+              <input type="date" className="adj-date-input" value={teamStart}
+                onChange={e => setTeamStart(e.target.value)} />
+              <label className="adj-label">To</label>
+              <input type="date" className="adj-date-input" value={teamEnd}
+                onChange={e => setTeamEnd(e.target.value)} />
+              <span className="adj-date-note">Applied to all saves</span>
+            </div>
           </div>
 
           {loading ? <div className="adj-loading">Loading…</div> : (
@@ -2090,28 +2118,28 @@ function AdjustmentsPage() {
                     <th className="adj-th">3P%</th>
                     <th className="adj-th">FTA</th>
                     <th className="adj-th">FT%</th>
-                    <th className="adj-th">REB</th>
-                    <th className="adj-th">AST</th>
-                    <th className="adj-th">STL</th>
-                    <th className="adj-th">BLK</th>
-                    <th className="adj-th">TOV</th>
+                    <th className="adj-th adj-th-rate">OREB<br/>/36</th>
+                    <th className="adj-th adj-th-rate">DREB<br/>/36</th>
+                    <th className="adj-th adj-th-rate">AST<br/>/36</th>
+                    <th className="adj-th adj-th-rate">STL<br/>/36</th>
+                    <th className="adj-th adj-th-rate">BLK<br/>/36</th>
+                    <th className="adj-th adj-th-rate">TOV<br/>/36</th>
                     <th className="adj-th adj-th-pts">PTS*</th>
-                    <th className="adj-th adj-th-z">Z</th>
-                    <th className="adj-th">From</th>
-                    <th className="adj-th">To</th>
+                    <th className="adj-th adj-th-z">Z (Δ)</th>
                     <th className="adj-th adj-th-act"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {players.map(p => {
-                    const e    = edits[p.slug] || {}
-                    const pts  = computePts(e)
-                    const z    = computeZ(e)
-                    const bz   = computeZ(p.baseline)
+                    const e      = edits[p.slug] || {}
+                    const pts    = computePts(e)
+                    const pg     = computePerGame(e)
+                    const z      = computeZ(e)
+                    const bz     = computeZ(p.baseline)
                     const hasAdj = !!adjIds[p.slug]
                     const edited = isEdited(p.slug)
                     const msg    = msgs[p.slug]
-                    const zDelta = z != null && bz != null ? (z - bz).toFixed(2) : null
+                    const zDelta = z != null && bz != null ? (parseFloat(z) - parseFloat(bz)).toFixed(2) : null
                     return (
                       <tr key={p.slug} className={`adj-row${hasAdj ? ' adj-row-live' : ''}`}>
                         <td className="adj-td adj-td-name">
@@ -2121,38 +2149,27 @@ function AdjustmentsPage() {
                             {hasAdj && <span className="adj-live-dot" title="Active adjustment" />}
                           </div>
                         </td>
-                        <td className="adj-td">{numInput(p.slug, 'min_pg',  '52px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fga_pg',  '48px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg_pct',  '48px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg3a_pg', '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg3_pct', '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fta_pg',  '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'ft_pct',  '48px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'reb_pg',  '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'ast_pg',  '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'stl_pg',  '40px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'blk_pg',  '40px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'tov_pg',  '40px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'min_pg',    '52px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fga_pg',    '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg_pct',    '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3a_pg',   '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3_pct',   '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fta_pg',    '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'ft_pct',    '48px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'oreb_rate', '44px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'dreb_rate', '44px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'ast_rate',  '44px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'stl_rate',  '40px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'blk_rate',  '40px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'tov_rate',  '40px')}</td>
                         <td className="adj-td adj-td-pts">{pts}</td>
                         <td className="adj-td adj-td-z">
-                          <span className={zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}>
-                            {z ?? '—'}
-                          </span>
+                          <span className={zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}>{z ?? '—'}</span>
                           {zDelta != null && (
                             <span className={`adj-z-delta ${zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}`}>
                               {zDelta > 0 ? `+${zDelta}` : zDelta}
                             </span>
                           )}
-                        </td>
-                        <td className="adj-td">
-                          <input type="date" className="adj-date-input"
-                            value={e.start_date || ''}
-                            onChange={ev => setField(p.slug, 'start_date', ev.target.value)} />
-                        </td>
-                        <td className="adj-td">
-                          <input type="date" className="adj-date-input"
-                            value={e.end_date || ''}
-                            onChange={ev => setField(p.slug, 'end_date', ev.target.value)} />
                         </td>
                         <td className="adj-td adj-td-act">
                           <div className="adj-act-btns">
@@ -2172,14 +2189,17 @@ function AdjustmentsPage() {
                   <tr className="adj-tfoot">
                     <td className="adj-td adj-td-name"><strong>Total</strong></td>
                     <td className="adj-td"><strong className={minsOk ? 'adj-z-pos' : 'adj-z-neg'}>{totalMins.toFixed(1)}</strong></td>
-                    {Array.from({ length: 16 }, (_, i) => <td key={i} className="adj-td" />)}
+                    {Array.from({ length: 15 }, (_, i) => <td key={i} className="adj-td" />)}
                   </tr>
                 </tfoot>
               </table>
             </div>
           )}
 
-          <div className="adj-footnote">* PTS computed from FGA × FG% + 3PA × 3P% + FTA × FT%. Z-score vs current season population.</div>
+          <div className="adj-footnote">
+            * PTS = (FGA−3PA)×FG%×2 + 3PA×3P%×3 + FTA×FT%. Rate stats per 36 min → per-game via adjusted MIN.
+            Z-score vs current season population.
+          </div>
         </>
       )}
     </div>

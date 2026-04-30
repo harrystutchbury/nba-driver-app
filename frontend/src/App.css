@@ -4284,5 +4284,13 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 
 .adj-footnote { font-size: 11px; color: var(--muted); margin-top: 10px; }
 
+.adj-team-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.adj-date-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.adj-date-group label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+.adj-date-note { font-size: 11px; color: var(--muted); font-style: italic; }
+
+.adj-th-rate { background: rgba(255,180,77,0.05); }
+.adj-td-rate { background: rgba(255,180,77,0.03); }
+
 /* Projection page "adj" badge */
 .adj-proj-badge { font-size: 9px; font-weight: 700; background: rgba(77,255,180,0.15); color: var(--skill); border-radius: 3px; padding: 1px 4px; margin-left: 4px; text-transform: uppercase; vertical-align: middle; }
