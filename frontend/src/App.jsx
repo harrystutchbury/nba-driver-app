@@ -1900,6 +1900,131 @@ function CommentsSection({ playerSlug }) {
 const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct',
                     'oreb_rate','dreb_rate','ast_rate','stl_rate','blk_rate','tov_rate']
 
+// ── Trending Players ──────────────────────────────────────────────────────────
+
+const STAT_LABELS = {
+  pts: 'PTS', reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK',
+  tov: 'TOV', fg3m: '3PM', fg_pct: 'FG%', ft_pct: 'FT%',
+}
+
+function TrendingPage({ onSelectPlayer }) {
+  const [direction, setDirection] = useState('up')
+  const [window,    setWindow]    = useState(7)
+  const [data,      setData]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    apiFetch(`/api/trending?window=${window}&direction=${direction}&limit=15`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [window, direction])
+
+  const players = data?.players || []
+
+  return (
+    <div className="trend-page">
+      <div className="trend-header">
+        <h2 className="trend-title">Trending Players</h2>
+        <p className="trend-subtitle">
+          Players whose recent stats are diverging from their season baseline.
+          ΔZ = window Z − season Z.
+        </p>
+      </div>
+
+      <div className="trend-controls">
+        <div className="trend-toggle-group">
+          <button className={`trend-toggle${direction === 'up' ? ' active' : ''}`} onClick={() => setDirection('up')}>
+            Trending Up
+          </button>
+          <button className={`trend-toggle${direction === 'down' ? ' active' : ''}`} onClick={() => setDirection('down')}>
+            Trending Down
+          </button>
+        </div>
+        <div className="trend-toggle-group">
+          {[7, 14].map(d => (
+            <button key={d} className={`trend-toggle${window === d ? ' active' : ''}`} onClick={() => setWindow(d)}>
+              {d} Days
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div className="trend-loading">Loading…</div>}
+
+      {!loading && players.length === 0 && (
+        <div className="trend-empty">No trending players found for this window.</div>
+      )}
+
+      <div className="trend-grid">
+        {players.map(p => {
+          const s = p.sustainability
+          const maxAbs = Math.max(...p.drivers.map(d => Math.abs(d.contribution)), 0.01)
+          return (
+            <div key={p.slug} className="trend-card">
+              <div className="trend-card-header">
+                <div className="trend-player-info" onClick={() => onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })} style={{ cursor: 'pointer' }}>
+                  <span className="trend-pname">{p.name}</span>
+                  <span className="trend-pmeta">{p.team}</span>
+                </div>
+                <div className={`trend-dz-badge ${direction === 'up' ? 'trend-dz-up' : 'trend-dz-down'}`}>
+                  {p.delta_z > 0 ? '+' : ''}{p.delta_z.toFixed(2)} ΔZ
+                </div>
+              </div>
+
+              <div className="trend-z-row">
+                <div className="trend-z-item">
+                  <span className="trend-z-label">Season Z</span>
+                  <span className={`trend-z-val ${p.season_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.season_z.toFixed(2)}</span>
+                </div>
+                <div className="trend-z-arrow">{direction === 'up' ? '→' : '→'}</div>
+                <div className="trend-z-item">
+                  <span className="trend-z-label">{window}d Z</span>
+                  <span className={`trend-z-val ${p.window_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.window_z.toFixed(2)}</span>
+                </div>
+                <div className="trend-z-item trend-z-games">
+                  <span className="trend-z-label">Games</span>
+                  <span className="trend-z-val">{p.window_gp}/{p.season_gp}</span>
+                </div>
+              </div>
+
+              {/* Driver bars */}
+              <div className="trend-drivers">
+                {p.drivers.map(d => {
+                  const pct = Math.abs(d.contribution) / maxAbs * 100
+                  const pos = d.contribution > 0
+                  return (
+                    <div key={d.stat} className="trend-driver-row">
+                      <span className="trend-driver-label">{STAT_LABELS[d.stat] || d.stat}</span>
+                      <div className="trend-driver-track">
+                        <div
+                          className={`trend-driver-bar ${pos ? 'trend-bar-pos' : 'trend-bar-neg'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className={`trend-driver-val ${pos ? 'trend-pos' : 'trend-neg'}`}>
+                        {d.contribution > 0 ? '+' : ''}{d.contribution.toFixed(2)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Sustainability badge */}
+              <div className={`trend-sustain trend-sustain-${s.level}`}>
+                <span className="trend-sustain-label">{s.label}</span>
+                <span className="trend-sustain-reason">{s.reason}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
 function AdjustmentsPage() {
   const [isAdmin,       setIsAdmin]       = useState(false)
   const [checked,       setChecked]       = useState(false)
@@ -5129,6 +5254,7 @@ function AppMain({ onLogout, onOpenAccount }) {
             <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
             <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
             <button className={`nav-btn${page === 'fantasy' ? ' active' : ''}`} onClick={() => setPage('fantasy')}>Fantasy</button>
+            <button className={`nav-btn${page === 'trending' ? ' active' : ''}`} onClick={() => setPage('trending')}>Trending</button>
             <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => setPage('blog')}>Blog</button>
             {isAdmin && <button className={`nav-btn${page === 'adjustments' ? ' active' : ''}`} onClick={() => setPage('adjustments')}>Adjustments</button>}
           </nav>
@@ -5182,6 +5308,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+
+      {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
       {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
 

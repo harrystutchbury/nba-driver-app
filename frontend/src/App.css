@@ -4294,3 +4294,61 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 
 /* Projection page "adj" badge */
 .adj-proj-badge { font-size: 9px; font-weight: 700; background: rgba(77,255,180,0.15); color: var(--skill); border-radius: 3px; padding: 1px 4px; margin-left: 4px; text-transform: uppercase; vertical-align: middle; }
+
+
+/* ── Trending Players page ────────────────────────────────────────────────── */
+
+.trend-page { padding: 24px 16px; max-width: 1300px; margin: 0 auto; }
+.trend-header { margin-bottom: 18px; }
+.trend-title { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
+.trend-subtitle { margin: 0; font-size: 13px; color: var(--muted); }
+
+.trend-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.trend-toggle-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+.trend-toggle { padding: 7px 14px; background: none; border: none; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.trend-toggle:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.trend-toggle.active { background: var(--skill); color: #000; }
+
+.trend-loading, .trend-empty { padding: 40px; text-align: center; color: var(--muted); }
+
+.trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+
+.trend-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.trend-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.trend-player-info { display: flex; flex-direction: column; gap: 2px; }
+.trend-pname { font-size: 15px; font-weight: 700; }
+.trend-pname:hover { color: var(--skill); }
+.trend-pmeta { font-size: 12px; color: var(--muted); }
+
+.trend-dz-badge { font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
+.trend-dz-up   { background: rgba(77,255,180,0.15); color: var(--skill); }
+.trend-dz-down { background: rgba(255,107,107,0.15); color: var(--neg); }
+
+.trend-z-row { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 8px 10px; }
+.trend-z-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.trend-z-item.trend-z-games { margin-left: auto; }
+.trend-z-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.trend-z-val { font-size: 15px; font-weight: 800; font-family: var(--mono); }
+.trend-z-arrow { font-size: 14px; color: var(--muted); }
+.trend-pos { color: var(--skill); }
+.trend-neg { color: var(--neg); }
+
+.trend-drivers { display: flex; flex-direction: column; gap: 5px; }
+.trend-driver-row { display: flex; align-items: center; gap: 6px; }
+.trend-driver-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 32px; text-align: right; flex-shrink: 0; }
+.trend-driver-track { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+.trend-driver-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.trend-bar-pos { background: var(--skill); }
+.trend-bar-neg { background: var(--neg); }
+.trend-driver-val { font-size: 11px; font-family: var(--mono); font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; }
+
+.trend-sustain { border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.trend-sustain-high   { background: rgba(77,255,180,0.08); border: 1px solid rgba(77,255,180,0.2); }
+.trend-sustain-medium { background: rgba(255,200,77,0.08); border: 1px solid rgba(255,200,77,0.2); }
+.trend-sustain-low    { background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); }
+.trend-sustain-label { font-size: 12px; font-weight: 700; }
+.trend-sustain-high   .trend-sustain-label { color: var(--skill); }
+.trend-sustain-medium .trend-sustain-label { color: #ffc84d; }
+.trend-sustain-low    .trend-sustain-label { color: var(--neg); }
+.trend-sustain-reason { font-size: 11px; color: var(--muted); }

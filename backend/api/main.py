@@ -5834,6 +5834,243 @@ def adj_toggle(adj_id: int, current_user: str = Depends(get_current_user)):
 app.include_router(adjust_router)
 
 
+# ── Trending Players ──────────────────────────────────────────────────────────
+
+trending_router = APIRouter(prefix="/api/trending")
+
+
+def _per_stat_z(avgs: dict, league: dict) -> dict:
+    """Return {stat: z_contribution} for each Z_KEY using the shared league params."""
+    fg_mean = league.get('_fg_mean')
+    ft_mean = league.get('_ft_mean')
+    out = {}
+    for key in Z_KEYS:
+        mean, std = league.get(key, (None, None))
+        if mean is None or std is None:
+            continue
+        if key == 'fg_pct':
+            fg_pct = avgs.get('fg_pct')
+            fga_pg = avgs.get('fga_pg')
+            if fg_pct is None or fga_pg is None or fg_mean is None:
+                continue
+            val = (fg_pct - fg_mean) * fga_pg
+        elif key == 'ft_pct':
+            ft_pct = avgs.get('ft_pct')
+            fta_pg = avgs.get('fta_pg')
+            if ft_pct is None or fta_pg is None or ft_mean is None:
+                continue
+            val = (ft_pct - ft_mean) * fta_pg
+        else:
+            val = avgs.get(key)
+        if val is None:
+            continue
+        z = (val - mean) / std
+        out[key] = -z if key == 'tov' else z
+    return out
+
+
+def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict]) -> dict:
+    """
+    Heuristic sustainability label based on what's driving the ΔZ.
+    Returns {label, level, reason}  level: 'high'|'medium'|'low'
+    """
+    min_delta = (window_avgs.get('min_pg') or 0) - (season_avgs.get('min_pg') or 0)
+
+    # Percentage deltas
+    s3a = season_avgs.get('fg3a_pg') or 0
+    w3a = window_avgs.get('fg3a_pg') or 0
+    s3pct = season_avgs.get('fg_pct') or 0   # note: fg3_pct not stored separately in league data; use fg3m
+    # Compute 3P% delta directly from raw averages
+    sfg3_pct = (season_avgs.get('fg3m') / s3a * 100) if s3a > 0.5 else None
+    wfg3_pct = (window_avgs.get('fg3m') / w3a * 100) if w3a > 0.5 else None
+    fg3_pct_delta = (wfg3_pct - sfg3_pct) if sfg3_pct and wfg3_pct else 0
+
+    sfga = season_avgs.get('fga_pg') or 0
+    wfga = window_avgs.get('fga_pg') or 0
+    sfg_pct = season_avgs.get('fg_pct') or 0
+    wfg_pct = window_avgs.get('fg_pct') or 0
+    fg_pct_delta = wfg_pct - sfg_pct if (sfg_pct and wfg_pct) else 0
+
+    top_driver = drivers[0]['stat'] if drivers else None
+    shooting_driven = top_driver in ('fg_pct', 'ft_pct') or (
+        top_driver == 'fg3m' and fg3_pct_delta > 4
+    )
+
+    if min_delta >= 3:
+        return {
+            'label': 'Likely sustainable',
+            'level': 'high',
+            'reason': f'Role change: +{min_delta:.1f} MIN/g',
+        }
+    if min_delta >= 1.5:
+        return {
+            'label': 'Probably sustainable',
+            'level': 'high',
+            'reason': f'Minutes up +{min_delta:.1f}/g',
+        }
+    if shooting_driven and fg_pct_delta > 5:
+        return {
+            'label': 'Hot streak',
+            'level': 'low',
+            'reason': f'FG% {fg_pct_delta:+.1f}% above season — expect regression',
+        }
+    if top_driver == 'fg3m' and fg3_pct_delta > 4:
+        return {
+            'label': 'Hot streak',
+            'level': 'low',
+            'reason': f'3P% {fg3_pct_delta:+.1f}% above season — expect regression',
+        }
+    if top_driver == 'ft_pct':
+        ft_delta = (window_avgs.get('ft_pct') or 0) - (season_avgs.get('ft_pct') or 0)
+        if abs(ft_delta) > 8:
+            return {
+                'label': 'Hot streak',
+                'level': 'low',
+                'reason': f'FT% {ft_delta:+.1f}% above season — small sample',
+            }
+    # Volume-driven without extra minutes
+    if top_driver in ('pts', 'reb', 'ast', 'stl', 'blk'):
+        return {
+            'label': 'Monitor',
+            'level': 'medium',
+            'reason': 'Usage / role shift — watch for consistency',
+        }
+    return {
+        'label': 'Monitor',
+        'level': 'medium',
+        'reason': 'Mixed drivers — unclear if sticky',
+    }
+
+
+@trending_router.get("")
+def get_trending(
+    window: int = 7,
+    direction: str = "up",
+    limit: int = 15,
+):
+    conn = get_conn()
+    try:
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        from datetime import date as _date, timedelta as _td
+        cutoff = (_date.today() - _td(days=window)).isoformat()
+
+        # League params for Z-score normalisation (full season)
+        league, _ = _league_data(conn, season=season, min_games=10)
+        if not league:
+            return {"players": []}
+
+        # Season averages per player (min 10 games)
+        season_rows = conn.execute("""
+            SELECT
+                g.player_slug,
+                p.full_name,
+                p.team,
+                COUNT(*)                  AS gp,
+                AVG(g.min)                AS min_pg,
+                AVG(g.pts)                AS pts,
+                AVG(g.reb)                AS reb,
+                AVG(g.ast)                AS ast,
+                AVG(g.stl)                AS stl,
+                AVG(g.blk)                AS blk,
+                AVG(g.tov)                AS tov,
+                AVG(g.fg3m)               AS fg3m,
+                AVG(g.fga)                AS fga_pg,
+                AVG(g.fta)                AS fta_pg,
+                AVG(g.fg3a)               AS fg3a_pg,
+                SUM(g.fgm)*100.0/NULLIF(SUM(g.fga),0) AS fg_pct,
+                SUM(g.ftm)*100.0/NULLIF(SUM(g.fta),0) AS ft_pct
+            FROM game_logs g
+            JOIN players p ON p.slug = g.player_slug AND p.season = ?
+            WHERE g.season = ?
+            GROUP BY g.player_slug
+            HAVING COUNT(*) >= 10
+        """, [season, season]).fetchall()
+        season_map = {r["player_slug"]: dict(r) for r in season_rows}
+
+        # Window averages per player (min 2 games)
+        window_rows = conn.execute("""
+            SELECT
+                player_slug,
+                COUNT(*)                  AS gp,
+                AVG(min)                  AS min_pg,
+                AVG(pts)                  AS pts,
+                AVG(reb)                  AS reb,
+                AVG(ast)                  AS ast,
+                AVG(stl)                  AS stl,
+                AVG(blk)                  AS blk,
+                AVG(tov)                  AS tov,
+                AVG(fg3m)                 AS fg3m,
+                AVG(fga)                  AS fga_pg,
+                AVG(fta)                  AS fta_pg,
+                AVG(fg3a)                 AS fg3a_pg,
+                SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+            FROM game_logs
+            WHERE season = ? AND game_date >= ?
+            GROUP BY player_slug
+            HAVING COUNT(*) >= 2
+        """, [season, cutoff]).fetchall()
+        window_map = {r["player_slug"]: dict(r) for r in window_rows}
+
+        # Compute fg_impact for window rows (needed for Z)
+        fg_mean = league.get('_fg_mean')
+        ft_mean = league.get('_ft_mean')
+        for r in window_map.values():
+            r['fg_impact'] = (r['fg_pct'] - fg_mean) * r['fga_pg'] if (r['fg_pct'] and fg_mean) else None
+            r['ft_impact'] = (r['ft_pct'] - ft_mean) * r['fta_pg'] if (r['ft_pct'] and ft_mean) else None
+
+        results = []
+        for slug, season_avgs in season_map.items():
+            if slug not in window_map:
+                continue
+            window_avgs = window_map[slug]
+
+            season_z_per_stat = _per_stat_z(season_avgs, league)
+            window_z_per_stat = _per_stat_z(window_avgs, league)
+
+            season_z = sum(season_z_per_stat.values())
+            window_z = sum(window_z_per_stat.values())
+            delta_z = window_z - season_z
+
+            # Per-stat contributions to delta
+            drivers_raw = []
+            for stat in Z_KEYS:
+                contrib = (window_z_per_stat.get(stat, 0) or 0) - (season_z_per_stat.get(stat, 0) or 0)
+                if contrib != 0:
+                    drivers_raw.append({'stat': stat, 'contribution': round(contrib, 2)})
+            drivers_raw.sort(key=lambda x: abs(x['contribution']), reverse=True)
+            top_drivers = drivers_raw[:5]
+
+            sustain = _sustainability(season_avgs, window_avgs, top_drivers)
+
+            results.append({
+                'slug':       slug,
+                'name':       season_avgs['full_name'],
+                'team':       season_avgs['team'],
+                'season_gp':  season_avgs['gp'],
+                'window_gp':  window_avgs['gp'],
+                'season_z':   round(season_z, 2),
+                'window_z':   round(window_z, 2),
+                'delta_z':    round(delta_z, 2),
+                'min_delta':  round((window_avgs.get('min_pg') or 0) - (season_avgs.get('min_pg') or 0), 1),
+                'drivers':    top_drivers,
+                'sustainability': sustain,
+            })
+
+        # Sort
+        going_up = direction == "up"
+        results.sort(key=lambda x: x['delta_z'], reverse=going_up)
+        results = results[:limit]
+        return {"players": results, "window": window, "direction": direction}
+    finally:
+        conn.close()
+
+
+app.include_router(trending_router)
+
+
 # Must come AFTER all API routes so /api/* is never caught here.
 # -----------------------------------------------------------------------
 
