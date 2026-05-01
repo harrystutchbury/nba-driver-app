@@ -3447,7 +3447,11 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
             "team_stats":         {k: round(v, 1) for k, v in d["stats"].items()},
         })
 
-    result.sort(key=lambda x: (-x["proj_total_wins"], x["proj_total_losses"]))
+    def _win_pct(x):
+        total = x["proj_total_wins"] + x["proj_total_losses"] + (x["proj_total_ties"] or 0)
+        return (x["proj_total_wins"] + 0.5 * (x["proj_total_ties"] or 0)) / total if total else 0
+
+    result.sort(key=lambda x: -_win_pct(x))
     for i, r in enumerate(result):
         r["proj_standing"] = i + 1
 
