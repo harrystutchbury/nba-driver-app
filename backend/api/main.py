@@ -2239,6 +2239,12 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     slug_by_name = {}
     for r in name_rows:
         slug_by_name[r["full_name"].lower()] = r["slug"]
+    # Position lookup by BR slug
+    try:
+        pos_rows = conn.execute("SELECT br_slug, position_group FROM player_bio").fetchall()
+        pos_by_slug = {r["br_slug"]: r["position_group"] for r in pos_rows}
+    except Exception:
+        pos_by_slug = {}
     conn.close()
 
     def zs(stat, val):
@@ -2292,11 +2298,12 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
             pm   = p.get("plusMinus", "0")
             pf   = int(f("PF"))
 
+            slug = slug_by_t01.get(pid) or slug_by_name.get(p.get("longName", "").lower())
             players.append({
                 "name":       p.get("longName", ""),
-                "slug":       slug_by_t01.get(pid) or slug_by_name.get(p.get("longName", "").lower()),
+                "slug":       slug,
                 "team":       p.get("teamAbv", ""),
-                "pos":        p.get("pos", ""),
+                "pos":        pos_by_slug.get(slug, ""),
                 "min":        int(mins),
                 "plus_minus": pm,
                 "pf":         pf,
