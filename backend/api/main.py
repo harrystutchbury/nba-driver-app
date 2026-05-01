@@ -3321,16 +3321,27 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         "NA":              "N/A",
     }
 
+    # Pull return_date from our injuries table (Tank01) — ESPN mRoster view
+    # does not include expectedReturnDate; kona_player_info would need a
+    # separate request. Our own data is fresher anyway.
+    conn3 = get_conn()
+    inj_rows = conn3.execute(
+        "SELECT player_slug, return_date FROM injuries WHERE return_date IS NOT NULL"
+    ).fetchall()
+    conn3.close()
+    return_date_by_slug = {r["player_slug"]: r["return_date"] for r in inj_rows}
+
     players = []
     for p in my_team.roster:
         raw_status = getattr(p, "injuryStatus", None) or "ACTIVE"
+        slug = _resolve(p)
         players.append({
             "name": p.name,
-            "br_slug": _resolve(p),
+            "br_slug": slug,
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": _ESPN_STATUS.get(raw_status, raw_status.title()),
-            "return_date": str(p.expected_return_date) if getattr(p, "expected_return_date", None) else None,
+            "return_date": return_date_by_slug.get(slug) if slug else None,
         })
     return {"players": players, "team_name": my_team.team_name}
 
