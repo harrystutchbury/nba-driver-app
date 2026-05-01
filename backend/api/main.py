@@ -4308,6 +4308,20 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         except Exception:
             logger.warning("Raw ESPN schedule fetch failed; opponent data may be incomplete")
 
+        # ── league.matchup_ids fallback for period buckets ───────────────────
+        # Built by the library directly from schedule JSON (home.pointsByScoringPeriod),
+        # so it correctly captures multi-week periods (all-star, fantasy playoffs).
+        # Only covers periods where games have been played, which is sufficient
+        # since we already filter to weeks that have game data in the DB.
+        if not matchup_periods_raw:
+            lib_ids = getattr(league, 'matchup_ids', {}) or {}
+            if lib_ids:
+                matchup_periods_raw = {
+                    int(mp_id): sorted(int(sp) for sp in sp_ids)
+                    for mp_id, sp_ids in lib_ids.items()
+                    if mp_id is not None
+                }
+
         # ── Enumerate fallback for mp_to_opp ─────────────────────────────────
         # Only used when the raw HTTP call fails entirely. Assumes 1 matchup = 1
         # calendar week so will drift after any 2-week period, but beats nothing.
