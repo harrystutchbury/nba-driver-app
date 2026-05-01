@@ -2986,7 +2986,11 @@ function ManagerDashboard({ onSelectPlayer }) {
           {!league ? (
             <div className="dash-empty">No standings data</div>
           ) : (() => {
-            const rows = league.standings || []
+            const winPct = t => {
+              const total = t.wins + t.losses + (t.ties || 0)
+              return total > 0 ? (t.wins + 0.5 * (t.ties || 0)) / total : 0
+            }
+            const rows = [...(league.standings || [])].sort((a, b) => winPct(b) - winPct(a))
             const hasTies = rows.some(t => (t.ties || 0) > 0)
             return (
               <table className="dash-table">
@@ -3002,8 +3006,7 @@ function ManagerDashboard({ onSelectPlayer }) {
                 </thead>
                 <tbody>
                   {rows.map((t, i) => {
-                    const total = t.wins + t.losses + (t.ties || 0)
-                    const pct   = total > 0 ? (t.wins / total * 100).toFixed(1) + '%' : '0.0%'
+                    const pct = (winPct(t) * 100).toFixed(1) + '%'
                     return (
                       <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
                         <td style={{textAlign:'center'}}>{i + 1}</td>
@@ -3064,12 +3067,16 @@ function ProjectedStandings() {
 
       {(() => {
         const hasTies = standings.some(t => (t.actual_ties || 0) + (t.proj_ties || 0) > 0)
+        const projWinPct = t => {
+          const total = t.proj_total_wins + t.proj_total_losses + (t.proj_total_ties || 0)
+          return total > 0 ? (t.proj_total_wins + 0.5 * (t.proj_total_ties || 0)) / total : 0
+        }
         return (
           <table className="proj-table">
             <thead>
               <tr>
                 <th>Proj</th><th>Team</th><th>Current</th>
-                <th>+W</th><th>+L</th>{hasTies && <th>+T</th>}<th>Proj W-L</th>
+                <th>+W</th><th>+L</th>{hasTies && <th>+T</th>}<th>Proj W-L</th><th>W%</th>
               </tr>
             </thead>
             <tbody>
@@ -3097,6 +3104,7 @@ function ProjectedStandings() {
                     <td className="scoring-neg">+{t.proj_losses}</td>
                     {hasTies && <td>+{t.proj_ties || 0}</td>}
                     <td><strong>{projRecord}</strong></td>
+                    <td>{(projWinPct(t) * 100).toFixed(1)}%</td>
                   </tr>
                 )
               })}
