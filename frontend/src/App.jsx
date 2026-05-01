@@ -5292,6 +5292,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: { top: 20 } },
     plugins: {
       datalabels: { display: false },
       legend: { display: false },
