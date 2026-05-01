@@ -6038,6 +6038,26 @@ def get_trending(
         """, [season]).fetchall()
         pts_allowed = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pa_rows}
 
+        # Schedule ease per player: avg pts_allowed of opponents faced
+        # Load all game opponents for this season per player
+        game_opp_rows = conn.execute("""
+            SELECT player_slug, game_date, opponent
+            FROM game_logs
+            WHERE season=? AND opponent IS NOT NULL AND min > 0
+        """, [season]).fetchall()
+        # {slug: [(game_date, opponent), ...]}
+        player_games: dict = {}
+        for r in game_opp_rows:
+            player_games.setdefault(r["player_slug"], []).append((r["game_date"], r["opponent"]))
+
+        def _ease(games_list, since=None):
+            vals = [
+                pts_allowed[opp]
+                for d, opp in games_list
+                if opp in pts_allowed and (since is None or d >= since)
+            ]
+            return round(sum(vals) / len(vals), 1) if vals else None
+
         # Upcoming schedule: next 14 days per team
         today_iso = _date.today().isoformat()
         horizon   = (_date.today() + _td(days=14)).isoformat()
@@ -6166,6 +6186,8 @@ def get_trending(
                 'drivers':    top_drivers,
                 'sustainability': sustain,
                 'upcoming':      upcoming_by_team.get(season_avgs.get('team', ''), []),
+                'ease_season':   _ease(player_games.get(slug, [])),
+                'ease_window':   _ease(player_games.get(slug, []), since=cutoff),
             })
 
         # Sort
