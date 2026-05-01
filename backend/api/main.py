@@ -4258,9 +4258,15 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             for t in league.teams
         }
 
-        # ── Raw HTTP call for reliable matchup period + schedule data ─────────
-        # The espn_api Python library often returns None for matchupPeriodId and
-        # empty for matchup_periods. We hit the raw API directly instead.
+        # ── Library attrs (always try first) ─────────────────────────────────
+        # matchup_periods maps matchupPeriodId → [scoringPeriodIds] for full season
+        matchup_periods_raw = dict(getattr(league.settings, 'matchup_periods', {}) or {})
+        reg_season_count    = getattr(league.settings, 'reg_season_count', None)
+
+        # ── Raw HTTP call for matchupPeriodId on schedule entries ─────────────
+        # The espn_api Matchup class does not expose matchupPeriodId so we fetch
+        # the raw schedule directly. Use the same mMatchup+mSettings views the
+        # library's get_league() uses so the data format is identical.
         raw_url = (
             f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}"
             f"/segments/0/leagues/{espn_league_id}"
@@ -4268,20 +4274,22 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         try:
             raw_resp = _requests.get(
                 raw_url,
-                params={"view": ["mSchedule", "mSettings"]},
+                params={"view": ["mMatchup", "mSettings"]},
                 cookies={"espn_s2": espn_s2, "SWID": espn_swid},
                 timeout=15,
             )
             raw_resp.raise_for_status()
             raw_data = raw_resp.json()
 
-            # matchupPeriods: {"1": [1,2], "2": [3,4], ...} (scoring period IDs per matchup period)
+            # matchupPeriods from settings overrides library if non-empty
             sched_settings = raw_data.get("settings", {}).get("scheduleSettings", {})
             mp_raw = sched_settings.get("matchupPeriods", {})
-            matchup_periods_raw = {int(k): [int(x) for x in v] for k, v in mp_raw.items()}
-            reg_season_count    = sched_settings.get("matchupPeriodCount") or reg_season_count
+            if mp_raw:
+                matchup_periods_raw = {int(k): [int(x) for x in v] for k, v in mp_raw.items()}
+            if not reg_season_count:
+                reg_season_count = sched_settings.get("matchupPeriodCount") or reg_season_count
 
-            # Build mp_to_opp from the raw schedule (one entry per matchup)
+            # Build mp_to_opp from the raw schedule entries (have matchupPeriodId)
             my_int_id = int(my_team_id)
             seen_mp: set = set()
             for m in raw_data.get("schedule", []):
@@ -4300,9 +4308,9 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         except Exception:
             logger.warning("Raw ESPN schedule fetch failed; opponent data may be incomplete")
 
-        # ── Enumerate fallback for opponent lookup ────────────────────────────
-        # Used when the raw HTTP call fails. Assumes 1 matchup = 1 week, so it
-        # will drift after any 2-week matchup period, but is better than nothing.
+        # ── Enumerate fallback for mp_to_opp ─────────────────────────────────
+        # Only used when the raw HTTP call fails entirely. Assumes 1 matchup = 1
+        # calendar week so will drift after any 2-week period, but beats nothing.
         if not mp_to_opp:
             team_sched = getattr(my_team_obj, 'schedule', []) or []
             for week_idx, matchup in enumerate(team_sched):
