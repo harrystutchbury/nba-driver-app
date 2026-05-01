@@ -328,6 +328,11 @@ def init_db():
     except Exception:
         pass  # already exists
 
+    try:
+        conn.execute("ALTER TABLE fantasy_player_map ADD COLUMN position TEXT")
+    except Exception:
+        pass  # already exists
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

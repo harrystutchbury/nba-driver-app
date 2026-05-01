@@ -574,9 +574,11 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     conn = get_conn()
 
     player_row = conn.execute(
-        """SELECT p.full_name, p.team, b.birthdate, b.position_group
+        """SELECT p.full_name, p.team, b.birthdate, b.position_group,
+                  COALESCE(fpm.position, b.position_group) AS fantasy_position
            FROM players p
            LEFT JOIN player_bio b ON b.br_slug = p.slug
+           LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
            WHERE p.slug = ? ORDER BY p.season DESC LIMIT 1""", (player,)
     ).fetchone()
     if not player_row:
@@ -669,7 +671,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
             "name":     player_row["full_name"],
             "team":     player_row["team"],
             "age":      current_age,
-            "position": player_row["position_group"],
+            "position": player_row["fantasy_position"],
             "injury":   injury_map.get(player),
         },
         "career":  with_rank(_avg_row(rows,                                      team_game_map), league_career, rows_career),
@@ -1262,7 +1264,7 @@ def get_projection(
 @router.get("/rankings")
 def get_rankings(
     period:   str = Query("season", description="season | l14 | l30"),
-    position: str = Query("all",    description="all | Guard | Forward | Center | Guard-Forward | Forward-Center"),
+    position: str = Query("all",    description="all | PG | SG | SF | PF | C (ESPN positions; falls back to broad group if not synced)"),
 ):
     """
     Return all qualifying players ranked by composite Z-score for the given period.
@@ -1291,15 +1293,17 @@ def get_rankings(
             return []
 
         # Build slug → position+name map; use most recent game_log for current team
+        # Prefer ESPN position (granular PG/SG/SF/PF/C) over broad position_group
         bio_rows = conn.execute("""
             SELECT p.slug, p.full_name AS name,
                    COALESCE(
                        (SELECT g.team FROM game_logs g WHERE g.player_slug = p.slug ORDER BY g.game_date DESC LIMIT 1),
                        p.team
                    ) AS team,
-                   b.position_group AS position
+                   COALESCE(fpm.position, b.position_group) AS position
             FROM players p
             LEFT JOIN player_bio b ON b.br_slug = p.slug
+            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
             WHERE (p.slug, p.season) IN (
                 SELECT slug, MAX(season) FROM players GROUP BY slug
             )
@@ -1814,6 +1818,7 @@ def get_projections(
         # ── 3. Player baselines (current season, ≥10 GP, ≥15 min) ──────────
         player_rows = conn.execute("""
             SELECT g.player_slug, p.full_name, p.team, b.position_group,
+                   COALESCE(fpm.position, b.position_group) AS fantasy_position,
                    COUNT(*) AS gp_current,
                    AVG(g.min) AS min_pg,
                    AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
@@ -1835,6 +1840,7 @@ def get_projections(
             FROM game_logs g
             JOIN players p ON p.slug = g.player_slug
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = g.player_slug AND fpm.provider = 'espn'
             WHERE g.season = ? AND g.min >= 15
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 10
@@ -1878,9 +1884,10 @@ def get_projections(
         results = []
         for r in player_rows:
             r = dict(r)
-            slug     = r["player_slug"]
-            team     = r["team"]
-            position = r["position_group"] or "Guard"
+            slug         = r["player_slug"]
+            team         = r["team"]
+            position     = r["position_group"] or "Guard"      # broad group for opp-factor lookup
+            display_pos  = r["fantasy_position"] or position   # granular for display/filter
 
             opponents = team_opponents.get(team, [])
             if not opponents:
@@ -1938,7 +1945,7 @@ def get_projections(
                 "slug":         slug,
                 "name":         r["full_name"],
                 "team":         team,
-                "position":     position,
+                "position":     display_pos,
                 "gp":           gp,
                 "injury":       injury_map.get(slug),
                 "is_adjusted":  adj is not None,
@@ -2260,10 +2267,14 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     slug_by_name = {}
     for r in name_rows:
         slug_by_name[r["full_name"].lower()] = r["slug"]
-    # Position lookup by BR slug
+    # Position lookup by BR slug — prefer ESPN position (granular) over broad group
     try:
-        pos_rows = conn.execute("SELECT br_slug, position_group FROM player_bio").fetchall()
-        pos_by_slug = {r["br_slug"]: r["position_group"] for r in pos_rows}
+        pos_rows = conn.execute("""
+            SELECT b.br_slug, COALESCE(fpm.position, b.position_group) AS pos
+            FROM player_bio b
+            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = b.br_slug AND fpm.provider = 'espn'
+        """).fetchall()
+        pos_by_slug = {r["br_slug"]: r["pos"] for r in pos_rows}
     except Exception:
         pos_by_slug = {}
     conn.close()
@@ -5378,7 +5389,8 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
     name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
     all_names    = list(name_to_slug.keys())
 
-    players_to_match = []  # list of (provider_id, provider_name)
+    players_to_match = []  # list of (provider_id, provider_name, position)
+    _SPECIFIC_POS = {'PG', 'SG', 'SF', 'PF', 'C'}
 
     if provider == "espn":
         try:
@@ -5392,7 +5404,7 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
                 pid = str(p.playerId)
                 if pid not in seen_ids:
                     seen_ids.add(pid)
-                    players_to_match.append((pid, p.name))
+                    players_to_match.append((pid, p.name, getattr(p, 'position', None)))
 
         # Also pull free agents to cover the full player universe
         try:
@@ -5401,7 +5413,7 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
                 pid = str(p.playerId)
                 if pid not in seen_ids:
                     seen_ids.add(pid)
-                    players_to_match.append((pid, p.name))
+                    players_to_match.append((pid, p.name, getattr(p, 'position', None)))
         except Exception:
             logger.warning("Could not fetch free agents from ESPN")
 
@@ -5438,16 +5450,21 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
                         continue
                     pinfo = rv.get("player", [{}])
                     p_list = pinfo[0] if isinstance(pinfo[0], list) else []
-                    pid = name = None
+                    pid = name = yahoo_pos = None
                     for item in p_list:
                         if isinstance(item, dict):
                             if "player_id" in item:
                                 pid = str(item["player_id"])
                             if "full_name" in item:
                                 name = item["full_name"]
+                            if "eligible_positions" in item and yahoo_pos is None:
+                                for ep in item["eligible_positions"]:
+                                    if isinstance(ep, dict) and ep.get("position") in _SPECIFIC_POS:
+                                        yahoo_pos = ep["position"]
+                                        break
                     if pid and name and pid not in seen_ids:
                         seen_ids.add(pid)
-                        players_to_match.append((pid, name))
+                        players_to_match.append((pid, name, yahoo_pos))
         except Exception:
             logger.exception("Error parsing Yahoo roster response")
 
@@ -5456,7 +5473,7 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
     # Match each player to BR
     now = datetime.utcnow().isoformat()
     rows_to_upsert = []
-    for pid, pname in players_to_match:
+    for pid, pname, ppos in players_to_match:
         br_slug = br_name = None
         tier = confidence = None
 
@@ -5477,13 +5494,13 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
             else:
                 tier = None  # unmatched
 
-        rows_to_upsert.append((provider, pid, pname, br_slug, br_name, tier, confidence, now))
+        rows_to_upsert.append((provider, pid, pname, br_slug, br_name, tier, confidence, now, ppos))
 
     conn = get_conn()
     conn.executemany("""
         INSERT INTO fantasy_player_map
-            (provider, provider_id, provider_name, br_slug, br_name, match_tier, confidence, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (provider, provider_id, provider_name, br_slug, br_name, match_tier, confidence, updated_at, position)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(provider, provider_id) DO UPDATE SET
             provider_name = excluded.provider_name,
             br_slug       = CASE WHEN fantasy_player_map.match_tier = 3
@@ -5498,6 +5515,7 @@ def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
             confidence    = CASE WHEN fantasy_player_map.match_tier = 3
                                  THEN fantasy_player_map.confidence
                                  ELSE excluded.confidence END,
+            position      = COALESCE(excluded.position, fantasy_player_map.position),
             updated_at    = excluded.updated_at
     """, rows_to_upsert)
     conn.commit()
@@ -6057,7 +6075,8 @@ def adj_team_players(team: str, current_user: str = Depends(get_current_user)):
         season = f"{season_year - 1}-{str(season_year)[2:]}"
 
         player_rows = conn.execute("""
-            SELECT g.player_slug, p.full_name, COALESCE(b.position_group, 'Guard') AS position,
+            SELECT g.player_slug, p.full_name,
+                   COALESCE(fpm.position, b.position_group, 'Guard') AS position,
                    COUNT(*) AS gp,
                    ROUND(AVG(g.min), 1)  AS min_pg,
                    ROUND(AVG(g.pts), 1)  AS pts,
@@ -6076,6 +6095,7 @@ def adj_team_players(team: str, current_user: str = Depends(get_current_user)):
             FROM game_logs g
             JOIN players p ON p.slug = g.player_slug AND p.season = ?
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = g.player_slug AND fpm.provider = 'espn'
             WHERE g.season = ? AND p.team = ? AND g.min >= 5
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 3

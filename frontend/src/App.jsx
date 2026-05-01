@@ -459,6 +459,8 @@ function teamAbbr(name) {
 const POS_SHORT = {
   'Guard': 'G', 'Forward': 'F', 'Center': 'C',
   'Guard-Forward': 'G/F', 'Forward-Center': 'F/C',
+  // ESPN/Yahoo granular positions are already abbreviated
+  'PG': 'PG', 'SG': 'SG', 'SF': 'SF', 'PF': 'PF',
 }
 function posAbbr(pos) { return POS_SHORT[pos] || pos || '—' }
 
@@ -726,7 +728,7 @@ const RANK_COLS = [
   { key: 'ft_pct', label: 'FT%', pct: true },
 ]
 
-const POSITIONS = ['All', 'Guard', 'Forward', 'Center', 'Guard-Forward', 'Forward-Center']
+const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
 
 const PERIODS = [
   { value: 'season', label: '2025-26 Season' },
@@ -1289,7 +1291,7 @@ function BoxScoreTable({ players, onSelectPlayer, ownership }) {
               {p.injury && <InjuryBadge injury={p.injury} compact />}
               <OwnBadge slug={p.slug} ownership={ownership} />
             </td>
-            <td className="bs-pos">{p.pos || '—'}</td>
+            <td className="bs-pos">{posAbbr(p.pos) || '—'}</td>
             <td className="bs-ctr">{p.min}</td>
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
             <td className="bs-ctr bs-muted">{p.pf}</td>
@@ -1426,7 +1428,7 @@ const PROJ_PERIODS = [
   { label: 'ROS', fixedEnd: '2026-06-30' },
 ]
 
-const PROJ_POSITIONS = ['All', 'Guard', 'Forward', 'Center', 'Guard-Forward', 'Forward-Center']
+const PROJ_POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
 
 const PROJ_COLS = [
   { key: 'min_pg', label: 'MIN',  noZ: true },
@@ -2399,7 +2401,7 @@ function AdjustmentsPage() {
                         <td className="adj-td adj-td-name">
                           <div className="adj-name-cell">
                             <span className="adj-pname">{p.name}</span>
-                            <span className="adj-ppos">{p.position?.charAt(0)}</span>
+                            <span className="adj-ppos">{posAbbr(p.position)}</span>
                             {hasAdj && <span className="adj-live-dot" title="Active adjustment" />}
                           </div>
                         </td>
