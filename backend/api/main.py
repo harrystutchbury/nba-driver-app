@@ -3330,6 +3330,7 @@ def espn_roster(current_user: str = Depends(get_current_user)):
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": _ESPN_STATUS.get(raw_status, raw_status.title()),
+            "return_date": str(p.expected_return_date) if getattr(p, "expected_return_date", None) else None,
         })
     return {"players": players, "team_name": my_team.team_name}
 

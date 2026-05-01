@@ -2974,6 +2974,7 @@ function ManagerDashboard({ onSelectPlayer }) {
                     <td style={{textAlign:'center'}}>{p.position || '—'}</td>
                     <td style={{textAlign:'center'}} className={p.injury_status && p.injury_status !== 'Active' ? 'inj-out' : ''}>
                       {p.injury_status || 'Active'}
+                      {p.return_date && <span className="inj-return-date"> (exp. {p.return_date})</span>}
                     </td>
                   </tr>
                 ))}

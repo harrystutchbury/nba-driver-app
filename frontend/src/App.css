@@ -2426,6 +2426,9 @@ td.bs-pos {
 .bs-ztotal.z-neg { color: #ff6b6b; }
 
 /* ── Injury badges ─────────────────────────────────────────── */
+.inj-out { color: #ff4444; font-weight: 600; }
+.inj-return-date { font-size: 10px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+
 .inj-badge {
   display: inline-block;
   font-size: 9px;
