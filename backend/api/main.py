@@ -3321,27 +3321,55 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         "NA":              "N/A",
     }
 
-    # Pull return_date from our injuries table (Tank01) — ESPN mRoster view
-    # does not include expectedReturnDate; kona_player_info would need a
-    # separate request. Our own data is fresher anyway.
-    conn3 = get_conn()
-    inj_rows = conn3.execute(
-        "SELECT player_slug, return_date FROM injuries WHERE return_date IS NOT NULL"
-    ).fetchall()
-    conn3.close()
-    return_date_by_slug = {r["player_slug"]: r["return_date"] for r in inj_rows}
+    # Fetch expectedReturnDate directly from ESPN raw API — espn_api's mRoster
+    # view doesn't include it, but mRoster + mTeam raw JSON does in playerPoolEntry.
+    import urllib.request as _urlreq3, json as _json3
+    return_date_by_pid: dict = {}
+    try:
+        conn3 = get_conn()
+        fc3 = conn3.execute(
+            "SELECT access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+            [current_user]
+        ).fetchone()
+        conn3.close()
+        if fc3:
+            _season = _current_season_end_year()
+            _url = (
+                f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_season}"
+                f"/segments/0/leagues/{fc3['league_key']}?view=mRoster"
+            )
+            _req = _urlreq3.Request(_url, headers={
+                "Cookie": f"espn_s2={fc3['access_token']}; SWID={fc3['refresh_token']}",
+            })
+            with _urlreq3.urlopen(_req, timeout=15) as _r:
+                _raw = _json3.loads(_r.read())
+            for _team in _raw.get("teams", []):
+                for _entry in _team.get("roster", {}).get("entries", []):
+                    _ppe = _entry.get("playerPoolEntry", {})
+                    _pid = str(_ppe.get("playerId", "") or _entry.get("playerId", ""))
+                    _ret = _ppe.get("player", {}).get("expectedReturnDate")
+                    if _ret and _pid:
+                        try:
+                            from datetime import date as _date3, datetime as _dt3
+                            # ESPN returns epoch millis
+                            return_date_by_pid[_pid] = _dt3.utcfromtimestamp(_ret / 1000).strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+    except Exception:
+        pass
 
     players = []
     for p in my_team.roster:
         raw_status = getattr(p, "injuryStatus", None) or "ACTIVE"
         slug = _resolve(p)
+        pid  = str(p.playerId)
         players.append({
             "name": p.name,
             "br_slug": slug,
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
             "injury_status": _ESPN_STATUS.get(raw_status, raw_status.title()),
-            "return_date": return_date_by_slug.get(slug) if slug else None,
+            "return_date": return_date_by_pid.get(pid),
         })
     return {"players": players, "team_name": my_team.team_name}
 
