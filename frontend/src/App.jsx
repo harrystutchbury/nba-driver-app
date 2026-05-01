@@ -6473,7 +6473,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                               <td className="mono">{g.game_date}</td>
                               <td>
                                 <span className="opp-cell">
-                                  <span className="ha-badge">{g.home_away}</span>
+                                  <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
                                   {g.opponent}
                                 </span>
                               </td>
@@ -6844,7 +6844,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <td className="mono">{g.game_date}</td>
                           <td>
                             <span className="opp-cell">
-                              <span className="ha-badge">{g.home_away}</span>
+                              <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
                               {g.opponent}
                             </span>
                           </td>
