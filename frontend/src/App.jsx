@@ -5141,12 +5141,13 @@ function AppMain({ onLogout, onOpenAccount }) {
       x: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
+        ticks:  { color: '#888', font: { family: "'DM Mono', monospace", size: 11 },
+                  callback: (_, i, ticks) => { const v = trendLabels[i]; return v ? v.slice(2) : '' } },
       },
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
+        ticks:  { color: '#888', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
   }
@@ -5217,16 +5218,17 @@ function AppMain({ onLogout, onOpenAccount }) {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
         ticks: {
-          color: '#555',
-          font: { family: "'DM Mono', monospace", size: 10 },
+          color: '#888',
+          font: { family: "'DM Mono', monospace", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
+          callback: (_, i) => { const d = maGames[i]?.game_date; return d ? d.slice(5) : '' },
         },
       },
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: '#555', font: { family: "'DM Mono', monospace", size: 10 } },
+        ticks:  { color: '#888', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
   }
@@ -6051,8 +6053,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                       },
                     },
                     scales: {
-                      x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' } },
-                      y: { ticks: { color: '#666' }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
+                      x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' } },
+                      y: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
                     },
                   }
 
