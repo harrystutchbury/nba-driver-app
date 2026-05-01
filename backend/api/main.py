@@ -3309,14 +3309,27 @@ def espn_roster(current_user: str = Depends(get_current_user)):
                 slug = name_to_slug[m[0]]
         return slug
 
+    # ESPN returns raw uppercase strings: "ACTIVE", "OUT", "INJURY_RESERVE", etc.
+    _ESPN_STATUS = {
+        "ACTIVE":          "Active",
+        "OUT":             "Out",
+        "INJURY_RESERVE":  "IR",
+        "DOUBTFUL":        "Doubtful",
+        "QUESTIONABLE":    "Questionable",
+        "PROBABLE":        "Probable",
+        "SUSPENSION":      "Suspended",
+        "NA":              "N/A",
+    }
+
     players = []
     for p in my_team.roster:
+        raw_status = getattr(p, "injuryStatus", None) or "ACTIVE"
         players.append({
             "name": p.name,
             "br_slug": _resolve(p),
             "position": getattr(p, "position", None),
             "team": getattr(p, "proTeam", None),
-            "injury_status": getattr(p, "injuryStatus", "Active"),
+            "injury_status": _ESPN_STATUS.get(raw_status, raw_status.title()),
         })
     return {"players": players, "team_name": my_team.team_name}
 
