@@ -3899,6 +3899,52 @@ td.bs-pos {
   min-width: 100px;
 }
 
+/* Playoff row differentiation */
+.sg-nba-playoff .sg-col-week     { border-left: 3px solid #f0a500; }
+.sg-fantasy-playoff .sg-col-week { border-left: 3px solid #a78bfa; }
+.sg-nba-playoff.sg-fantasy-playoff .sg-col-week { border-left: 3px solid #f0a500; }
+
+.sg-nba-playoff     { background: rgba(240,165,0,0.04); }
+.sg-fantasy-playoff { background: rgba(167,139,250,0.05); }
+
+.sg-week-label { display: block; }
+
+.sg-playoff-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sg-playoff-tag-nba     { background: rgba(240,165,0,0.2);   color: #f0a500; }
+.sg-playoff-tag-fantasy { background: rgba(167,139,250,0.2); color: #a78bfa; }
+
+/* Legend */
+.sg-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.sg-legend-item { display: flex; align-items: center; gap: 5px; }
+.sg-legend-item::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+.sg-legend-nba::before     { background: rgba(240,165,0,0.3); border: 1px solid #f0a500; }
+.sg-legend-fantasy::before { background: rgba(167,139,250,0.3); border: 1px solid #a78bfa; }
+.sg-legend-ease-easy::before { background: rgba(77,255,180,0.35); }
+.sg-legend-ease-hard::before { background: rgba(255,107,107,0.35); }
+
 /* ── Matchup Projection ─────────────────────────────────────────────────────── */
 
 .mp-wrap { padding: 16px; max-width: 1100px; }

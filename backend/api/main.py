@@ -4146,6 +4146,30 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
     name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
     all_names    = list(name_to_slug.keys())
+
+    # Ease scoring: avg PTS allowed per game per team (opponent pts scored against them)
+    pts_allowed_rows = conn.execute("""
+        SELECT opponent AS team, AVG(game_pts) AS avg_pts
+        FROM (
+            SELECT game_date, team, opponent, SUM(pts) AS game_pts
+            FROM game_logs
+            WHERE season=? AND opponent IS NOT NULL AND min > 0
+            GROUP BY game_date, team, opponent
+        )
+        GROUP BY opponent
+        HAVING COUNT(*) >= 5
+    """, [season]).fetchall()
+    pts_allowed_map = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pts_allowed_rows}
+
+    # Per-game opponent lookup: {team: {game_date_iso: opponent}}
+    opp_rows = conn.execute("""
+        SELECT DISTINCT team, game_date, opponent
+        FROM game_logs WHERE season=? AND opponent IS NOT NULL
+    """, [season]).fetchall()
+    team_date_opp: dict = {}
+    for r in opp_rows:
+        team_date_opp.setdefault(r["team"], {})[r["game_date"]] = r["opponent"]
+
     conn.close()
 
     if not game_team_rows:
@@ -4252,9 +4276,21 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
 
     my_nba_teams = fantasy_team_nba.get(my_team_id, {}).get("nba_teams", [])
 
+    # Fantasy playoff start: use ESPN reg_season_count if available
+    fantasy_playoff_start: date | None = None
+    try:
+        reg_count = getattr(league.settings, 'reg_season_count', None)
+        if reg_count and isinstance(reg_count, int):
+            fantasy_playoff_start = season_start_monday + timedelta(weeks=reg_count)
+    except Exception:
+        pass
+
+    all_teams_sorted = sorted(all_teams)
+
     for w in weeks:
-        w.pop("period", None)
         ws_date  = date.fromisoformat(w["start"])
+        we_date  = date.fromisoformat(w["end"])
+
         opp_id   = date_to_opp.get(ws_date)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
@@ -4262,11 +4298,31 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         w["opp_total"] = sum(w["games"].get(t, 0) for t in opp_nba) if opp_nba else None
         w["opp_name"]  = opp_info.get("name", "")
 
+        # Playoff flags
+        teams_with_games = sum(1 for t in all_teams if w["games"].get(t, 0) > 0)
+        w["is_nba_playoff"]     = teams_with_games < 20 and ws_date >= date(season_year - 1, 4, 1)
+        w["is_fantasy_playoff"] = bool(fantasy_playoff_start and ws_date >= fantasy_playoff_start)
+
+        # Ease map: per-team avg pts-allowed of opponents this week
+        ease: dict = {}
+        d = ws_date
+        while d <= we_date:
+            d_iso = d.isoformat()
+            for t in all_teams_sorted:
+                opp = team_date_opp.get(t, {}).get(d_iso)
+                if opp and opp in pts_allowed_map:
+                    ease.setdefault(t, []).append(pts_allowed_map[opp])
+            d += timedelta(days=1)
+        w["ease"] = {t: round(sum(v) / len(v), 1) if v else None for t, v in ease.items()}
+
+        w.pop("period", None)
+
     return {
-        "weeks":        weeks,
-        "all_teams":    sorted(all_teams),
-        "my_nba_teams": my_nba_teams,
-        "my_team_name": getattr(my_team_obj, 'team_name', '') if my_team_obj else '',
+        "weeks":           weeks,
+        "all_teams":       all_teams_sorted,
+        "my_nba_teams":    my_nba_teams,
+        "my_team_name":    getattr(my_team_obj, 'team_name', '') if my_team_obj else '',
+        "pts_allowed_map": pts_allowed_map,
     }
 
 

@@ -4504,8 +4504,27 @@ function ScheduleGrid() {
 
   const mySet = new Set(my_nba_teams)
 
+  // Ease colour scale: collect all non-null ease values across all cells
+  const allEase = weeks.flatMap(w => all_teams.map(t => w.ease?.[t]).filter(v => v != null))
+  const minEase = allEase.length ? Math.min(...allEase) : 0
+  const maxEase = allEase.length ? Math.max(...allEase) : 1
+  function easeBg(val) {
+    if (val == null || maxEase === minEase) return ''
+    const t = (val - minEase) / (maxEase - minEase)  // 0=hard, 1=easy
+    // hard→red, mid→neutral, easy→green
+    if (t >= 0.67) return `rgba(77,255,180,${0.08 + (t - 0.67) * 0.45})`  // green
+    if (t <= 0.33) return `rgba(255,107,107,${0.08 + (0.33 - t) * 0.45})`  // red
+    return ''  // middle third: no colour
+  }
+
   return (
     <div className="sg-wrap">
+      <div className="sg-legend">
+        <span className="sg-legend-item sg-legend-nba">NBA Playoffs</span>
+        <span className="sg-legend-item sg-legend-fantasy">Fantasy Playoffs</span>
+        <span className="sg-legend-item sg-legend-ease-easy">Easy matchup</span>
+        <span className="sg-legend-item sg-legend-ease-hard">Hard matchup</span>
+      </div>
       <div className="sg-scroll">
         <table className="sg-table">
           <thead>
@@ -4526,27 +4545,45 @@ function ScheduleGrid() {
             </tr>
           </thead>
           <tbody>
-            {weeks.map(w => (
-              <tr key={w.start}>
-                <td className="sg-col-week">{w.label}</td>
-                {all_teams.map(t => {
-                  const count = w.games[t] || 0
-                  const isMy  = mySet.has(t)
-                  return (
-                    <td key={t} className={`sg-cell${isMy ? ' sg-my-team' : ''}`}>
-                      {count > 0 ? count : <span className="sg-zero">–</span>}
-                    </td>
-                  )
-                })}
-                <td className={`sg-col-total sg-col-my-total${w.my_total > w.opp_total ? ' sg-total-win' : w.my_total < w.opp_total ? ' sg-total-loss' : ''}`}>
-                  {w.my_total}
-                </td>
-                <td className={`sg-col-total sg-col-opp-total${w.opp_total != null && w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total != null && w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
-                  {w.opp_total != null ? w.opp_total : '–'}
-                </td>
-                <td className="sg-col-opp-name">{w.opp_name || '–'}</td>
-              </tr>
-            ))}
+            {weeks.map(w => {
+              const rowCls = [
+                'sg-row',
+                w.is_nba_playoff     ? 'sg-nba-playoff'     : '',
+                w.is_fantasy_playoff ? 'sg-fantasy-playoff' : '',
+              ].filter(Boolean).join(' ')
+              return (
+                <tr key={w.start} className={rowCls}>
+                  <td className="sg-col-week">
+                    <span className="sg-week-label">{w.label}</span>
+                    {w.is_fantasy_playoff && !w.is_nba_playoff && <span className="sg-playoff-tag sg-playoff-tag-fantasy">Fantasy PO</span>}
+                    {w.is_nba_playoff && <span className="sg-playoff-tag sg-playoff-tag-nba">NBA PO</span>}
+                  </td>
+                  {all_teams.map(t => {
+                    const count = w.games[t] || 0
+                    const isMy  = mySet.has(t)
+                    const ease  = count > 0 ? w.ease?.[t] : null
+                    const bg    = easeBg(ease)
+                    return (
+                      <td
+                        key={t}
+                        className={`sg-cell${isMy ? ' sg-my-team' : ''}`}
+                        style={bg ? { backgroundColor: bg } : undefined}
+                        title={ease != null ? `Avg PTS allowed by opp: ${ease}` : undefined}
+                      >
+                        {count > 0 ? count : <span className="sg-zero">–</span>}
+                      </td>
+                    )
+                  })}
+                  <td className={`sg-col-total sg-col-my-total${w.my_total > w.opp_total ? ' sg-total-win' : w.my_total < w.opp_total ? ' sg-total-loss' : ''}`}>
+                    {w.my_total}
+                  </td>
+                  <td className={`sg-col-total sg-col-opp-total${w.opp_total != null && w.opp_total > w.my_total ? ' sg-total-win' : w.opp_total != null && w.opp_total < w.my_total ? ' sg-total-loss' : ''}`}>
+                    {w.opp_total != null ? w.opp_total : '–'}
+                  </td>
+                  <td className="sg-col-opp-name">{w.opp_name || '–'}</td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
