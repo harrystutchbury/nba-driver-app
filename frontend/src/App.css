@@ -2252,33 +2252,52 @@
 .bs-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 13px;
   font-family: 'DM Mono', monospace;
 }
 
+/* Fixed column widths — stat columns are independent of name length */
+.bs-col-name { width: 160px; }
+.bs-col-pos  { width: 36px; }
+.bs-col-num  { width: 44px; }
+.bs-col-fg   { width: 52px; }
+.bs-col-z    { width: 52px; }
+
 .bs-table thead th {
-  padding: 6px 10px;
+  padding: 6px 6px;
   text-align: center;
   font-size: 11px;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   font-weight: 500;
+  overflow: hidden;
 }
 .bs-table thead th.bs-name { text-align: left; }
+.bs-table thead th.bs-pos  { text-align: center; color: var(--muted); }
 
 .bs-table tbody tr:hover { background: rgba(255,255,255,0.03); }
 
 .bs-table td {
-  padding: 7px 10px;
+  padding: 7px 6px;
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bs-table tbody tr:last-child td { border-bottom: none; }
 
 td.bs-name {
   text-align: left;
   color: var(--text);
-  min-width: 140px;
   font-size: 13px;
+}
+
+td.bs-pos {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .bs-ctr {
@@ -2289,7 +2308,6 @@ td.bs-name {
 .bs-stat-cell {
   text-align: center;
   vertical-align: middle;
-  min-width: 52px;
 }
 
 .bs-val {
@@ -2326,7 +2344,7 @@ td.bs-name {
   .bs-score { font-size: 20px; }
   .bs-team  { font-size: 18px; }
   .bs-table { font-size: 12px; }
-  td.bs-name { min-width: 110px; }
+  .bs-col-name { width: 110px; }
   .bs-muted { display: none; }
 }
 

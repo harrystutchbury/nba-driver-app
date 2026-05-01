@@ -1213,9 +1213,29 @@ function BoxScoreTable({ players, onSelectPlayer, ownership }) {
   if (!players.length) return null
   return (
     <table className="bs-table">
+      <colgroup>
+        <col className="bs-col-name" />
+        <col className="bs-col-pos" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-fg" />
+        <col className="bs-col-num" />
+        <col className="bs-col-fg" />
+        <col className="bs-col-num" />
+        <col className="bs-col-z" />
+      </colgroup>
       <thead>
         <tr>
           <th className="bs-name">Player</th>
+          <th className="bs-pos">Pos</th>
           <th className="bs-ctr">MIN</th>
           <th className="bs-ctr">+/-</th>
           <th className="bs-ctr">PF</th>
@@ -1244,6 +1264,7 @@ function BoxScoreTable({ players, onSelectPlayer, ownership }) {
               {p.injury && <InjuryBadge injury={p.injury} compact />}
               <OwnBadge slug={p.slug} ownership={ownership} />
             </td>
+            <td className="bs-pos">{p.pos || '—'}</td>
             <td className="bs-ctr">{p.min}</td>
             <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
             <td className="bs-ctr bs-muted">{p.pf}</td>

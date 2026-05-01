@@ -2296,6 +2296,7 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
                 "name":       p.get("longName", ""),
                 "slug":       slug_by_t01.get(pid) or slug_by_name.get(p.get("longName", "").lower()),
                 "team":       p.get("teamAbv", ""),
+                "pos":        p.get("pos", ""),
                 "min":        int(mins),
                 "plus_minus": pm,
                 "pf":         pf,
