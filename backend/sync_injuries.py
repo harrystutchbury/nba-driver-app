@@ -196,20 +196,18 @@ def _enrich_espn_return_dates(conn):
         data = json.loads(resp.read().decode("utf-8"))
 
     # Build name -> return_date from ESPN response
+    # Structure: data['injuries'] -> list of teams, each with team['injuries'] -> player entries
     espn_returns: dict = {}
-    for entry in data.get("injuries", []):
-        athlete = entry.get("athlete") or {}
-        if isinstance(athlete, list):
-            athlete = athlete[0] if athlete else {}
-        name = (athlete.get("displayName") or "").strip()
-        if not name:
-            continue
-        # returnDate may live in details or at top level; try both
-        details = entry.get("details") or {}
-        raw_date = details.get("returnDate") or entry.get("returnDate")
-        if raw_date:
-            # ESPN returns dates as "YYYY-MM-DDTxx:xx" or plain "YYYY-MM-DD"
-            espn_returns[name] = raw_date[:10]
+    for team in data.get("injuries", []):
+        for entry in team.get("injuries", []):
+            athlete = entry.get("athlete") or {}
+            name = (athlete.get("displayName") or "").strip()
+            if not name:
+                continue
+            details = entry.get("details") or {}
+            raw_date = details.get("returnDate") or entry.get("returnDate")
+            if raw_date:
+                espn_returns[name] = raw_date[:10]
 
     if not espn_returns:
         log.info("ESPN enrichment: no return dates found in response")
