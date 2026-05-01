@@ -2040,13 +2040,17 @@ _NEWS_TTL = 600          # 10 minutes — only re-fetch if cache is this old
 @router.get("/news")
 def get_news():
     """
-    Fetch top NBA news from Tank01. Cached in SQLite for 10 minutes so it
-    survives server restarts. Returns stale cache on Tank01 errors.
+    Fetch top NBA news from Tank01. Cached for 10 minutes. Articles are
+    accumulated in news_history (keyed by link) so older items survive
+    refreshes. Returns articles for the last 7 days with fetched_date so
+    the frontend can group by day.
     """
+    from datetime import date as _date
     now = int(_time.time())
+    today_str = _date.today().isoformat()
     conn = get_conn()
 
-    # Ensure table exists (may not on first deploy)
+    # Ensure tables exist
     conn.execute("""
         CREATE TABLE IF NOT EXISTS news_cache (
             id         INTEGER PRIMARY KEY CHECK (id = 1),
@@ -2054,56 +2058,73 @@ def get_news():
             fetched_at INTEGER
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS news_history (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            link         TEXT UNIQUE NOT NULL,
+            title        TEXT NOT NULL,
+            image        TEXT,
+            player_ids   TEXT,
+            fetched_date TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
-    # Check DB cache first
-    row = conn.execute("SELECT payload, fetched_at FROM news_cache WHERE id = 1").fetchone()
-    if row and (now - row["fetched_at"]) < _NEWS_TTL:
-        conn.close()
-        return _json_mod.loads(row["payload"])
+    # Check TTL cache — only skip Tank01 call, still return from history
+    cache_row = conn.execute("SELECT fetched_at FROM news_cache WHERE id = 1").fetchone()
+    need_fetch = not cache_row or (now - cache_row["fetched_at"]) >= _NEWS_TTL
 
-    stale_payload = _json_mod.loads(row["payload"]) if row else None
+    if need_fetch and os.environ.get("RAPIDAPI_KEY"):
+        try:
+            data = _tank01_get("getNBANews", {"recentNews": "true", "maxItems": "50"})
+            body = data.get("body", [])
+            if isinstance(body, dict):
+                body = list(body.values())
+            for item in body:
+                title = item.get("title") or ""
+                link  = item.get("link") or ""
+                if not title or not link:
+                    continue
+                conn.execute("""
+                    INSERT INTO news_history (link, title, image, player_ids, fetched_date)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(link) DO NOTHING
+                """, (
+                    link, title,
+                    item.get("image") or "",
+                    _json_mod.dumps(item.get("playerIDs") or []),
+                    today_str,
+                ))
+            conn.execute(
+                "INSERT INTO news_cache (id, fetched_at) VALUES (1, ?)"
+                " ON CONFLICT(id) DO UPDATE SET fetched_at=excluded.fetched_at",
+                (now,)
+            )
+            conn.commit()
+        except Exception:
+            pass  # fall through to return from history
 
-    if not os.environ.get("RAPIDAPI_KEY"):
-        conn.close()
-        if stale_payload:
-            return stale_payload
-        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
-
-    try:
-        data = _tank01_get("getNBANews", {"recentNews": "true", "maxItems": "50"})
-    except Exception as e:
-        conn.close()
-        if stale_payload:
-            return stale_payload   # serve stale rather than error
-        raise HTTPException(502, f"Tank01 news fetch failed: {e}")
-
-    body = data.get("body", [])
-    if isinstance(body, dict):
-        body = list(body.values())
-
-    articles = []
-    for item in body:
-        title = item.get("title") or ""
-        if not title:
-            continue
-        articles.append({
-            "title":     title,
-            "link":      item.get("link") or "",
-            "image":     item.get("image") or "",
-            "playerIDs": item.get("playerIDs") or [],
-        })
-
-    payload = {"articles": articles, "fetched_at": now}
-    blob = _json_mod.dumps(payload)
-    conn.execute(
-        "INSERT INTO news_cache (id, payload, fetched_at) VALUES (1, ?, ?)"
-        " ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, fetched_at=excluded.fetched_at",
-        (blob, now)
-    )
-    conn.commit()
+    # Return last 7 days from history, newest date first
+    cutoff = (_date.today() - __import__('datetime').timedelta(days=7)).isoformat()
+    rows = conn.execute("""
+        SELECT title, link, image, player_ids, fetched_date
+        FROM news_history
+        WHERE fetched_date >= ?
+        ORDER BY fetched_date DESC, id DESC
+    """, (cutoff,)).fetchall()
     conn.close()
-    return payload
+
+    articles = [
+        {
+            "title":        r["title"],
+            "link":         r["link"],
+            "image":        r["image"],
+            "playerIDs":    _json_mod.loads(r["player_ids"] or "[]"),
+            "fetched_date": r["fetched_date"],
+        }
+        for r in rows
+    ]
+    return {"articles": articles, "fetched_at": now}
 
 
 # -----------------------------------------------------------------------
@@ -3329,6 +3350,7 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
             "name":            t.team_name,
             "actual_wins":     t.wins,
             "actual_losses":   t.losses,
+            "actual_ties":     getattr(t, "ties", 0) or 0,
             "actual_standing": t.standing,
             "is_my_team":      tid == str(my_team_id),
             "proj_wins":       0,
@@ -3405,18 +3427,22 @@ def espn_projected_standings(current_user: str = Depends(get_current_user)):
     result = []
     for tid, d in team_data.items():
         proj_total_wins   = d["actual_wins"]   + d["proj_wins"]
-        proj_total_losses = d["actual_losses"]  + d["proj_losses"]
+        proj_total_losses = d["actual_losses"] + d["proj_losses"]
+        proj_total_ties   = d["actual_ties"]   + d["proj_ties"]
         result.append({
             "team_id":            tid,
             "name":               d["name"],
             "is_my_team":         d["is_my_team"],
             "actual_wins":        d["actual_wins"],
             "actual_losses":      d["actual_losses"],
+            "actual_ties":        d["actual_ties"],
             "actual_standing":    d["actual_standing"],
             "proj_wins":          d["proj_wins"],
             "proj_losses":        d["proj_losses"],
+            "proj_ties":          d["proj_ties"],
             "proj_total_wins":    proj_total_wins,
             "proj_total_losses":  proj_total_losses,
+            "proj_total_ties":    proj_total_ties,
             "match_rate":         f"{d['matched']}/{d['total']}",
             "team_stats":         {k: round(v, 1) for k, v in d["stats"].items()},
         })

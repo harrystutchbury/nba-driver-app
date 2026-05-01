@@ -2985,28 +2985,40 @@ function ManagerDashboard({ onSelectPlayer }) {
           <div className="dash-card-title">Standings{league?.league_name ? ` — ${league.league_name}` : ''}</div>
           {!league ? (
             <div className="dash-empty">No standings data</div>
-          ) : (
-            <table className="dash-table">
-              <thead>
-                <tr><th style={{textAlign:'center'}}>#</th><th style={{textAlign:'left'}}>Team</th><th style={{textAlign:'center'}}>W</th><th style={{textAlign:'center'}}>L</th><th style={{textAlign:'center'}}>W%</th></tr>
-              </thead>
-              <tbody>
-                {(league.standings || []).map((t, i) => {
-                  const total = t.wins + t.losses + (t.ties || 0)
-                  const pct   = total > 0 ? (t.wins / total * 100).toFixed(1) + '%' : '0.0%'
-                  return (
-                    <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                      <td style={{textAlign:'center'}}>{i + 1}</td>
-                      <td style={{textAlign:'left'}}>{t.name}</td>
-                      <td style={{textAlign:'center'}}>{t.wins}</td>
-                      <td style={{textAlign:'center'}}>{t.losses}</td>
-                      <td style={{textAlign:'center'}}>{pct}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
+          ) : (() => {
+            const rows = league.standings || []
+            const hasTies = rows.some(t => (t.ties || 0) > 0)
+            return (
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th style={{textAlign:'center'}}>#</th>
+                    <th style={{textAlign:'left'}}>Team</th>
+                    <th style={{textAlign:'center'}}>W</th>
+                    <th style={{textAlign:'center'}}>L</th>
+                    {hasTies && <th style={{textAlign:'center'}}>T</th>}
+                    <th style={{textAlign:'center'}}>W%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((t, i) => {
+                    const total = t.wins + t.losses + (t.ties || 0)
+                    const pct   = total > 0 ? (t.wins / total * 100).toFixed(1) + '%' : '0.0%'
+                    return (
+                      <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                        <td style={{textAlign:'center'}}>{i + 1}</td>
+                        <td style={{textAlign:'left'}}>{t.name}</td>
+                        <td style={{textAlign:'center'}}>{t.wins}</td>
+                        <td style={{textAlign:'center'}}>{t.losses}</td>
+                        {hasTies && <td style={{textAlign:'center'}}>{t.ties || 0}</td>}
+                        <td style={{textAlign:'center'}}>{pct}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          })()}
         </div>
 
       </div>
@@ -3050,36 +3062,48 @@ function ProjectedStandings() {
         </div>
       </div>
 
-      <table className="proj-table">
-        <thead>
-          <tr>
-            <th>Proj</th><th>Team</th><th>Current</th>
-            <th>+W</th><th>+L</th><th>Proj W-L</th>
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map(t => {
-            const moved = t.actual_standing - t.proj_standing
-            return (
-              <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
-                <td className="proj-rank">
-                  <span>{t.proj_standing}</span>
-                  {moved !== 0 && (
-                    <span className={moved > 0 ? 'proj-up' : 'proj-down'}>
-                      {moved > 0 ? `▲${moved}` : `▼${Math.abs(moved)}`}
-                    </span>
-                  )}
-                </td>
-                <td className="proj-team">{t.name}</td>
-                <td className="proj-now">{t.actual_wins}–{t.actual_losses}</td>
-                <td className="scoring-pos">+{t.proj_wins}</td>
-                <td className="scoring-neg">+{t.proj_losses}</td>
-                <td><strong>{t.proj_total_wins}–{t.proj_total_losses}</strong></td>
+      {(() => {
+        const hasTies = standings.some(t => (t.actual_ties || 0) + (t.proj_ties || 0) > 0)
+        return (
+          <table className="proj-table">
+            <thead>
+              <tr>
+                <th>Proj</th><th>Team</th><th>Current</th>
+                <th>+W</th><th>+L</th>{hasTies && <th>+T</th>}<th>Proj W-L</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {standings.map(t => {
+                const moved = t.actual_standing - t.proj_standing
+                const curRecord = hasTies
+                  ? `${t.actual_wins}–${t.actual_losses}–${t.actual_ties || 0}`
+                  : `${t.actual_wins}–${t.actual_losses}`
+                const projRecord = hasTies
+                  ? `${t.proj_total_wins}–${t.proj_total_losses}–${t.proj_total_ties || 0}`
+                  : `${t.proj_total_wins}–${t.proj_total_losses}`
+                return (
+                  <tr key={t.team_id} className={t.is_my_team ? 'fantasy-my-team' : ''}>
+                    <td className="proj-rank">
+                      <span>{t.proj_standing}</span>
+                      {moved !== 0 && (
+                        <span className={moved > 0 ? 'proj-up' : 'proj-down'}>
+                          {moved > 0 ? `▲${moved}` : `▼${Math.abs(moved)}`}
+                        </span>
+                      )}
+                    </td>
+                    <td className="proj-team">{t.name}</td>
+                    <td className="proj-now">{curRecord}</td>
+                    <td className="scoring-pos">+{t.proj_wins}</td>
+                    <td className="scoring-neg">+{t.proj_losses}</td>
+                    {hasTies && <td>+{t.proj_ties || 0}</td>}
+                    <td><strong>{projRecord}</strong></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )
+      })()}
 
       <p className="proj-note">
         Based on 2025–26 season averages for matched players.
