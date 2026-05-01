@@ -4377,6 +4377,298 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     }
 
 
+@fantasy_router.get("/yahoo/schedule-grid")
+def yahoo_schedule_grid(current_user: str = Depends(get_current_user)):
+    """Return schedule grid for a Yahoo Fantasy Basketball league."""
+    from datetime import date, timedelta
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No Yahoo league selected")
+
+    league_key  = fc["league_key"]
+    my_team_key = fc["team_key"] or ""
+
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    # DB: most-recent NBA team per player slug
+    team_rows = conn.execute("""
+        SELECT g.player_slug, g.team
+        FROM game_logs g
+        INNER JOIN (
+            SELECT player_slug, MAX(game_date) AS last_date
+            FROM game_logs WHERE season=?
+            GROUP BY player_slug
+        ) lm ON g.player_slug = lm.player_slug AND g.game_date = lm.last_date
+        WHERE g.season=?
+        GROUP BY g.player_slug
+    """, [season, season]).fetchall()
+    slug_to_team = {r["player_slug"]: r["team"] for r in team_rows}
+
+    game_team_rows = conn.execute("""
+        SELECT DISTINCT game_date, team FROM game_logs WHERE season=? ORDER BY game_date
+    """, [season]).fetchall()
+
+    pts_allowed_rows = conn.execute("""
+        SELECT opponent AS team, AVG(game_pts) AS avg_pts
+        FROM (
+            SELECT game_date, team, opponent, SUM(pts) AS game_pts
+            FROM game_logs
+            WHERE season=? AND opponent IS NOT NULL AND min > 0
+            GROUP BY game_date, team, opponent
+        )
+        GROUP BY opponent HAVING COUNT(*) >= 5
+    """, [season]).fetchall()
+    pts_allowed_map = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pts_allowed_rows}
+
+    opp_rows = conn.execute("""
+        SELECT DISTINCT team, game_date, opponent FROM game_logs WHERE season=? AND opponent IS NOT NULL
+    """, [season]).fetchall()
+    team_date_opp: dict = {}
+    for r in opp_rows:
+        team_date_opp.setdefault(r["team"], {})[r["game_date"]] = r["opponent"]
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    if not game_team_rows:
+        return {"weeks": [], "all_teams": [], "my_nba_teams": [], "my_team_name": ""}
+
+    all_dates           = [date.fromisoformat(r["game_date"]) for r in game_team_rows]
+    season_start        = min(all_dates)
+    season_end          = max(all_dates)
+    season_start_monday = season_start - timedelta(days=season_start.weekday())
+
+    def _resolve_slug(name):
+        slug = name_to_slug.get(name)
+        if not slug:
+            m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+            if m:
+                slug = name_to_slug[m[0]]
+        return slug
+
+    # ── Yahoo API ─────────────────────────────────────────────────────────────
+    game_weeks_list: list[dict] = []   # [{week, start, end}]
+    playoff_start_week: int | None = None
+    fantasy_team_nba: dict = {}        # team_key → {name, nba_teams}
+    my_team_name = ""
+    mp_to_opp: dict = {}               # matchup_period_id → opponent team_key
+
+    try:
+        conn2 = get_conn()
+        token = _refresh_yahoo_token(conn2, current_user)
+        conn2.close()
+
+        # 1. Scoring week date ranges (game/nba/game_weeks)
+        gw_data = _yahoo_api(token, "game/nba/game_weeks")
+        raw_gw  = (gw_data.get("fantasy_content", {})
+                          .get("game", [{}, {}])[1]
+                          .get("game_weeks", {}))
+        for k, v in raw_gw.items():
+            if k == "count":
+                continue
+            gw = v.get("game_week", {})
+            try:
+                game_weeks_list.append({
+                    "week":  int(gw["week"]),
+                    "start": gw["start"],
+                    "end":   gw["end"],
+                })
+            except (KeyError, ValueError):
+                pass
+        game_weeks_list.sort(key=lambda x: x["week"])
+
+        # 2. League settings → playoff_start_week
+        settings_data = _yahoo_api(token, f"league/{league_key}/settings")
+        raw_settings  = (settings_data.get("fantasy_content", {})
+                                      .get("league", [{}, {}])[0])
+        playoff_start_week = raw_settings.get("playoff_start_week")
+        if playoff_start_week:
+            playoff_start_week = int(playoff_start_week)
+
+        # 3. All team rosters → NBA team sets
+        roster_data = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        raw_teams   = (roster_data.get("fantasy_content", {})
+                                  .get("league", [{}, {}])[1]
+                                  .get("teams", {}))
+        for tk, tv in raw_teams.items():
+            if tk == "count":
+                continue
+            team_data  = tv.get("team", [{}, {}])
+            team_info  = team_data[0] if isinstance(team_data[0], list) else []
+            tname      = next((d["name"]     for d in team_info if isinstance(d, dict) and "name"     in d), "")
+            tkey       = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+            if tkey == my_team_key:
+                my_team_name = tname
+            players_raw = (team_data[1].get("roster", {}).get("players", {})
+                           if len(team_data) > 1 else {})
+            nba_teams = set()
+            for pk, pv in players_raw.items():
+                if pk == "count":
+                    continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list):
+                    continue
+                pname = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                if pname:
+                    slug = _resolve_slug(pname)
+                    if slug and slug in slug_to_team:
+                        nba_teams.add(slug_to_team[slug])
+            fantasy_team_nba[tkey] = {"name": tname, "nba_teams": sorted(nba_teams)}
+
+        # 4. Current scoreboard → opponent for current matchup period
+        sb_data   = _yahoo_api(token, f"league/{league_key}/scoreboard")
+        raw_sb    = (sb_data.get("fantasy_content", {})
+                            .get("league", [{}, {}])[1]
+                            .get("scoreboard", {})
+                            .get("0", {})
+                            .get("matchups", {}))
+        cur_week_raw = (sb_data.get("fantasy_content", {})
+                               .get("league", [{}, {}])[0]
+                               .get("current_week"))
+        cur_week = int(cur_week_raw) if cur_week_raw else None
+
+        for mk, mv in raw_sb.items():
+            if mk == "count":
+                continue
+            matchup_teams = mv.get("matchup", {}).get("0", {}).get("teams", {})
+            keys_in_matchup = []
+            for mtk, mtv in matchup_teams.items():
+                if mtk == "count":
+                    continue
+                mt_info = mtv.get("team", [[]])[0]
+                tkey_here = next((d["team_key"] for d in mt_info if isinstance(d, dict) and "team_key" in d), None)
+                if tkey_here:
+                    keys_in_matchup.append(tkey_here)
+            if my_team_key in keys_in_matchup and len(keys_in_matchup) == 2:
+                opp_key = next(k for k in keys_in_matchup if k != my_team_key)
+                if cur_week:
+                    mp_to_opp[cur_week] = opp_key
+
+    except Exception:
+        logger.exception("Yahoo API error in yahoo_schedule_grid")
+
+    my_nba_teams = fantasy_team_nba.get(my_team_key, {}).get("nba_teams", [])
+
+    # ── Build matchup period buckets ──────────────────────────────────────────
+    # Regular season: 1 scoring week per matchup period.
+    # Playoffs: 2 consecutive scoring weeks per matchup period (Yahoo standard).
+    if game_weeks_list:
+        weeks = []
+        mp_id = 0
+        i     = 0
+        while i < len(game_weeks_list):
+            gw      = game_weeks_list[i]
+            wk_num  = gw["week"]
+            in_playoffs = playoff_start_week and wk_num >= playoff_start_week
+            if in_playoffs and i + 1 < len(game_weeks_list):
+                # Pair this week with the next
+                gw2     = game_weeks_list[i + 1]
+                mp_start = date.fromisoformat(gw["start"])
+                mp_end   = date.fromisoformat(gw2["end"])
+                i += 2
+            else:
+                mp_start = date.fromisoformat(gw["start"])
+                mp_end   = date.fromisoformat(gw["end"])
+                i += 1
+            mp_id += 1
+            if mp_start > season_end + timedelta(days=14):
+                break
+            weeks.append({
+                "start":          mp_start.isoformat(),
+                "end":            mp_end.isoformat(),
+                "label":          f"{mp_start.strftime('%b %-d')}–{mp_end.strftime('%b %-d')}",
+                "games":          {},
+                "matchup_period": mp_id,
+                "scoring_week":   wk_num,   # first scoring week in this period
+            })
+    else:
+        # Fallback: Mon–Sun calendar weeks
+        weeks = []
+        ws, mp_id = season_start_monday, 1
+        while ws <= season_end:
+            we = ws + timedelta(days=6)
+            weeks.append({
+                "start":          ws.isoformat(),
+                "end":            we.isoformat(),
+                "label":          f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+                "games":          {},
+                "matchup_period": mp_id,
+                "scoring_week":   mp_id,
+            })
+            ws += timedelta(weeks=1)
+            mp_id += 1
+
+    # Build date → week for O(1) assignment
+    date_to_week: dict = {}
+    for w in weeks:
+        d, end = date.fromisoformat(w["start"]), date.fromisoformat(w["end"])
+        while d <= end:
+            date_to_week[d] = w
+            d += timedelta(days=1)
+
+    all_teams: set = set()
+    for row in game_team_rows:
+        gd   = date.fromisoformat(row["game_date"])
+        team = row["team"]
+        all_teams.add(team)
+        w = date_to_week.get(gd)
+        if w:
+            w["games"][team] = w["games"].get(team, 0) + 1
+
+    weeks = [w for w in weeks if w["games"]]
+    all_teams_sorted = sorted(all_teams)
+
+    # ── Enrich ────────────────────────────────────────────────────────────────
+    for w in weeks:
+        ws_date  = date.fromisoformat(w["start"])
+        we_date  = date.fromisoformat(w["end"])
+        sw       = w.get("scoring_week")
+        mp_id    = w.get("matchup_period")
+
+        opp_key  = mp_to_opp.get(sw)
+        opp_info = fantasy_team_nba.get(opp_key, {}) if opp_key else {}
+        opp_nba  = opp_info.get("nba_teams", [])
+        w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
+        w["opp_total"] = sum(w["games"].get(t, 0) for t in opp_nba) if opp_nba else None
+        w["opp_name"]  = opp_info.get("name", "")
+
+        teams_with_games = sum(1 for t in all_teams if w["games"].get(t, 0) > 0)
+        w["is_nba_playoff"]     = teams_with_games < 20 and ws_date >= date(season_year - 1, 4, 1)
+        w["is_fantasy_playoff"] = bool(playoff_start_week and sw and sw >= playoff_start_week)
+
+        ease: dict = {}
+        d = ws_date
+        while d <= we_date:
+            d_iso = d.isoformat()
+            for t in all_teams_sorted:
+                opp = team_date_opp.get(t, {}).get(d_iso)
+                if opp and opp in pts_allowed_map:
+                    ease.setdefault(t, []).append(pts_allowed_map[opp])
+            d += timedelta(days=1)
+        w["ease"] = {t: round(sum(v) / len(v), 1) if v else None for t, v in ease.items()}
+
+        w.pop("matchup_period", None)
+        w.pop("scoring_week", None)
+
+    return {
+        "weeks":           weeks,
+        "all_teams":       all_teams_sorted,
+        "my_nba_teams":    my_nba_teams,
+        "my_team_name":    my_team_name,
+        "pts_allowed_map": pts_allowed_map,
+    }
+
+
 @fantasy_router.get("/espn/roster-analysis")
 def espn_roster_analysis(current_user: str = Depends(get_current_user)):
     """

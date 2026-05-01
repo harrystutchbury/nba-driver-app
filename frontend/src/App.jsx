@@ -4543,17 +4543,17 @@ function MatchupProjection({ onSelectPlayer }) {
 
 // ── ScheduleGrid ───────────────────────────────────────────────────────────────
 
-function ScheduleGrid() {
+function ScheduleGrid({ provider = 'espn' }) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
 
   useEffect(() => {
-    apiFetch('/api/fantasy/espn/schedule-grid')
+    apiFetch(`/api/fantasy/${provider}/schedule-grid`)
       .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail || r.statusText)))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
-  }, [])
+  }, [provider])
 
   if (loading) return <div className="dash-empty">Loading schedule…</div>
   if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
@@ -4686,7 +4686,7 @@ function FantasyPage({ onSelectPlayer }) {
 
   useEffect(() => { loadStatus() }, [])
 
-  // Fetch roster data once (shared between Roster Analysis + Trade Analysis tabs)
+  // Fetch ESPN roster data once (shared between Roster Analysis + Trade Analysis tabs)
   useEffect(() => {
     if (!status?.espn?.team_key) return
     apiFetch('/api/fantasy/espn/roster-analysis')
@@ -4697,9 +4697,11 @@ function FantasyPage({ onSelectPlayer }) {
 
   if (!status) return <div className="dash-empty">Loading…</div>
 
-  const espn = status.espn || {}
+  const espn  = status.espn  || {}
+  const yahoo = status.yahoo || {}
 
-  if (!espn.connected) return (
+  // Neither connected
+  if (!espn.connected && !yahoo.connected) return (
     <div className="fantasy-wrap">
       <div className="fantasy-connect-card">
         <h2 className="fantasy-connect-title">Connect your fantasy league</h2>
@@ -4708,7 +4710,8 @@ function FantasyPage({ onSelectPlayer }) {
     </div>
   )
 
-  if (!espn.team_key) return (
+  // ESPN connected but no team picked yet
+  if (espn.connected && !espn.team_key) return (
     <EspnTeamPicker
       onPicked={loadStatus}
       onDisconnect={async () => {
@@ -4718,6 +4721,29 @@ function FantasyPage({ onSelectPlayer }) {
     />
   )
 
+  // Yahoo only (no ESPN)
+  if (!espn.connected && yahoo.connected) {
+    if (!yahoo.league_key) return (
+      <div className="fantasy-wrap">
+        <div className="fantasy-connect-card">
+          <h2 className="fantasy-connect-title">Yahoo connected</h2>
+          <p className="fantasy-connect-sub">Select a league in <strong>Account</strong> to continue.</p>
+        </div>
+      </div>
+    )
+    return (
+      <div>
+        <div className="fantasy-tabs">
+          <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
+          <button className={`fantasy-tab${tab === 'schedule'  ? ' active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
+        </div>
+        {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
+        {tab === 'schedule'  && <ScheduleGrid provider="yahoo" />}
+      </div>
+    )
+  }
+
+  // ESPN connected (full feature set)
   return (
     <div>
       <div className="fantasy-tabs">
@@ -4741,7 +4767,7 @@ function FantasyPage({ onSelectPlayer }) {
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
-      {tab === 'schedule' && <ScheduleGrid />}
+      {tab === 'schedule' && <ScheduleGrid provider="espn" />}
     </div>
   )
 }
