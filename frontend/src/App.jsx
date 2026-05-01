@@ -4524,6 +4524,7 @@ function ScheduleGrid() {
         <span className="sg-legend-item sg-legend-fantasy">Fantasy Playoffs</span>
         <span className="sg-legend-item sg-legend-ease-easy">Easier matchups</span>
         <span className="sg-legend-item sg-legend-ease-hard">Harder matchups</span>
+        <span className="sg-legend-cell-key">Cell: <strong>games</strong> / <span className="sg-legend-pts">avg opp PTS allowed</span></span>
       </div>
       <div className="sg-scroll">
         <table className="sg-table">
