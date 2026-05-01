@@ -6053,6 +6053,12 @@ def get_trending(
 
             sustain = _sustainability(season_avgs, window_avgs, top_drivers)
 
+            s_min  = season_avgs.get('min_pg') or 0
+            w_min  = window_avgs.get('min_pg') or 0
+            s_fga  = season_avgs.get('fga_pg') or 0
+            w_fga  = window_avgs.get('fga_pg') or 0
+            s_fg   = season_avgs.get('fg_pct') or 0
+            w_fg   = window_avgs.get('fg_pct') or 0
             results.append({
                 'slug':       slug,
                 'name':       season_avgs['full_name'],
@@ -6062,7 +6068,15 @@ def get_trending(
                 'season_z':   round(season_z, 2),
                 'window_z':   round(window_z, 2),
                 'delta_z':    round(delta_z, 2),
-                'min_delta':  round((window_avgs.get('min_pg') or 0) - (season_avgs.get('min_pg') or 0), 1),
+                'min_delta':  round(w_min - s_min, 1),
+                'fga_delta':  round(w_fga - s_fga, 1),
+                'fg_pct_delta': round(w_fg - s_fg, 1),
+                'season_min': round(s_min, 1),
+                'window_min': round(w_min, 1),
+                'season_fga': round(s_fga, 1),
+                'window_fga': round(w_fga, 1),
+                'season_fg':  round(s_fg, 1),
+                'window_fg':  round(w_fg, 1),
                 'drivers':    top_drivers,
                 'sustainability': sustain,
             })

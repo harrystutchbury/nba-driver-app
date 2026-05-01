@@ -4343,6 +4343,17 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .trend-dz-up   { background: rgba(77,255,180,0.15); color: var(--skill); }
 .trend-dz-down { background: rgba(255,107,107,0.15); color: var(--neg); }
 
+/* Key context metrics strip */
+.trend-metrics { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.trend-metric { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px; border-right: 1px solid var(--border); }
+.trend-metric:last-child { border-right: none; }
+.trend-metric-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.trend-metric-values { display: flex; align-items: center; gap: 3px; font-size: 12px; font-family: var(--mono); color: var(--muted); }
+.trend-metric-base { opacity: 0.7; }
+.trend-metric-arrow { font-size: 10px; opacity: 0.4; }
+.trend-metric-now { font-weight: 700; color: var(--text); }
+.trend-metric-delta { font-size: 13px; font-weight: 800; font-family: var(--mono); }
+
 .trend-z-row { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 8px 10px; }
 .trend-z-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .trend-z-item.trend-z-games { margin-left: auto; }

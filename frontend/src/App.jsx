@@ -1964,9 +1964,9 @@ function TrendingPage({ onSelectPlayer }) {
           </button>
         </div>
         <div className="trend-toggle-group">
-          {[7, 14].map(d => (
+          {[7, 14, 30].map(d => (
             <button key={d} className={`trend-toggle${window === d ? ' active' : ''}`} onClick={() => setWindow(d)}>
-              {d} Days
+              {d}d
             </button>
           ))}
         </div>
@@ -1982,6 +1982,10 @@ function TrendingPage({ onSelectPlayer }) {
         {players.map(p => {
           const s = p.sustainability
           const maxAbs = Math.max(...p.drivers.map(d => Math.abs(d.contribution)), 0.01)
+
+          const fmtDelta = (v, decimals = 1) => v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(decimals)}`
+          const deltaClass = v => v > 0 ? 'trend-pos' : v < 0 ? 'trend-neg' : ''
+
           return (
             <div key={p.slug} className="trend-card">
               <div className="trend-card-header">
@@ -1994,12 +1998,44 @@ function TrendingPage({ onSelectPlayer }) {
                 </div>
               </div>
 
+              {/* Key context metrics */}
+              <div className="trend-metrics">
+                <div className="trend-metric">
+                  <span className="trend-metric-label">MIN/g</span>
+                  <span className="trend-metric-values">
+                    <span className="trend-metric-base">{p.season_min}</span>
+                    <span className="trend-metric-arrow">→</span>
+                    <span className="trend-metric-now">{p.window_min}</span>
+                  </span>
+                  <span className={`trend-metric-delta ${deltaClass(p.min_delta)}`}>{fmtDelta(p.min_delta)}</span>
+                </div>
+                <div className="trend-metric">
+                  <span className="trend-metric-label">FGA/g</span>
+                  <span className="trend-metric-values">
+                    <span className="trend-metric-base">{p.season_fga}</span>
+                    <span className="trend-metric-arrow">→</span>
+                    <span className="trend-metric-now">{p.window_fga}</span>
+                  </span>
+                  <span className={`trend-metric-delta ${deltaClass(p.fga_delta)}`}>{fmtDelta(p.fga_delta)}</span>
+                </div>
+                <div className="trend-metric">
+                  <span className="trend-metric-label">FG%</span>
+                  <span className="trend-metric-values">
+                    <span className="trend-metric-base">{p.season_fg}%</span>
+                    <span className="trend-metric-arrow">→</span>
+                    <span className="trend-metric-now">{p.window_fg}%</span>
+                  </span>
+                  <span className={`trend-metric-delta ${deltaClass(p.fg_pct_delta)}`}>{fmtDelta(p.fg_pct_delta)}%</span>
+                </div>
+              </div>
+
+              {/* Z row */}
               <div className="trend-z-row">
                 <div className="trend-z-item">
                   <span className="trend-z-label">Season Z</span>
                   <span className={`trend-z-val ${p.season_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.season_z.toFixed(2)}</span>
                 </div>
-                <div className="trend-z-arrow">{direction === 'up' ? '→' : '→'}</div>
+                <div className="trend-z-arrow">→</div>
                 <div className="trend-z-item">
                   <span className="trend-z-label">{window}d Z</span>
                   <span className={`trend-z-val ${p.window_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.window_z.toFixed(2)}</span>
