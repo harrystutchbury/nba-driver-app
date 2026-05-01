@@ -338,6 +338,24 @@ def init_db():
     except Exception:
         pass  # already exists
 
+    # tank01_player_map may be created by ingest_tank01.py before this runs;
+    # ensure position column exists whenever the API server starts
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tank01_player_map (
+                br_slug     TEXT PRIMARY KEY,
+                tank01_id   TEXT NOT NULL,
+                tank01_name TEXT,
+                position    TEXT
+            )
+        """)
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE tank01_player_map ADD COLUMN position TEXT")
+    except Exception:
+        pass  # already exists
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")
