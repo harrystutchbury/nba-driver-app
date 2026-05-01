@@ -4217,6 +4217,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     my_team_obj      = None
     fantasy_team_nba = {}
     mp_to_opp        = {}   # matchup_period_id (int) → opponent fantasy team_id
+    date_to_opp      = {}   # week Monday (date) → opponent fantasy team_id (fallback)
     matchup_periods_raw: dict = {}
     reg_season_count: int | None = None
     try:
@@ -4258,20 +4259,30 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         matchup_periods_raw = dict(getattr(league.settings, 'matchup_periods', {}) or {})
         reg_season_count    = getattr(league.settings, 'reg_season_count', None)
 
-        # Map each matchup → opponent by matchupPeriodId (handles multi-week matchups correctly)
+        # Map each matchup → opponent.
+        # Primary: by matchupPeriodId (handles multi-week matchups correctly).
+        # Fallback: by calendar week Monday (enumerate order), for when matchupPeriodId is None.
         team_sched = getattr(my_team_obj, 'schedule', []) or []
-        for matchup in team_sched:
-            mp_id     = getattr(matchup, 'matchupPeriodId', None)
+        for week_idx, matchup in enumerate(team_sched):
             home_team = getattr(matchup, 'home_team', None)
             away_team = getattr(matchup, 'away_team', None)
-            if mp_id is None or not home_team or not away_team:
+            if not home_team or not away_team:
                 continue
             home_id = str(getattr(home_team, 'team_id', ''))
             away_id = str(getattr(away_team, 'team_id', ''))
+            opp_id_cal = None
             if home_id == my_team_id:
-                mp_to_opp[int(mp_id)] = away_id
+                opp_id_cal = away_id
             elif away_id == my_team_id:
-                mp_to_opp[int(mp_id)] = home_id
+                opp_id_cal = home_id
+            # Calendar-date fallback (always build)
+            if opp_id_cal:
+                week_mon = season_start_monday + timedelta(weeks=week_idx)
+                date_to_opp[week_mon] = opp_id_cal
+            # matchupPeriodId primary (build when available)
+            mp_id = getattr(matchup, 'matchupPeriodId', None)
+            if mp_id is not None and opp_id_cal:
+                mp_to_opp[int(mp_id)] = opp_id_cal
 
     except Exception:
         logger.exception("ESPN API error in schedule-grid; returning schedule without opponent data")
@@ -4340,7 +4351,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         we_date = date.fromisoformat(w["end"])
         mp_id   = w.get("matchup_period")
 
-        opp_id   = mp_to_opp.get(mp_id)
+        opp_id   = mp_to_opp.get(mp_id) or date_to_opp.get(ws_date)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
         w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
