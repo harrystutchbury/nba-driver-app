@@ -939,7 +939,8 @@ def get_game_log(
             g.fg3m,
             g.fg3a,
             g.ftm,
-            g.fta
+            g.fta,
+            g.plus_minus
         FROM game_logs g
         WHERE g.player_slug = ?
           AND g.game_date  >= ?
@@ -947,8 +948,28 @@ def get_game_log(
           AND g.min         > 0
         ORDER BY g.game_date DESC
     """, (player, pa_start, pb_end)).fetchall()
+
+    season_end = _current_season_end_year()
+    season = f"{season_end - 1}-{str(season_end)[2:]}"
+    zp = _league_z_params(conn, season)
     conn.close()
-    return [dict(r) for r in rows]
+
+    def _zs(stat, val):
+        p = zp.get(stat, {"mean": 0.0, "std": 1.0})
+        return (val - p["mean"]) / p["std"]
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        pts  = d["pts"]  or 0.0; reb  = d["reb"]  or 0.0; ast  = d["ast"]  or 0.0
+        stl  = d["stl"]  or 0.0; blk  = d["blk"]  or 0.0; tov  = d["tov"]  or 0.0
+        fg3m = d["fg3m"] or 0.0; fgm  = d["fgm"]  or 0.0; fga  = d["fga"]  or 0.0
+        ftm  = d["ftm"]  or 0.0; fta  = d["fta"]  or 0.0
+        fg_z = ((fgm / fga - zp["fg_pct"]["league_avg"]) * fga - zp["fg_pct"]["mean"]) / zp["fg_pct"]["std"] if fga > 0 else 0.0
+        ft_z = ((ftm / fta - zp["ft_pct"]["league_avg"]) * fta - zp["ft_pct"]["mean"]) / zp["ft_pct"]["std"] if fta > 0 else 0.0
+        d["z_total"] = round(_zs("pts",pts) + _zs("reb",reb) + _zs("ast",ast) + _zs("stl",stl) + _zs("blk",blk) - _zs("tov",tov) + _zs("fg3m",fg3m) + fg_z + ft_z, 2)
+        result.append(d)
+    return result
 
 
 # -----------------------------------------------------------------------
@@ -957,7 +978,7 @@ def get_game_log(
 
 @router.get("/player-games")
 def get_player_games(player: str = Query(..., description="Player slug")):
-    """Return full game-by-game log for a player, oldest first, with per-game fg_pct."""
+    """Return full game-by-game log for a player, oldest first, with per-game fg_pct and z_total."""
     conn = get_conn()
     rows = conn.execute("""
         SELECT
@@ -978,14 +999,45 @@ def get_player_games(player: str = Query(..., description="Player slug")):
             fg3a,
             ftm,
             fta,
+            plus_minus,
             CASE WHEN fga > 0 THEN ROUND(fgm * 100.0 / fga, 1) ELSE NULL END AS fg_pct,
             CASE WHEN fta > 0 THEN ROUND(ftm * 100.0 / fta, 1) ELSE NULL END AS ft_pct
         FROM game_logs
         WHERE player_slug = ? AND min > 0
         ORDER BY game_date ASC
     """, (player,)).fetchall()
+
+    # Compute per-game z_total using current-season league params
+    season_end = _current_season_end_year()
+    season = f"{season_end - 1}-{str(season_end)[2:]}"
+    zp = _league_z_params(conn, season)
     conn.close()
-    return [dict(r) for r in rows]
+
+    def _zs(stat, val):
+        p = zp.get(stat, {"mean": 0.0, "std": 1.0})
+        return (val - p["mean"]) / p["std"]
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        pts  = d["pts"]  or 0.0
+        reb  = d["reb"]  or 0.0
+        ast  = d["ast"]  or 0.0
+        stl  = d["stl"]  or 0.0
+        blk  = d["blk"]  or 0.0
+        tov  = d["tov"]  or 0.0
+        fg3m = d["fg3m"] or 0.0
+        fgm  = d["fgm"]  or 0.0
+        fga  = d["fga"]  or 0.0
+        ftm  = d["ftm"]  or 0.0
+        fta  = d["fta"]  or 0.0
+        fg_z = ((fgm / fga - zp["fg_pct"]["league_avg"]) * fga - zp["fg_pct"]["mean"]) / zp["fg_pct"]["std"] if fga > 0 else 0.0
+        ft_z = ((ftm / fta - zp["ft_pct"]["league_avg"]) * fta - zp["ft_pct"]["mean"]) / zp["ft_pct"]["std"] if fta > 0 else 0.0
+        z_total = _zs("pts", pts) + _zs("reb", reb) + _zs("ast", ast) + _zs("stl", stl) + _zs("blk", blk) - _zs("tov", tov) + _zs("fg3m", fg3m) + fg_z + ft_z
+        d["z_total"] = round(z_total, 2)
+        result.append(d)
+
+    return result
 
 
 # -----------------------------------------------------------------------

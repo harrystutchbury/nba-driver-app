@@ -311,6 +311,7 @@ def transform_game(game: dict, br_slug: str):
         "fg3a":        f("tptfga"),
         "ftm":         f("ftm"),
         "fta":         f("fta"),
+        "plus_minus":  game.get("plusMinus"),
         # dreb_pct / oreb_pct require team box score data — left NULL for now
         # Run refresh.py enrichment step or a separate team_games pull to populate
         "dreb_pct":    None,

@@ -6482,6 +6482,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                             <th>Date</th>
                             <th>Opp</th>
                             <th className="num">Min</th>
+                            <th className="num">+/-</th>
                             <th className="num">Pts</th>
                             <th className="num">Reb</th>
                             <th className="num">Ast</th>
@@ -6494,10 +6495,15 @@ function AppMain({ onLogout, onOpenAccount }) {
                             <th className="num">3P%</th>
                             <th className="num">FT</th>
                             <th className="num">FT%</th>
+                            <th className="num">Z</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {visibleGames.map((g, i) => (
+                          {visibleGames.map((g, i) => {
+                            const pm = g.plus_minus
+                            const pmNum = pm != null ? parseInt(pm, 10) : null
+                            const z = g.z_total
+                            return (
                             <tr key={i} className={i % 2 === 0 ? 'row-even' : ''}>
                               <td className="mono">{g.game_date}</td>
                               <td>
@@ -6507,6 +6513,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                                 </span>
                               </td>
                               <td className="num mono">{g.min}</td>
+                              <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
+                                {pmNum != null ? (pmNum > 0 ? '+' : '') + pmNum : '—'}
+                              </td>
                               <td className="num mono">{g.pts}</td>
                               <td className="num mono">{g.reb}</td>
                               <td className="num mono">{g.ast}</td>
@@ -6519,8 +6528,12 @@ function AppMain({ onLogout, onOpenAccount }) {
                               <td className="num mono">{g.fg3a > 0 ? (g.fg3m / g.fg3a * 100).toFixed(0) + '%' : '—'}</td>
                               <td className="num mono">{g.ftm}-{g.fta}</td>
                               <td className="num mono">{g.ft_pct != null ? g.ft_pct + '%' : '—'}</td>
+                              <td className={`num mono bs-ztotal${z != null ? (z > 0 ? ' z-pos' : z < 0 ? ' z-neg' : ' z-neu') : ''}`}>
+                                {z != null ? (z > 0 ? '+' : '') + z : '—'}
+                              </td>
                             </tr>
-                          ))}
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -6853,6 +6866,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                         <th>Date</th>
                         <th>Opp</th>
                         <th className="num">Min</th>
+                        <th className="num">+/-</th>
                         <th className="num">Pts</th>
                         <th className="num">3P</th>
                         <th className="num">3P%</th>
@@ -6865,10 +6879,15 @@ function AppMain({ onLogout, onOpenAccount }) {
                         <th className="num">FG%</th>
                         <th className="num">FT</th>
                         <th className="num">FT%</th>
+                        <th className="num">Z</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {gameLog.map((g, i) => (
+                      {gameLog.map((g, i) => {
+                        const pm = g.plus_minus
+                        const pmNum = pm != null ? parseInt(pm, 10) : null
+                        const z = g.z_total
+                        return (
                         <tr key={i} className={i % 2 === 0 ? 'row-even' : ''}>
                           <td className="mono">{g.game_date}</td>
                           <td>
@@ -6878,6 +6897,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                             </span>
                           </td>
                           <td className="num mono">{g.min}</td>
+                          <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
+                            {pmNum != null ? (pmNum > 0 ? '+' : '') + pmNum : '—'}
+                          </td>
                           <td className="num mono">{g.pts}</td>
                           <td className="num mono">{g.fg3m}-{g.fg3a}</td>
                           <td className="num mono">{g.fg3a > 0 ? (g.fg3m / g.fg3a * 100).toFixed(0) + '%' : '—'}</td>
@@ -6890,8 +6912,12 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <td className="num mono">{g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(0) + '%' : '—'}</td>
                           <td className="num mono">{g.ftm}-{g.fta}</td>
                           <td className="num mono">{g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(0) + '%' : '—'}</td>
+                          <td className={`num mono bs-ztotal${z != null ? (z > 0 ? ' z-pos' : z < 0 ? ' z-neg' : ' z-neu') : ''}`}>
+                            {z != null ? (z > 0 ? '+' : '') + z : '—'}
+                          </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
