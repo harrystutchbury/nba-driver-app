@@ -4125,50 +4125,6 @@ def fantasy_ownership(current_user: str = Depends(get_current_user)):
     return {"by_slug": {}}
 
 
-@fantasy_router.get("/espn/debug-schedule")
-def espn_debug_schedule(current_user: str = Depends(get_current_user)):
-    """Temporary debug: dump raw ESPN matchup period data."""
-    conn = get_conn()
-    fc = conn.execute(
-        "SELECT team_key, access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
-        [current_user]
-    ).fetchone()
-    conn.close()
-    if not fc:
-        raise HTTPException(status_code=400, detail="No ESPN connection")
-
-    from espn_api.basketball import League as EspnLeague
-    league = EspnLeague(
-        league_id=int(fc["league_key"]),
-        year=2026,
-        espn_s2=fc["access_token"],
-        swid=fc["refresh_token"],
-    )
-
-    # Raw HTTP
-    season_year = _current_season_end_year()
-    raw_resp = _requests.get(
-        f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}/segments/0/leagues/{fc['league_key']}",
-        params={"view": ["mMatchup", "mSettings"]},
-        cookies={"espn_s2": fc["access_token"], "SWID": fc["refresh_token"]},
-        timeout=15,
-    )
-    raw_data = raw_resp.json() if raw_resp.ok else {}
-    sched_settings = raw_data.get("settings", {}).get("scheduleSettings", {})
-    raw_schedule = raw_data.get("schedule", [])
-    # Sample first 5 schedule entries
-    sample_schedule = raw_schedule[:5]
-
-    return {
-        "league_matchup_ids": dict(getattr(league, 'matchup_ids', {}) or {}),
-        "settings_matchup_periods": dict(getattr(league.settings, 'matchup_periods', {}) or {}),
-        "settings_reg_season_count": getattr(league.settings, 'reg_season_count', None),
-        "raw_matchupPeriods": sched_settings.get("matchupPeriods", "MISSING"),
-        "raw_matchupPeriodCount": sched_settings.get("matchupPeriodCount", "MISSING"),
-        "raw_schedule_sample": sample_schedule,
-        "raw_http_status": raw_resp.status_code,
-    }
-
 
 @fantasy_router.get("/espn/schedule-grid")
 def espn_schedule_grid(current_user: str = Depends(get_current_user)):
@@ -4265,7 +4221,6 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     my_team_obj      = None
     fantasy_team_nba = {}
     mp_to_opp        = {}   # matchup_period_id (int) → opponent fantasy team_id
-    date_to_opp      = {}   # week Monday (date) → opponent fantasy team_id (enumerate fallback)
     matchup_periods_raw: dict = {}
     reg_season_count: int | None = None
     try:
@@ -4303,88 +4258,39 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             for t in league.teams
         }
 
-        # ── Library attrs (always try first) ─────────────────────────────────
-        # matchup_periods maps matchupPeriodId → [scoringPeriodIds] for full season
-        matchup_periods_raw = dict(getattr(league.settings, 'matchup_periods', {}) or {})
-        reg_season_count    = getattr(league.settings, 'reg_season_count', None)
+        reg_season_count = getattr(league.settings, 'reg_season_count', None)
 
-        # ── Raw HTTP call for matchupPeriodId on schedule entries ─────────────
-        # The espn_api Matchup class does not expose matchupPeriodId so we fetch
-        # the raw schedule directly. Use the same mMatchup+mSettings views the
-        # library's get_league() uses so the data format is identical.
-        raw_url = (
-            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}"
-            f"/segments/0/leagues/{espn_league_id}"
-        )
-        try:
-            raw_resp = _requests.get(
-                raw_url,
-                params={"view": ["mMatchup", "mSettings"]},
-                cookies={"espn_s2": espn_s2, "SWID": espn_swid},
-                timeout=15,
-            )
-            raw_resp.raise_for_status()
-            raw_data = raw_resp.json()
+        # ── league.matchup_ids: the only reliable source ──────────────────────
+        # Built by the library from schedule JSON (home.pointsByScoringPeriod keys).
+        # Values are DAILY scoring period IDs, so period 17 (all-star break) has
+        # 14 entries = 2 weeks, and playoff periods similarly have 14 entries.
+        # Only covers completed periods — sufficient since we filter to weeks with
+        # actual game data anyway.
+        lib_ids = {
+            int(mp_id): sorted(int(sp) for sp in sp_ids)
+            for mp_id, sp_ids in (getattr(league, 'matchup_ids', {}) or {}).items()
+            if mp_id is not None
+        }
+        matchup_periods_raw = lib_ids  # daily SP IDs — bucketing uses len() not index math
 
-            # matchupPeriods from settings overrides library if non-empty
-            sched_settings = raw_data.get("settings", {}).get("scheduleSettings", {})
-            mp_raw = sched_settings.get("matchupPeriods", {})
-            if mp_raw:
-                matchup_periods_raw = {int(k): [int(x) for x in v] for k, v in mp_raw.items()}
-            if not reg_season_count:
-                reg_season_count = sched_settings.get("matchupPeriodCount") or reg_season_count
-
-            # Build mp_to_opp from the raw schedule entries (have matchupPeriodId)
-            my_int_id = int(my_team_id)
-            seen_mp: set = set()
-            for m in raw_data.get("schedule", []):
-                mp_id   = m.get("matchupPeriodId")
-                home_id = (m.get("home") or {}).get("teamId")
-                away_id = (m.get("away") or {}).get("teamId")
-                if mp_id is None or mp_id in seen_mp:
-                    continue
-                if home_id == my_int_id:
-                    mp_to_opp[int(mp_id)] = str(away_id)
-                    seen_mp.add(mp_id)
-                elif away_id == my_int_id:
-                    mp_to_opp[int(mp_id)] = str(home_id)
-                    seen_mp.add(mp_id)
-
-        except Exception:
-            logger.warning("Raw ESPN schedule fetch failed; opponent data may be incomplete")
-
-        # ── league.matchup_ids fallback for period buckets ───────────────────
-        # Built by the library directly from schedule JSON (home.pointsByScoringPeriod),
-        # so it correctly captures multi-week periods (all-star, fantasy playoffs).
-        # Only covers periods where games have been played, which is sufficient
-        # since we already filter to weeks that have game data in the DB.
-        if not matchup_periods_raw:
-            lib_ids = getattr(league, 'matchup_ids', {}) or {}
-            if lib_ids:
-                matchup_periods_raw = {
-                    int(mp_id): sorted(int(sp) for sp in sp_ids)
-                    for mp_id, sp_ids in lib_ids.items()
-                    if mp_id is not None
-                }
-
-        # ── Enumerate fallback for mp_to_opp ─────────────────────────────────
-        # Only used when the raw HTTP call fails entirely. Assumes 1 matchup = 1
-        # calendar week so will drift after any 2-week period, but beats nothing.
-        if not mp_to_opp:
-            team_sched = getattr(my_team_obj, 'schedule', []) or []
-            for week_idx, matchup in enumerate(team_sched):
-                home_team = getattr(matchup, 'home_team', None)
-                away_team = getattr(matchup, 'away_team', None)
-                if not home_team or not away_team:
-                    continue
-                home_id = str(getattr(home_team, 'team_id', ''))
-                away_id = str(getattr(away_team, 'team_id', ''))
-                if home_id == my_team_id:
-                    week_mon = season_start_monday + timedelta(weeks=week_idx)
-                    date_to_opp[week_mon] = away_id
-                elif away_id == my_team_id:
-                    week_mon = season_start_monday + timedelta(weeks=week_idx)
-                    date_to_opp[week_mon] = home_id
+        # ── mp_to_opp from matchup_ids + team.schedule order ─────────────────
+        # league.matchup_ids keys (sorted) map 1:1 to team.schedule entries
+        # because both are ordered by matchup period and cover the same periods.
+        team_sched = getattr(my_team_obj, 'schedule', []) or []
+        for idx, mp_id in enumerate(sorted(lib_ids.keys())):
+            if idx >= len(team_sched):
+                break
+            matchup   = team_sched[idx]
+            home_team = getattr(matchup, 'home_team', None)
+            away_team = getattr(matchup, 'away_team', None)
+            if not home_team or not away_team:
+                continue
+            home_id = str(getattr(home_team, 'team_id', ''))
+            away_id = str(getattr(away_team, 'team_id', ''))
+            if home_id == my_team_id:
+                mp_to_opp[mp_id] = away_id
+            elif away_id == my_team_id:
+                mp_to_opp[mp_id] = home_id
 
     except Exception:
         logger.exception("ESPN API error in schedule-grid; returning schedule without opponent data")
@@ -4396,12 +4302,16 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     # Fall back to Mon–Sun calendar weeks if ESPN data unavailable.
     if matchup_periods_raw:
         weeks = []
+        # SP IDs are DAILY (1 per day of the season), so count days sequentially.
+        # Do NOT use sp_ids[0] as a week index — that formula is completely wrong
+        # once any 2-week period appears (all-star break, fantasy playoffs).
+        current_date = season_start
         for mp_id_raw in sorted(matchup_periods_raw.keys(), key=lambda x: int(x)):
-            mp_id  = int(mp_id_raw)
-            sp_ids = sorted(int(x) for x in matchup_periods_raw[mp_id_raw])
-            # Scoring period N starts at season_start_monday + (N-1) weeks
-            mp_start = season_start_monday + timedelta(weeks=sp_ids[0] - 1)
-            mp_end   = season_start_monday + timedelta(weeks=sp_ids[-1]) - timedelta(days=1)
+            mp_id    = int(mp_id_raw)
+            num_days = len(matchup_periods_raw[mp_id_raw])  # 7 = 1 week, 14 = 2 weeks
+            mp_start = current_date
+            mp_end   = current_date + timedelta(days=num_days - 1)
+            current_date = mp_end + timedelta(days=1)
             if mp_start > season_end + timedelta(days=14):
                 break  # well past our data
             weeks.append({
@@ -4453,7 +4363,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         we_date = date.fromisoformat(w["end"])
         mp_id   = w.get("matchup_period")
 
-        opp_id   = mp_to_opp.get(mp_id) or date_to_opp.get(ws_date)
+        opp_id   = mp_to_opp.get(mp_id)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
         w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
