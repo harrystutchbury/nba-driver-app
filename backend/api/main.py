@@ -181,11 +181,11 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(_http_beare
 
 
 def _get_injury_map(conn):
-    """Return dict of player_slug -> {designation, description} for all injured players."""
+    """Return dict of player_slug -> {designation, description, return_date} for all injured players."""
     rows = conn.execute(
-        "SELECT player_slug, designation, description FROM injuries"
+        "SELECT player_slug, designation, description, return_date FROM injuries"
     ).fetchall()
-    return {r["player_slug"]: {"designation": r["designation"], "description": r["description"]} for r in rows}
+    return {r["player_slug"]: {"designation": r["designation"], "description": r["description"], "return_date": r["return_date"]} for r in rows}
 
 
 def _current_season_end_year():

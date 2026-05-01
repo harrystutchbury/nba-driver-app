@@ -2427,6 +2427,7 @@ td.bs-pos {
 
 /* ── Injury badges ─────────────────────────────────────────── */
 .inj-out { color: #ff4444; font-weight: 600; }
+.inj-badge-wrap { display: inline-flex; align-items: center; gap: 4px; }
 .inj-return-date { font-size: 10px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 
 .inj-badge {

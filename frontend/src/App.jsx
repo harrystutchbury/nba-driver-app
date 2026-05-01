@@ -1013,13 +1013,19 @@ function InjuryBadge({ injury, compact }) {
   const label  = compact
     ? (injury.designation === 'Questionable' || injury.designation === 'Day-To-Day' ? 'GTD' : injury.designation === 'Doubtful' ? 'DBT' : 'OUT')
     : injury.designation
+  const tooltip = [injury.description || injury.designation, injury.return_date ? `Exp. return: ${injury.return_date}` : null].filter(Boolean).join(' · ')
   return (
-    <span
-      className="inj-badge"
-      style={{ background: colors.bg, color: colors.text }}
-      title={injury.description || injury.designation}
-    >
-      {label}
+    <span className="inj-badge-wrap">
+      <span
+        className="inj-badge"
+        style={{ background: colors.bg, color: colors.text }}
+        title={tooltip}
+      >
+        {label}
+      </span>
+      {!compact && injury.return_date && (
+        <span className="inj-return-date">exp. {injury.return_date}</span>
+      )}
     </span>
   )
 }

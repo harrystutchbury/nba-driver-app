@@ -175,8 +175,67 @@ def sync(conn=None):
     conn.commit()
     log.info(f"Injury sync complete: {inserted} injured players stored")
 
+    # Enrich return_date from ESPN's public injuries feed (no auth required)
+    try:
+        _enrich_espn_return_dates(conn)
+    except Exception as e:
+        log.warning(f"ESPN return date enrichment failed: {e}")
+
     if own_conn:
         conn.close()
+
+
+def _enrich_espn_return_dates(conn):
+    """
+    Fetch NBA injury data from ESPN's public API and overwrite return_date
+    for any player we can match by name.
+    """
+    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    # Build name -> return_date from ESPN response
+    espn_returns: dict = {}
+    for entry in data.get("injuries", []):
+        athlete = entry.get("athlete") or {}
+        if isinstance(athlete, list):
+            athlete = athlete[0] if athlete else {}
+        name = (athlete.get("displayName") or "").strip()
+        if not name:
+            continue
+        # returnDate may live in details or at top level; try both
+        details = entry.get("details") or {}
+        raw_date = details.get("returnDate") or entry.get("returnDate")
+        if raw_date:
+            # ESPN returns dates as "YYYY-MM-DDTxx:xx" or plain "YYYY-MM-DD"
+            espn_returns[name] = raw_date[:10]
+
+    if not espn_returns:
+        log.info("ESPN enrichment: no return dates found in response")
+        return
+
+    from rapidfuzz import process as rfprocess
+    rows = conn.execute("SELECT player_slug, name FROM injuries").fetchall()
+    espn_names = list(espn_returns.keys())
+    updated = 0
+    for row in rows:
+        db_name = row["name"]
+        player_slug = row["player_slug"]
+        if db_name in espn_returns:
+            ret = espn_returns[db_name]
+        else:
+            match = rfprocess.extractOne(db_name, espn_names, score_cutoff=88)
+            ret = espn_returns[match[0]] if match else None
+        if ret:
+            conn.execute(
+                "UPDATE injuries SET return_date = ? WHERE player_slug = ?",
+                (ret, player_slug)
+            )
+            updated += 1
+
+    conn.commit()
+    log.info(f"ESPN enrichment: updated return_date for {updated} players")
 
 
 if __name__ == "__main__":
