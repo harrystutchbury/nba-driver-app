@@ -3884,6 +3884,8 @@ td.bs-pos {
 .sg-cell { color: var(--text); }
 .sg-cell.sg-my-team { background: rgba(77,255,180,0.06); }
 .sg-zero { color: var(--muted); }
+.sg-count { display: block; font-weight: 600; }
+.sg-ease-val { display: block; font-size: 9px; color: var(--muted); opacity: 0.8; }
 
 .sg-col-total { font-weight: 700; border-left: 2px solid var(--border); }
 .sg-col-my-total  { color: var(--skill); }

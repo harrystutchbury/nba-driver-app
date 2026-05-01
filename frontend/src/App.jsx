@@ -4522,8 +4522,8 @@ function ScheduleGrid() {
       <div className="sg-legend">
         <span className="sg-legend-item sg-legend-nba">NBA Playoffs</span>
         <span className="sg-legend-item sg-legend-fantasy">Fantasy Playoffs</span>
-        <span className="sg-legend-item sg-legend-ease-easy">Easy matchup</span>
-        <span className="sg-legend-item sg-legend-ease-hard">Hard matchup</span>
+        <span className="sg-legend-item sg-legend-ease-easy">Easier matchups</span>
+        <span className="sg-legend-item sg-legend-ease-hard">Harder matchups</span>
       </div>
       <div className="sg-scroll">
         <table className="sg-table">
@@ -4568,9 +4568,13 @@ function ScheduleGrid() {
                         key={t}
                         className={`sg-cell${isMy ? ' sg-my-team' : ''}`}
                         style={bg ? { backgroundColor: bg } : undefined}
-                        title={ease != null ? `Avg PTS allowed by opp: ${ease}` : undefined}
                       >
-                        {count > 0 ? count : <span className="sg-zero">–</span>}
+                        {count > 0 ? (
+                          <>
+                            <span className="sg-count">{count}</span>
+                            {ease != null && <span className="sg-ease-val">{ease}</span>}
+                          </>
+                        ) : <span className="sg-zero">–</span>}
                       </td>
                     )
                   })}
