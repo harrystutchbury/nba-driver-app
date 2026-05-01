@@ -5545,6 +5545,17 @@ function AppMain({ onLogout, onOpenAccount }) {
               )}
             </div>
 
+            {playerStats.player.news?.length > 0 && (
+              <div className="player-news">
+                {playerStats.player.news.map((a, i) => (
+                  <a key={i} className="player-news-item" href={a.link} target="_blank" rel="noreferrer">
+                    <span className="player-news-date">{a.date}</span>
+                    <span className="player-news-title">{a.title}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+
             <div className="stats-grid-wrap">
               <table className="stats-grid">
                 <thead>

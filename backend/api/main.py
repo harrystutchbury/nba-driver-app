@@ -644,6 +644,35 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     league_l14,    rows_l14    = _league_data(conn, cutoff=cutoff_14, min_games=3)
 
     injury_map = _get_injury_map(conn)
+
+    # Recent news for this player from news_history (matched by tank01_id)
+    player_news = []
+    try:
+        t01_row = conn.execute(
+            "SELECT tank01_id FROM tank01_player_map WHERE br_slug = ?", (player,)
+        ).fetchone()
+        if t01_row and t01_row["tank01_id"]:
+            tid = t01_row["tank01_id"]
+            import datetime as _dt_mod
+            cutoff_news = str(today - _dt_mod.timedelta(days=14))
+            news_rows = conn.execute("""
+                SELECT title, link, image, fetched_date
+                FROM news_history
+                WHERE fetched_date >= ?
+                  AND (player_ids LIKE ? OR player_ids LIKE ? OR player_ids LIKE ?)
+                ORDER BY fetched_date DESC, id DESC
+                LIMIT 5
+            """, (cutoff_news, f'["{tid}"%', f'%, "{tid}"%', f'%,"{tid}"%')).fetchall()
+            for nr in news_rows:
+                player_news.append({
+                    "title": nr["title"],
+                    "link":  nr["link"],
+                    "image": nr["image"],
+                    "date":  nr["fetched_date"],
+                })
+    except Exception:
+        pass
+
     conn.close()
 
     def with_rank(avg, league, player_rows):
@@ -675,6 +704,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
             "age":      current_age,
             "position": player_row["fantasy_position"],
             "injury":   injury_map.get(player),
+            "news":     player_news,
         },
         "career":  with_rank(_avg_row(rows,                                      team_game_map), league_career, rows_career),
         "seasons": season_avgs,

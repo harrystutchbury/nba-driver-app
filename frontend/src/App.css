@@ -721,6 +721,44 @@
   letter-spacing: 1px;
 }
 
+/* ── Player news feed ───────────────────────────────────── */
+.player-news {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.player-news-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.player-news-item:last-child { border-bottom: none; }
+.player-news-item:hover { background: var(--hover); }
+
+.player-news-date {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.player-news-title {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.player-news-item:hover .player-news-title { color: var(--accent); }
+
 /* ── Stats grid ──────────────────────────────────────────── */
 .stats-grid-wrap {
   overflow-x: auto;
