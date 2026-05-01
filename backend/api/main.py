@@ -576,10 +576,11 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
     player_row = conn.execute(
         """SELECT p.full_name, p.team, b.birthdate, b.position_group,
-                  COALESCE(fpm.position, b.position_group) AS fantasy_position
+                  COALESCE(fpm.position, t01.position, b.position_group) AS fantasy_position
            FROM players p
            LEFT JOIN player_bio b ON b.br_slug = p.slug
            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
+           LEFT JOIN tank01_player_map t01 ON t01.br_slug = p.slug
            WHERE p.slug = ? ORDER BY p.season DESC LIMIT 1""", (player,)
     ).fetchone()
     if not player_row:
@@ -1294,17 +1295,18 @@ def get_rankings(
             return []
 
         # Build slug → position+name map; use most recent game_log for current team
-        # Prefer ESPN position (granular PG/SG/SF/PF/C) over broad position_group
+        # Prefer ESPN position > Tank01 position > broad position_group
         bio_rows = conn.execute("""
             SELECT p.slug, p.full_name AS name,
                    COALESCE(
                        (SELECT g.team FROM game_logs g WHERE g.player_slug = p.slug ORDER BY g.game_date DESC LIMIT 1),
                        p.team
                    ) AS team,
-                   COALESCE(fpm.position, b.position_group) AS position
+                   COALESCE(fpm.position, t01.position, b.position_group) AS position
             FROM players p
             LEFT JOIN player_bio b ON b.br_slug = p.slug
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01 ON t01.br_slug = p.slug
             WHERE (p.slug, p.season) IN (
                 SELECT slug, MAX(season) FROM players GROUP BY slug
             )
@@ -1819,7 +1821,7 @@ def get_projections(
         # ── 3. Player baselines (current season, ≥10 GP, ≥15 min) ──────────
         player_rows = conn.execute("""
             SELECT g.player_slug, p.full_name, p.team, b.position_group,
-                   COALESCE(fpm.position, b.position_group) AS fantasy_position,
+                   COALESCE(fpm.position, t01.position, b.position_group) AS fantasy_position,
                    COUNT(*) AS gp_current,
                    AVG(g.min) AS min_pg,
                    AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
@@ -1842,6 +1844,7 @@ def get_projections(
             JOIN players p ON p.slug = g.player_slug
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = g.player_slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01 ON t01.br_slug = g.player_slug
             WHERE g.season = ? AND g.min >= 15
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 10
@@ -2268,12 +2271,13 @@ def get_box_score(date: str = Query(..., description="Date in YYYY-MM-DD format"
     slug_by_name = {}
     for r in name_rows:
         slug_by_name[r["full_name"].lower()] = r["slug"]
-    # Position lookup by BR slug — prefer ESPN position (granular) over broad group
+    # Position lookup by BR slug — ESPN > Tank01 > broad group
     try:
         pos_rows = conn.execute("""
-            SELECT b.br_slug, COALESCE(fpm.position, b.position_group) AS pos
+            SELECT b.br_slug, COALESCE(fpm.position, t01.position, b.position_group) AS pos
             FROM player_bio b
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = b.br_slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01 ON t01.br_slug = b.br_slug
         """).fetchall()
         pos_by_slug = {r["br_slug"]: r["pos"] for r in pos_rows}
     except Exception:
@@ -6090,7 +6094,7 @@ def adj_team_players(team: str, current_user: str = Depends(get_current_user)):
 
         player_rows = conn.execute("""
             SELECT g.player_slug, p.full_name,
-                   COALESCE(fpm.position, b.position_group, 'Guard') AS position,
+                   COALESCE(fpm.position, t01.position, b.position_group, 'Guard') AS position,
                    COUNT(*) AS gp,
                    ROUND(AVG(g.min), 1)  AS min_pg,
                    ROUND(AVG(g.pts), 1)  AS pts,
@@ -6110,6 +6114,7 @@ def adj_team_players(team: str, current_user: str = Depends(get_current_user)):
             JOIN players p ON p.slug = g.player_slug AND p.season = ?
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = g.player_slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01 ON t01.br_slug = g.player_slug
             WHERE g.season = ? AND p.team = ? AND g.min >= 5
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 3

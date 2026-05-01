@@ -145,9 +145,15 @@ def ensure_tank01_map_table(conn):
         CREATE TABLE IF NOT EXISTS tank01_player_map (
             br_slug     TEXT PRIMARY KEY,
             tank01_id   TEXT NOT NULL,
-            tank01_name TEXT
+            tank01_name TEXT,
+            position    TEXT
         )
     """)
+    # Migration for existing tables
+    try:
+        conn.execute("ALTER TABLE tank01_player_map ADD COLUMN position TEXT")
+    except Exception:
+        pass
     conn.commit()
 
 
@@ -162,13 +168,14 @@ def build_player_map(conn):
     tank01_players = fetch_player_list()
     time.sleep(REQUEST_DELAY)
 
-    # Build name → tank01_id lookup (normalised)
+    # Build name → (tank01_id, name, position) lookup (normalised)
     t01_by_name = {}
     for p in tank01_players:
         name = p.get("longName") or p.get("espnName") or ""
         pid  = p.get("playerID", "")
+        pos  = p.get("pos") or p.get("position") or None
         if name and pid:
-            t01_by_name[normalize_name(name)] = (pid, name)
+            t01_by_name[normalize_name(name)] = (pid, name, pos)
 
     # Load all players from our DB
     db_players = conn.execute(
@@ -181,14 +188,15 @@ def build_player_map(conn):
         slug, full_name = row["slug"], row["full_name"]
         key = normalize_name(full_name)
         if key in t01_by_name:
-            t01_id, t01_name = t01_by_name[key]
+            t01_id, t01_name, pos = t01_by_name[key]
             conn.execute("""
-                INSERT INTO tank01_player_map (br_slug, tank01_id, tank01_name)
-                VALUES (?, ?, ?)
+                INSERT INTO tank01_player_map (br_slug, tank01_id, tank01_name, position)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(br_slug) DO UPDATE SET
                     tank01_id=excluded.tank01_id,
-                    tank01_name=excluded.tank01_name
-            """, (slug, t01_id, t01_name))
+                    tank01_name=excluded.tank01_name,
+                    position=COALESCE(excluded.position, tank01_player_map.position)
+            """, (slug, t01_id, t01_name, pos))
             matched += 1
         else:
             log.warning(f"  No Tank01 match for: {full_name!r}")
@@ -196,6 +204,40 @@ def build_player_map(conn):
 
     conn.commit()
     log.info(f"Player map: {matched} matched, {skipped} skipped")
+
+
+def refresh_positions(conn):
+    """
+    Fetch Tank01 player list and update positions in tank01_player_map.
+    Called during every regular ingest so positions stay current.
+    """
+    ensure_tank01_map_table(conn)
+    log.info("Refreshing player positions from Tank01…")
+    try:
+        tank01_players = fetch_player_list()
+        time.sleep(REQUEST_DELAY)
+    except Exception as e:
+        log.warning(f"  Could not fetch player list for position refresh: {e}")
+        return
+
+    # Build tank01_id → position lookup
+    pid_to_pos = {}
+    for p in tank01_players:
+        pid = p.get("playerID", "")
+        pos = p.get("pos") or p.get("position") or None
+        if pid and pos:
+            pid_to_pos[pid] = pos
+
+    updated = 0
+    for pid, pos in pid_to_pos.items():
+        result = conn.execute(
+            "UPDATE tank01_player_map SET position = ? WHERE tank01_id = ? AND (position IS NULL OR position != ?)",
+            (pos, pid, pos)
+        )
+        updated += result.rowcount
+
+    conn.commit()
+    log.info(f"  Updated {updated} player positions")
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +349,9 @@ def ingest(season_end_year: int, since_date=None):
     conn = get_conn()
     init_db()
     ensure_tank01_map_table(conn)
+
+    # Refresh positions from Tank01 player list (one API call, keeps positions current)
+    refresh_positions(conn)
 
     # Load player map — only players with game_logs in this season
     season = season_label(season_end_year)
