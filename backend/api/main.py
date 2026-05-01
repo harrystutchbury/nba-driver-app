@@ -23,6 +23,7 @@ import sys
 import os
 import math
 import logging
+import threading
 from datetime import datetime
 
 from jose import JWTError, jwt
@@ -2845,6 +2846,8 @@ def select_league(body: dict = Body(...), current_user: str = Depends(get_curren
     )
     conn.commit()
     conn.close()
+    # Auto-populate player positions in the background (no manual sync step needed)
+    threading.Thread(target=_bg_populate_player_map, args=('yahoo', current_user), daemon=True).start()
     return {"league_key": league_key, "team_key": team_key}
 
 
@@ -3049,6 +3052,15 @@ def _espn_league(conn, username: str):
     return league
 
 
+def _bg_populate_player_map(provider: str, current_user: str):
+    """Fire-and-forget: populate fantasy_player_map (incl. positions) for a provider."""
+    try:
+        populate_player_map(provider=provider, current_user=current_user)
+        logger.info(f"Background player map sync done for {provider}/{current_user}")
+    except Exception:
+        logger.exception(f"Background player map sync failed for {provider}/{current_user}")
+
+
 @fantasy_router.post("/espn/connect")
 def espn_connect(body: dict = Body(...), current_user: str = Depends(get_current_user)):
     """Save ESPN cookies and league ID. Validates by loading the league and fetches scoring settings."""
@@ -3123,6 +3135,8 @@ def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_cur
     )
     conn.commit()
     conn.close()
+    # Auto-populate player positions in the background (no manual sync step needed)
+    threading.Thread(target=_bg_populate_player_map, args=('espn', current_user), daemon=True).start()
     return {"ok": True}
 
 
