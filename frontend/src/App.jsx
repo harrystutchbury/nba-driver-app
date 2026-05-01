@@ -1051,18 +1051,43 @@ function NewsSection() {
   // ESPN generic headshot URL — skip it, only show real player images
   const isGenericImage = url => !url || url.includes('nophoto')
 
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Group articles by fetched_date, newest first
+  const groups = []
+  let currentDate = null
+  for (const a of data.articles) {
+    const d = a.fetched_date || today
+    if (d !== currentDate) {
+      currentDate = d
+      groups.push({ date: d, articles: [] })
+    }
+    groups[groups.length - 1].articles.push(a)
+  }
+
   return (
     <div className="news-list">
-      {data.articles.map((a, i) => (
-        <div key={i} className="news-item">
-          {!isGenericImage(a.image) && (
-            <img className="news-img" src={a.image} alt="" />
+      {groups.map((g, gi) => (
+        <div key={g.date}>
+          {gi > 0 && (
+            <div className="news-date-sep">
+              <span className="news-date-sep-label">
+                {g.date === today ? 'Today' : g.date}
+              </span>
+            </div>
           )}
-          <div className="news-title">
-            {a.link
-              ? <a href={a.link} target="_blank" rel="noopener noreferrer">{a.title}</a>
-              : a.title}
-          </div>
+          {g.articles.map((a, i) => (
+            <div key={i} className="news-item">
+              {!isGenericImage(a.image) && (
+                <img className="news-img" src={a.image} alt="" />
+              )}
+              <div className="news-title">
+                {a.link
+                  ? <a href={a.link} target="_blank" rel="noopener noreferrer">{a.title}</a>
+                  : a.title}
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>

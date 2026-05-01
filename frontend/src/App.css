@@ -2568,6 +2568,28 @@ td.bs-pos {
   color: var(--accent);
 }
 
+.news-date-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.news-date-sep::before,
+.news-date-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.news-date-sep-label {
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
 /* ── Depth Charts ─────────────────────────────────────────────────────────── */
 
 .depth-grid {
