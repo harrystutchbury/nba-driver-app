@@ -4125,6 +4125,51 @@ def fantasy_ownership(current_user: str = Depends(get_current_user)):
     return {"by_slug": {}}
 
 
+@fantasy_router.get("/espn/debug-schedule")
+def espn_debug_schedule(current_user: str = Depends(get_current_user)):
+    """Temporary debug: dump raw ESPN matchup period data."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT team_key, access_token, refresh_token, league_key FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+    conn.close()
+    if not fc:
+        raise HTTPException(status_code=400, detail="No ESPN connection")
+
+    from espn_api.basketball import League as EspnLeague
+    league = EspnLeague(
+        league_id=int(fc["league_key"]),
+        year=2026,
+        espn_s2=fc["access_token"],
+        swid=fc["refresh_token"],
+    )
+
+    # Raw HTTP
+    season_year = _current_season_end_year()
+    raw_resp = _requests.get(
+        f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}/segments/0/leagues/{fc['league_key']}",
+        params={"view": ["mMatchup", "mSettings"]},
+        cookies={"espn_s2": fc["access_token"], "SWID": fc["refresh_token"]},
+        timeout=15,
+    )
+    raw_data = raw_resp.json() if raw_resp.ok else {}
+    sched_settings = raw_data.get("settings", {}).get("scheduleSettings", {})
+    raw_schedule = raw_data.get("schedule", [])
+    # Sample first 5 schedule entries
+    sample_schedule = raw_schedule[:5]
+
+    return {
+        "league_matchup_ids": dict(getattr(league, 'matchup_ids', {}) or {}),
+        "settings_matchup_periods": dict(getattr(league.settings, 'matchup_periods', {}) or {}),
+        "settings_reg_season_count": getattr(league.settings, 'reg_season_count', None),
+        "raw_matchupPeriods": sched_settings.get("matchupPeriods", "MISSING"),
+        "raw_matchupPeriodCount": sched_settings.get("matchupPeriodCount", "MISSING"),
+        "raw_schedule_sample": sample_schedule,
+        "raw_http_status": raw_resp.status_code,
+    }
+
+
 @fantasy_router.get("/espn/schedule-grid")
 def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     """Return schedule grid: games per NBA team per week, with per-week opponent totals."""
