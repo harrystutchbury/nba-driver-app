@@ -1943,6 +1943,29 @@ function TrendingPage({ onSelectPlayer }) {
   }, [window, direction])
 
   const players = data?.players || []
+  const paMin = data?.pa_min ?? 0
+  const paMax = data?.pa_max ?? 1
+
+  function schedEaseBg(pa) {
+    if (pa == null || paMax === paMin) return 'rgba(255,255,255,0.08)'
+    const t = (pa - paMin) / (paMax - paMin)  // 0=hard, 1=easy
+    if (t >= 0.6) return `rgba(77,255,180,${0.15 + (t - 0.6) * 0.5})`
+    if (t <= 0.4) return `rgba(255,107,107,${0.15 + (0.4 - t) * 0.5})`
+    return 'rgba(255,255,255,0.08)'
+  }
+
+  const TEAM_ABBREV = {
+    'ATLANTA HAWKS':'ATL','BOSTON CELTICS':'BOS','BROOKLYN NETS':'BKN',
+    'CHARLOTTE HORNETS':'CHA','CHICAGO BULLS':'CHI','CLEVELAND CAVALIERS':'CLE',
+    'DALLAS MAVERICKS':'DAL','DENVER NUGGETS':'DEN','DETROIT PISTONS':'DET',
+    'GOLDEN STATE WARRIORS':'GSW','HOUSTON ROCKETS':'HOU','INDIANA PACERS':'IND',
+    'LOS ANGELES CLIPPERS':'LAC','LOS ANGELES LAKERS':'LAL','MEMPHIS GRIZZLIES':'MEM',
+    'MIAMI HEAT':'MIA','MILWAUKEE BUCKS':'MIL','MINNESOTA TIMBERWOLVES':'MIN',
+    'NEW ORLEANS PELICANS':'NOP','NEW YORK KNICKS':'NYK','OKLAHOMA CITY THUNDER':'OKC',
+    'ORLANDO MAGIC':'ORL','PHILADELPHIA 76ERS':'PHI','PHOENIX SUNS':'PHO',
+    'PORTLAND TRAIL BLAZERS':'POR','SACRAMENTO KINGS':'SAC','SAN ANTONIO SPURS':'SAS',
+    'TORONTO RAPTORS':'TOR','UTAH JAZZ':'UTA','WASHINGTON WIZARDS':'WAS',
+  }
 
   return (
     <div className="trend-page">
@@ -1997,6 +2020,18 @@ function TrendingPage({ onSelectPlayer }) {
                   {p.delta_z > 0 ? '+' : ''}{p.delta_z.toFixed(2)} ΔZ
                 </div>
               </div>
+
+              {/* Upcoming schedule strip */}
+              {p.upcoming?.length > 0 && (
+                <div className="trend-schedule">
+                  {p.upcoming.map((g, i) => (
+                    <div key={i} className="trend-sched-game" style={{ background: schedEaseBg(g.pa) }}>
+                      <span className="trend-sched-opp">{TEAM_ABBREV[g.opp] || g.opp?.slice(0,3)}</span>
+                      <span className="trend-sched-date">{g.date?.slice(5)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Key context metrics */}
               <div className="trend-metrics">

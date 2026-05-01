@@ -6025,6 +6025,36 @@ def get_trending(
         if not league:
             return {"players": []}
 
+        # Pts allowed per team (defensive proxy) — reuse same logic as schedule grid
+        pa_rows = conn.execute("""
+            SELECT opponent AS team, AVG(game_pts) AS avg_pts
+            FROM (
+                SELECT game_date, team, opponent, SUM(pts) AS game_pts
+                FROM game_logs
+                WHERE season=? AND opponent IS NOT NULL AND min > 0
+                GROUP BY game_date, team, opponent
+            )
+            GROUP BY opponent HAVING COUNT(*) >= 5
+        """, [season]).fetchall()
+        pts_allowed = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pa_rows}
+
+        # Upcoming schedule: next 14 days per team
+        today_iso = _date.today().isoformat()
+        horizon   = (_date.today() + _td(days=14)).isoformat()
+        sched_rows = conn.execute("""
+            SELECT game_date, home_team, away_team FROM nba_schedule
+            WHERE game_date >= ? AND game_date <= ? ORDER BY game_date
+        """, [today_iso, horizon]).fetchall()
+        # team → [{date, opponent, pts_allowed}]
+        upcoming_by_team: dict = {}
+        for r in sched_rows:
+            for team, opp in [(r["home_team"], r["away_team"]), (r["away_team"], r["home_team"])]:
+                upcoming_by_team.setdefault(team, []).append({
+                    "date": r["game_date"],
+                    "opp":  opp,
+                    "pa":   pts_allowed.get(opp),
+                })
+
         # Season averages per player (min 10 games)
         season_rows = conn.execute("""
             SELECT
@@ -6135,13 +6165,21 @@ def get_trending(
                 'window_fg':  round(w_fg, 1),
                 'drivers':    top_drivers,
                 'sustainability': sustain,
+                'upcoming':      upcoming_by_team.get(season_avgs.get('team', ''), []),
             })
 
         # Sort
         going_up = direction == "up"
         results.sort(key=lambda x: x['delta_z'], reverse=going_up)
         results = results[:limit]
-        return {"players": results, "window": window, "direction": direction}
+        pa_vals = list(pts_allowed.values())
+        return {
+            "players":   results,
+            "window":    window,
+            "direction": direction,
+            "pa_min":    round(min(pa_vals), 1) if pa_vals else None,
+            "pa_max":    round(max(pa_vals), 1) if pa_vals else None,
+        }
     finally:
         conn.close()
 

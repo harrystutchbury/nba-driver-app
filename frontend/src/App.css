@@ -4393,6 +4393,12 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .trend-dz-up   { background: rgba(77,255,180,0.15); color: var(--skill); }
 .trend-dz-down { background: rgba(255,107,107,0.15); color: var(--neg); }
 
+/* Upcoming schedule strip */
+.trend-schedule { display: flex; gap: 4px; flex-wrap: wrap; }
+.trend-sched-game { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 6px; border-radius: 5px; min-width: 36px; }
+.trend-sched-opp  { font-size: 10px; font-weight: 700; }
+.trend-sched-date { font-size: 9px; color: var(--muted); }
+
 /* Key context metrics strip */
 .trend-metrics { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .trend-metric { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px; border-right: 1px solid var(--border); }
