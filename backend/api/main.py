@@ -4211,40 +4211,14 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     # Snap season start back to the Monday of that week
     season_start_monday = season_start - timedelta(days=season_start.weekday())
 
-    # Build Mon–Sun week buckets covering the full data range
-    weeks = []
-    ws = season_start_monday
-    while ws <= season_end:
-        we = ws + timedelta(days=6)
-        period = (ws - season_start_monday).days // 7 + 1
-        weeks.append({
-            "start":  ws.isoformat(),
-            "end":    we.isoformat(),
-            "label":  f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
-            "games":  {},
-            "period": period,
-        })
-        ws += timedelta(weeks=1)
+    today = date.today()
 
-    # Fill game counts per team per week
-    all_teams = set()
-    for row in game_team_rows:
-        gd   = date.fromisoformat(row["game_date"])
-        team = row["team"]
-        all_teams.add(team)
-        idx = (gd - season_start_monday).days // 7
-        if 0 <= idx < len(weeks):
-            weeks[idx]["games"][team] = weeks[idx]["games"].get(team, 0) + 1
-
-    weeks = [w for w in weeks if w["games"]]
-
-    today          = date.today()
-    current_monday = today - timedelta(days=today.weekday())
-
-    # ESPN league for rosters + schedule
+    # ── Load ESPN data first so we can use matchup periods for bucketing ──────
     my_team_obj      = None
     fantasy_team_nba = {}
-    date_to_opp      = {}
+    mp_to_opp        = {}   # matchup_period_id (int) → opponent fantasy team_id
+    matchup_periods_raw: dict = {}
+    reg_season_count: int | None = None
     try:
         conn2 = get_conn()
         try:
@@ -4280,48 +4254,93 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             for t in league.teams
         }
 
-        # team.schedule is an ordered list of Matchup objects (one per scoring week).
-        # Index 0 = week 1 = season_start_monday, so calendar date = season_start_monday + idx weeks.
+        # matchup_periods: {matchup_period_id: [scoring_period_ids, ...]}
+        matchup_periods_raw = dict(getattr(league.settings, 'matchup_periods', {}) or {})
+        reg_season_count    = getattr(league.settings, 'reg_season_count', None)
+
+        # Map each matchup → opponent by matchupPeriodId (handles multi-week matchups correctly)
         team_sched = getattr(my_team_obj, 'schedule', []) or []
-        date_to_opp = {}
-        for week_idx, matchup in enumerate(team_sched):
+        for matchup in team_sched:
+            mp_id     = getattr(matchup, 'matchupPeriodId', None)
             home_team = getattr(matchup, 'home_team', None)
             away_team = getattr(matchup, 'away_team', None)
-            if not home_team or not away_team:
+            if mp_id is None or not home_team or not away_team:
                 continue
             home_id = str(getattr(home_team, 'team_id', ''))
             away_id = str(getattr(away_team, 'team_id', ''))
             if home_id == my_team_id:
-                opp_id = away_id
+                mp_to_opp[int(mp_id)] = away_id
             elif away_id == my_team_id:
-                opp_id = home_id
-            else:
-                continue
-            week_mon = season_start_monday + timedelta(weeks=week_idx)
-            date_to_opp[week_mon] = opp_id
+                mp_to_opp[int(mp_id)] = home_id
 
     except Exception:
         logger.exception("ESPN API error in schedule-grid; returning schedule without opponent data")
-        date_to_opp = {}
 
     my_nba_teams = fantasy_team_nba.get(my_team_id, {}).get("nba_teams", [])
 
-    # Fantasy playoff start: use ESPN reg_season_count if available
-    fantasy_playoff_start: date | None = None
-    try:
-        reg_count = getattr(league.settings, 'reg_season_count', None)
-        if reg_count and isinstance(reg_count, int):
-            fantasy_playoff_start = season_start_monday + timedelta(weeks=reg_count)
-    except Exception:
-        pass
+    # ── Build period buckets ──────────────────────────────────────────────────
+    # Prefer ESPN matchup periods (correctly handles 2-week playoff/all-star matchups).
+    # Fall back to Mon–Sun calendar weeks if ESPN data unavailable.
+    if matchup_periods_raw:
+        weeks = []
+        for mp_id_raw in sorted(matchup_periods_raw.keys(), key=lambda x: int(x)):
+            mp_id  = int(mp_id_raw)
+            sp_ids = sorted(int(x) for x in matchup_periods_raw[mp_id_raw])
+            # Scoring period N starts at season_start_monday + (N-1) weeks
+            mp_start = season_start_monday + timedelta(weeks=sp_ids[0] - 1)
+            mp_end   = season_start_monday + timedelta(weeks=sp_ids[-1]) - timedelta(days=1)
+            if mp_start > season_end + timedelta(days=14):
+                break  # well past our data
+            weeks.append({
+                "start":          mp_start.isoformat(),
+                "end":            mp_end.isoformat(),
+                "label":          f"{mp_start.strftime('%b %-d')}–{mp_end.strftime('%b %-d')}",
+                "games":          {},
+                "matchup_period": mp_id,
+            })
+    else:
+        weeks = []
+        ws, wnum = season_start_monday, 1
+        while ws <= season_end:
+            we = ws + timedelta(days=6)
+            weeks.append({
+                "start":          ws.isoformat(),
+                "end":            we.isoformat(),
+                "label":          f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+                "games":          {},
+                "matchup_period": wnum,
+            })
+            ws += timedelta(weeks=1)
+            wnum += 1
 
+    # Build date → week bucket for O(1) assignment
+    date_to_week: dict = {}
+    for w in weeks:
+        d, end = date.fromisoformat(w["start"]), date.fromisoformat(w["end"])
+        while d <= end:
+            date_to_week[d] = w
+            d += timedelta(days=1)
+
+    # Fill game counts per team per period
+    all_teams: set = set()
+    for row in game_team_rows:
+        gd   = date.fromisoformat(row["game_date"])
+        team = row["team"]
+        all_teams.add(team)
+        w = date_to_week.get(gd)
+        if w:
+            w["games"][team] = w["games"].get(team, 0) + 1
+
+    weeks = [w for w in weeks if w["games"]]
     all_teams_sorted = sorted(all_teams)
 
+    # ── Enrich each period ────────────────────────────────────────────────────
     for w in weeks:
-        ws_date  = date.fromisoformat(w["start"])
-        we_date  = date.fromisoformat(w["end"])
+        ws_date = date.fromisoformat(w["start"])
+        we_date = date.fromisoformat(w["end"])
+        mp_id   = w.get("matchup_period")
 
-        opp_id   = date_to_opp.get(ws_date)
+        opp_id   = mp_to_opp.get(mp_id)
         opp_info = fantasy_team_nba.get(opp_id, {}) if opp_id else {}
         opp_nba  = opp_info.get("nba_teams", [])
         w["my_total"]  = sum(w["games"].get(t, 0) for t in my_nba_teams)
@@ -4331,9 +4350,11 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
         # Playoff flags
         teams_with_games = sum(1 for t in all_teams if w["games"].get(t, 0) > 0)
         w["is_nba_playoff"]     = teams_with_games < 20 and ws_date >= date(season_year - 1, 4, 1)
-        w["is_fantasy_playoff"] = bool(fantasy_playoff_start and ws_date >= fantasy_playoff_start)
+        w["is_fantasy_playoff"] = bool(
+            reg_season_count and mp_id and isinstance(mp_id, int) and mp_id > reg_season_count
+        )
 
-        # Ease map: per-team avg pts-allowed of opponents this week
+        # Ease map: per-team avg pts-allowed of opponents this period
         ease: dict = {}
         d = ws_date
         while d <= we_date:
@@ -4345,7 +4366,7 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
             d += timedelta(days=1)
         w["ease"] = {t: round(sum(v) / len(v), 1) if v else None for t, v in ease.items()}
 
-        w.pop("period", None)
+        w.pop("matchup_period", None)
 
     return {
         "weeks":           weeks,
