@@ -6473,11 +6473,13 @@ def _per_stat_z(avgs: dict, league: dict) -> dict:
     return out
 
 
-def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict]) -> dict:
+def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict],
+                    ease_window: float = None, ease_season: float = None) -> dict:
     """
     Heuristic sustainability label based on what's driving the ΔZ.
     Returns {label, level, reason}  level: 'high'|'medium'|'low'
     """
+    ease_delta = (ease_window - ease_season) if (ease_window and ease_season) else 0
     min_delta = (window_avgs.get('min_pg') or 0) - (season_avgs.get('min_pg') or 0)
 
     # Percentage deltas
@@ -6534,12 +6536,24 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict]) -
     # ── Counting stat drivers: sustainable if minutes-driven, monitor if rate-driven
     if top_driver in ('pts', 'reb', 'ast', 'stl', 'blk'):
         if min_delta >= 3:
+            if ease_delta >= 2:
+                return {
+                    'label': 'Probably sustainable',
+                    'level': 'high',
+                    'reason': f'Role change: +{min_delta:.1f} MIN/g, but easy schedule this window',
+                }
             return {
                 'label': 'Likely sustainable',
                 'level': 'high',
                 'reason': f'Role change: +{min_delta:.1f} MIN/g',
             }
         if minutes_up:
+            if ease_delta >= 2:
+                return {
+                    'label': 'Monitor',
+                    'level': 'medium',
+                    'reason': f'Minutes up +{min_delta:.1f}/g but opponents were softer this window',
+                }
             return {
                 'label': 'Probably sustainable',
                 'level': 'high',
@@ -6709,7 +6723,9 @@ def get_trending(
             drivers_raw.sort(key=lambda x: abs(x['contribution']), reverse=True)
             top_drivers = drivers_raw[:5]
 
-            sustain = _sustainability(season_avgs, window_avgs, top_drivers)
+            ease_s  = _ease(player_games.get(slug, []))
+            ease_w  = _ease(player_games.get(slug, []), since=cutoff)
+            sustain = _sustainability(season_avgs, window_avgs, top_drivers, ease_w, ease_s)
 
             s_min  = season_avgs.get('min_pg') or 0
             w_min  = window_avgs.get('min_pg') or 0
@@ -6738,8 +6754,8 @@ def get_trending(
                 'drivers':    top_drivers,
                 'sustainability': sustain,
                 'upcoming':      upcoming_by_team.get(season_avgs.get('team', ''), []),
-                'ease_season':   _ease(player_games.get(slug, [])),
-                'ease_window':   _ease(player_games.get(slug, []), since=cutoff),
+                'ease_season':   ease_s,
+                'ease_window':   ease_w,
             })
 
         # Sort
