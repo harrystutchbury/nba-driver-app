@@ -1255,15 +1255,20 @@ def get_projection(
 
     # Absolute per-30 caps: 99th percentile from training data, floored by hard backstops.
     # Prevents frontier players from compounding into physically impossible territory.
+    # Each cap is further raised to the player's own current value so that players
+    # already above P99 hold at their current level rather than being suppressed.
     _HARD_CAPS_P30 = {'pts': 38.0, 'reb': 16.0, 'ast': 13.0,
                       'stl': 3.5,  'blk': 4.0,  'fg3m': 6.0, 'fg_pct': 65.0}
     stat_caps_p30: dict = {}
     for _stat in PROJ_STATS:
         _col = f'p30_{_stat}' if _stat != 'fg_pct' else 'fg_pct'
         if _col in df.columns:
-            _p99 = float(df[_col].quantile(0.99))
+            _p99  = float(df[_col].quantile(0.99))
             _hard = _HARD_CAPS_P30.get(_stat)
-            stat_caps_p30[_stat] = min(_p99, _hard) if _hard is not None else _p99
+            _norm_cap = min(_p99, _hard) if _hard is not None else _p99
+            # Never suppress a player who is already above the historical cap
+            _current_val = float(current.get(_col if _stat == 'fg_pct' else f'p30_{_stat}', 0) or 0)
+            stat_caps_p30[_stat] = max(_norm_cap, _current_val)
 
     base_p30 = {
         'pts':    float(current.get('p30_pts',  0) or 0),
