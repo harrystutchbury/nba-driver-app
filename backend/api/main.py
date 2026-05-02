@@ -5398,12 +5398,36 @@ def espn_roster_simulate(body: dict = Body(...),
 
     my_new = next((r for r in result if r["is_my_team"]), {})
 
+    # Compute post-trade z-scores for my team using league distribution
+    all_team_stats_for_z = other_stats + [new_stats]
+    _tz2: dict = {}
+    for key in stat_name_map.values():
+        vals = [s.get(key) for s in all_team_stats_for_z if s.get(key) is not None]
+        if len(vals) < 2:
+            continue
+        m = sum(vals) / len(vals)
+        s = math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals))
+        _tz2[key] = (m, max(s, 0.001))
+
+    new_cat_z: dict = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key or key not in _tz2:
+            continue
+        v = new_stats.get(key)
+        if v is None:
+            continue
+        m, s = _tz2[key]
+        raw = (v - m) / s
+        new_cat_z[cat] = round(-raw if cat in NEG_CATS else raw, 2)
+
     return {
         "orig_stats":      {k: round(v, 2) for k, v in orig_stats.items()},
         "new_stats":       {k: round(v, 2) for k, v in new_stats.items()},
         "delta":           delta,
         "cat_beats_orig":  cat_beats_orig,
         "cat_beats_new":   cat_beats_new,
+        "new_cat_z":       new_cat_z,
         "total_teams":     len(all_team_slugs) - 1,
         "projected_standings": result,
         "my_proj_standing":    my_new.get("proj_standing"),

@@ -3808,17 +3808,10 @@ function TradeAnalysis({ data, onSelectPlayer }) {
             <div className="ra-section-title" style={{marginTop:0}}>VS Each Opponent</div>
             <div className="dash-card" style={{overflowX:'auto'}}>
               {(() => {
-                const myTeam = teams.find(t => t.is_my_team)
-                const total = simResult.total_teams ?? 1
-                // Δbeats per cat: how many more teams I beat after the trade
-                const catDelta = {}
-                cats.forEach(cat => {
-                  const bo = simResult.cat_beats_orig?.[cat] ?? 0
-                  const bn = simResult.cat_beats_new?.[cat]  ?? 0
-                  catDelta[cat] = bn - bo
-                })
-                const dCls = d => d > 0 ? 'ra-z-pos' : d < 0 ? 'ra-z-neg' : ''
-                const dFmt = d => d === 0 ? '—' : (d > 0 ? '+' : '') + d
+                const myTeam  = teams.find(t => t.is_my_team)
+                const newCatZ = simResult.new_cat_z || {}
+                const zCls  = z => z > 0.3 ? 'ra-z-pos' : z < -0.3 ? 'ra-z-neg' : ''
+                const zFmt  = z => z == null ? '—' : (z > 0 ? '+' : '') + z.toFixed(2)
                 return (
                   <table className="dash-table ra-table">
                     <thead>
@@ -3828,20 +3821,20 @@ function TradeAnalysis({ data, onSelectPlayer }) {
                         <th>Win% After</th>
                         <th>H2H Before</th>
                         <th>H2H After</th>
-                        {cats.map(c=><th key={c}>Δ{c}</th>)}
+                        {cats.map(c=><th key={c}>{c}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {myTeam && (
                         <tr className="fantasy-my-team">
-                          <td className="ra-player-name">{myTeam.name}</td>
+                          <td className="ra-player-name">{myTeam.name} (after)</td>
                           <td>{winPct(myStandBefore)}</td>
                           <td>{winPct(myStandAfter)}</td>
                           <td>—</td>
                           <td>—</td>
                           {cats.map(cat => {
-                            const d = catDelta[cat]
-                            return <td key={cat} className={dCls(d)}>{dFmt(d)}</td>
+                            const z = newCatZ[cat]
+                            return <td key={cat} className={zCls(z ?? 0)}>{zFmt(z)}</td>
                           })}
                         </tr>
                       )}
@@ -3871,8 +3864,10 @@ function TradeAnalysis({ data, onSelectPlayer }) {
                             <td className={cB}><strong>{wB}–{lB}</strong></td>
                             <td className={cA}><strong>{wA}–{lA}</strong></td>
                             {cats.map(cat => {
-                              const d = catDelta[cat]
-                              return <td key={cat} className={dCls(d)}>{dFmt(d)}</td>
+                              const myZ   = newCatZ[cat]
+                              const theirZ = t.cat_z?.[cat]
+                              const gap = (myZ != null && theirZ != null) ? +(myZ - theirZ).toFixed(2) : null
+                              return <td key={cat} className={zCls(gap ?? 0)}>{zFmt(gap)}</td>
                             })}
                           </tr>
                         )
