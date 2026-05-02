@@ -3745,29 +3745,21 @@ _SLOT_NAME_TO_ID = {
 _ACTIVE_SLOT_IDS = set(_SLOT_NAME_TO_ID.values())  # excludes BE(12) and IR(13)
 
 
-def _max_bipartite_matching(player_eligible_sets: list, slot_instances: list) -> int:
+def _optimal_lineup_matching(players_indexed: list, slot_instances: list) -> set:
     """
-    Max bipartite matching between players (left) and slot instances (right).
-    player_eligible_sets: list of sets of active slot IDs (one per player).
-    slot_instances: list of slot IDs expanded from counts (e.g. [0,5,11,11,11]).
-    Returns the maximum number of players that can be slotted.
+    Greedy optimal lineup: highest z-score players fill slots first.
+    players_indexed: [(original_index, eligible_slot_set, z_score), ...]
+    slot_instances:  list of slot IDs (may contain duplicates, e.g. [0,5,11,11,11])
+    Returns set of original player indices that are successfully slotted.
     """
-    n_slots    = len(slot_instances)
-    match_slot = [-1] * n_slots  # match_slot[si] = player index, or -1
-
-    def _augment(pi, visited):
-        for si, sid in enumerate(slot_instances):
-            if sid in player_eligible_sets[pi] and not visited[si]:
-                visited[si] = True
-                if match_slot[si] == -1 or _augment(match_slot[si], visited):
-                    match_slot[si] = pi
-                    return True
-        return False
-
-    matched = 0
-    for pi in range(len(player_eligible_sets)):
-        if _augment(pi, [False] * n_slots):
-            matched += 1
+    available = list(slot_instances)
+    matched: set = set()
+    for orig_pi, elig, _ in sorted(players_indexed, key=lambda x: -x[2]):
+        for i, sid in enumerate(available):
+            if sid in elig:
+                matched.add(orig_pi)
+                available.pop(i)
+                break
     return matched
 
 
@@ -3885,6 +3877,28 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
             "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0.0,
             "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0.0,
         }
+
+    # Per-player z-scores used to prioritise lineup selection when slots are contested.
+    # Computed from the season averages already in player_stats vs the league distribution.
+    _z_cat_keys = [(cat, stat_name_map.get(cat)) for cat in tracked_cats if stat_name_map.get(cat)]
+    _z_league: dict = {}
+    for _cat, _key in _z_cat_keys:
+        _vals = [s[_key] for s in player_stats.values() if s.get(_key) is not None]
+        if len(_vals) > 1:
+            _m  = sum(_vals) / len(_vals)
+            _sd = math.sqrt(sum((v - _m) ** 2 for v in _vals) / len(_vals))
+            _z_league[_key] = (_m, max(_sd, 0.001))
+
+    player_z_scores: dict = {}
+    for _slug, _s in player_stats.items():
+        _z = 0.0
+        for _cat, _key in _z_cat_keys:
+            if _key not in _z_league:
+                continue
+            _m, _sd = _z_league[_key]
+            _raw = (_s.get(_key, 0) - _m) / _sd
+            _z += -_raw if _cat in NEG_CATS else _raw
+        player_z_scores[_slug] = round(_z, 3)
 
     # Build weeks list from game data
     if not game_team_rows:
@@ -4009,10 +4023,11 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         """
         players_raw: list of (name, slug, eligible_slot_ids)
         Returns list of effective_games floats accounting for lineup slot constraints.
+        When slots are contested, highest z-score players are slotted first.
         """
         n = len(players_raw)
         eff = [0.0] * n
-        for di, day_dt in enumerate(day_dates):
+        for day_dt in day_dates:
             playing_indices = [
                 pi for pi, (_, slug, _elig) in enumerate(players_raw)
                 if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
@@ -4024,11 +4039,13 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 for pi in playing_indices:
                     eff[pi] += 1.0
                 continue
-            elig_sets  = [players_raw[pi][2] for pi in playing_indices]
-            matching   = _max_bipartite_matching(elig_sets, slot_instances)
-            frac       = min(1.0, matching / len(playing_indices))
+            day_players = [
+                (pi, players_raw[pi][2], player_z_scores.get(players_raw[pi][1], 0.0))
+                for pi in playing_indices
+            ]
+            matched = _optimal_lineup_matching(day_players, slot_instances)
             for pi in playing_indices:
-                eff[pi] += frac
+                eff[pi] += 1.0 if pi in matched else 0.0
         return eff
 
     # Helper: build player info dict
