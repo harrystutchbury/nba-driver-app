@@ -1013,7 +1013,8 @@ function InjuryBadge({ injury, compact }) {
   const label  = compact
     ? (injury.designation === 'Questionable' || injury.designation === 'Day-To-Day' ? 'GTD' : injury.designation === 'Doubtful' ? 'DBT' : 'OUT')
     : injury.designation
-  const tooltip = [injury.description || injury.designation, injury.return_date ? `Exp. return: ${injury.return_date}` : null].filter(Boolean).join(' · ')
+  const fmtReturn = d => { const [y,m,day] = d.split('-'); return new Date(+y, +m-1, +day).toLocaleDateString('en-US', {month:'long', day:'numeric'}) }
+  const tooltip = [injury.description || injury.designation, injury.return_date ? `Expected Return: ${fmtReturn(injury.return_date)}` : null].filter(Boolean).join(' · ')
   return (
     <span className="inj-badge-wrap">
       <span
@@ -1024,7 +1025,7 @@ function InjuryBadge({ injury, compact }) {
         {label}
       </span>
       {!compact && injury.return_date && (
-        <span className="inj-return-date">exp. {injury.return_date}</span>
+        <span className="inj-return-date">Expected Return {fmtReturn(injury.return_date)}</span>
       )}
     </span>
   )
