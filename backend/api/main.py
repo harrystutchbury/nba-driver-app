@@ -6474,7 +6474,8 @@ def _per_stat_z(avgs: dict, league: dict) -> dict:
 
 
 def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict],
-                    ease_window: float = None, ease_season: float = None) -> dict:
+                    ease_window: float = None, ease_season: float = None,
+                    direction: str = "up") -> dict:
     """
     Heuristic sustainability label based on what's driving the ΔZ.
     Returns {label, level, reason}  level: 'high'|'medium'|'low'
@@ -6482,26 +6483,79 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict],
     ease_delta = (ease_window - ease_season) if (ease_window and ease_season) else 0
     min_delta = (window_avgs.get('min_pg') or 0) - (season_avgs.get('min_pg') or 0)
 
-    # Percentage deltas
     s3a = season_avgs.get('fg3a_pg') or 0
     w3a = window_avgs.get('fg3a_pg') or 0
-    s3pct = season_avgs.get('fg_pct') or 0   # note: fg3_pct not stored separately in league data; use fg3m
-    # Compute 3P% delta directly from raw averages
     sfg3_pct = (season_avgs.get('fg3m') / s3a * 100) if s3a > 0.5 else None
     wfg3_pct = (window_avgs.get('fg3m') / w3a * 100) if w3a > 0.5 else None
     fg3_pct_delta = (wfg3_pct - sfg3_pct) if sfg3_pct and wfg3_pct else 0
 
-    sfga = season_avgs.get('fga_pg') or 0
-    wfga = window_avgs.get('fga_pg') or 0
     sfg_pct = season_avgs.get('fg_pct') or 0
     wfg_pct = window_avgs.get('fg_pct') or 0
     fg_pct_delta = wfg_pct - sfg_pct if (sfg_pct and wfg_pct) else 0
 
+    ft_delta = (window_avgs.get('ft_pct') or 0) - (season_avgs.get('ft_pct') or 0)
     top_driver = drivers[0]['stat'] if drivers else None
+
+    # ── TRENDING DOWN ─────────────────────────────────────────────────────────
+    if direction == "down":
+        # Shooting slump — small sample variance, expect bounce-back
+        if fg_pct_delta < -5:
+            return {
+                'label': 'Cold streak',
+                'level': 'low',
+                'reason': f'FG% {fg_pct_delta:+.1f}% below season — expect regression',
+            }
+        if top_driver == 'fg3m' and fg3_pct_delta < -4:
+            return {
+                'label': 'Cold streak',
+                'level': 'low',
+                'reason': f'3P% {fg3_pct_delta:+.1f}% below season — expect regression',
+            }
+        if top_driver == 'ft_pct' and ft_delta < -8:
+            return {
+                'label': 'Cold streak',
+                'level': 'low',
+                'reason': f'FT% {ft_delta:+.1f}% below season — small sample',
+            }
+
+        # Counting stat drops
+        if top_driver in ('pts', 'reb', 'ast', 'stl', 'blk'):
+            if min_delta <= -3:
+                return {
+                    'label': 'Role loss',
+                    'level': 'high',
+                    'reason': f'Minutes down {min_delta:.1f}/g — likely structural',
+                }
+            if min_delta <= -1.5:
+                return {
+                    'label': 'Probably concerning',
+                    'level': 'high',
+                    'reason': f'Minutes down {min_delta:.1f}/g — watch role',
+                }
+            # No minutes change — check if tough schedule explains it
+            if ease_delta <= -2:
+                return {
+                    'label': 'Cold streak',
+                    'level': 'low',
+                    'reason': f'Tough schedule this window — likely to bounce back',
+                }
+            return {
+                'label': 'Monitor',
+                'level': 'medium',
+                'reason': 'Rate-driven dip — no role change yet',
+            }
+
+        return {
+            'label': 'Monitor',
+            'level': 'medium',
+            'reason': 'Mixed drivers — watch next few games',
+        }
+
+    # ── TRENDING UP ───────────────────────────────────────────────────────────
     minutes_up = min_delta >= 1.5
 
-    # ── FG% spike: check before minutes so minutes only drive "sustainable"
-    #    when the top driver is a counting stat, not a shooting % anomaly
+    # FG% spike: check before minutes so minutes only drive "sustainable"
+    # when the top driver is a counting stat, not a shooting % anomaly
     if fg_pct_delta > 5:
         if minutes_up:
             return {
@@ -6515,7 +6569,7 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict],
             'reason': f'FG% {fg_pct_delta:+.1f}% above season — expect regression',
         }
 
-    # ── 3P% spike
+    # 3P% spike
     if top_driver == 'fg3m' and fg3_pct_delta > 4:
         return {
             'label': 'Hot streak',
@@ -6523,17 +6577,15 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict],
             'reason': f'3P% {fg3_pct_delta:+.1f}% above season — expect regression',
         }
 
-    # ── FT% spike
-    if top_driver == 'ft_pct':
-        ft_delta = (window_avgs.get('ft_pct') or 0) - (season_avgs.get('ft_pct') or 0)
-        if abs(ft_delta) > 8:
-            return {
-                'label': 'Hot streak',
-                'level': 'low',
-                'reason': f'FT% {ft_delta:+.1f}% above season — small sample',
-            }
+    # FT% spike
+    if top_driver == 'ft_pct' and abs(ft_delta) > 8:
+        return {
+            'label': 'Hot streak',
+            'level': 'low',
+            'reason': f'FT% {ft_delta:+.1f}% above season — small sample',
+        }
 
-    # ── Counting stat drivers: sustainable if minutes-driven, monitor if rate-driven
+    # Counting stat drivers: sustainable if minutes-driven, monitor if rate-driven
     if top_driver in ('pts', 'reb', 'ast', 'stl', 'blk'):
         if min_delta >= 3:
             if ease_delta >= 2:
@@ -6725,7 +6777,7 @@ def get_trending(
 
             ease_s  = _ease(player_games.get(slug, []))
             ease_w  = _ease(player_games.get(slug, []), since=cutoff)
-            sustain = _sustainability(season_avgs, window_avgs, top_drivers, ease_w, ease_s)
+            sustain = _sustainability(season_avgs, window_avgs, top_drivers, ease_w, ease_s, direction)
 
             s_min  = season_avgs.get('min_pg') or 0
             w_min  = window_avgs.get('min_pg') or 0
