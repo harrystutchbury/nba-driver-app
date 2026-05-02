@@ -1252,6 +1252,19 @@ def get_projection(
     # historical year-over-year variance at that age, so uncertainty widens over time.
     PROJ_STATS  = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct']
     SCENARIO_K  = 1.0   # number of SDs for optimistic/pessimistic bands
+
+    # Absolute per-30 caps: 99th percentile from training data, floored by hard backstops.
+    # Prevents frontier players from compounding into physically impossible territory.
+    _HARD_CAPS_P30 = {'pts': 38.0, 'reb': 16.0, 'ast': 13.0,
+                      'stl': 3.5,  'blk': 4.0,  'fg3m': 6.0, 'fg_pct': 65.0}
+    stat_caps_p30: dict = {}
+    for _stat in PROJ_STATS:
+        _col = f'p30_{_stat}' if _stat != 'fg_pct' else 'fg_pct'
+        if _col in df.columns:
+            _p99 = float(df[_col].quantile(0.99))
+            _hard = _HARD_CAPS_P30.get(_stat)
+            stat_caps_p30[_stat] = min(_p99, _hard) if _hard is not None else _p99
+
     base_p30 = {
         'pts':    float(current.get('p30_pts',  0) or 0),
         'reb':    float(current.get('p30_reb',  0) or 0),
@@ -1272,7 +1285,9 @@ def get_projection(
             if scenario_k != 0:
                 std = _aging_ratio_std(aging_curves, stat, current_age)
                 ratio = float(np.clip(ratio + scenario_k * std, RATIO_FLOOR - 0.05, RATIO_CAP + 0.05))
-            p30[stat] = round(base * ratio, 2)
+            val = round(base * ratio, 2)
+            cap = stat_caps_p30.get(stat)
+            p30[stat] = min(val, cap) if cap is not None else val
         p30['ft_pct'] = proj_ft_pct
         return p30
 
