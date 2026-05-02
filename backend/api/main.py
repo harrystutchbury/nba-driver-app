@@ -1261,7 +1261,7 @@ def get_projection(
                       'stl': 3.5,  'blk': 4.0,  'fg3m': 6.0, 'fg_pct': 65.0}
     # Use historical max (not P99) for pts and fg3m — elite scorers/shooters
     # routinely exceed P99, so P99 is too restrictive for those stats.
-    _USE_MAX = {'pts', 'fg3m'}
+    _USE_MAX = {'pts', 'fg3m', 'ast'}
     stat_caps_p30: dict = {}
     for _stat in PROJ_STATS:
         _col = f'p30_{_stat}' if _stat != 'fg_pct' else 'fg_pct'
