@@ -3864,10 +3864,8 @@ function TradeAnalysis({ data, onSelectPlayer }) {
                             <td className={cB}><strong>{wB}–{lB}</strong></td>
                             <td className={cA}><strong>{wA}–{lA}</strong></td>
                             {cats.map(cat => {
-                              const myZ   = newCatZ[cat]
-                              const theirZ = t.cat_z?.[cat]
-                              const gap = (myZ != null && theirZ != null) ? +(myZ - theirZ).toFixed(2) : null
-                              return <td key={cat} className={zCls(gap ?? 0)}>{zFmt(gap)}</td>
+                              const z = t.cat_z?.[cat]
+                              return <td key={cat} className={zCls(z ?? 0)}>{zFmt(z)}</td>
                             })}
                           </tr>
                         )
