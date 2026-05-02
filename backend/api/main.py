@@ -6496,34 +6496,32 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict]) -
     fg_pct_delta = wfg_pct - sfg_pct if (sfg_pct and wfg_pct) else 0
 
     top_driver = drivers[0]['stat'] if drivers else None
-    shooting_driven = top_driver in ('fg_pct', 'ft_pct') or (
-        top_driver == 'fg3m' and fg3_pct_delta > 4
-    )
+    minutes_up = min_delta >= 1.5
 
-    if min_delta >= 3:
-        return {
-            'label': 'Likely sustainable',
-            'level': 'high',
-            'reason': f'Role change: +{min_delta:.1f} MIN/g',
-        }
-    if min_delta >= 1.5:
-        return {
-            'label': 'Probably sustainable',
-            'level': 'high',
-            'reason': f'Minutes up +{min_delta:.1f}/g',
-        }
-    if shooting_driven and fg_pct_delta > 5:
+    # ── FG% spike: check before minutes so minutes only drive "sustainable"
+    #    when the top driver is a counting stat, not a shooting % anomaly
+    if fg_pct_delta > 5:
+        if minutes_up:
+            return {
+                'label': 'Monitor',
+                'level': 'medium',
+                'reason': f'FG% {fg_pct_delta:+.1f}% above season — regression risk despite minutes bump',
+            }
         return {
             'label': 'Hot streak',
             'level': 'low',
             'reason': f'FG% {fg_pct_delta:+.1f}% above season — expect regression',
         }
+
+    # ── 3P% spike
     if top_driver == 'fg3m' and fg3_pct_delta > 4:
         return {
             'label': 'Hot streak',
             'level': 'low',
             'reason': f'3P% {fg3_pct_delta:+.1f}% above season — expect regression',
         }
+
+    # ── FT% spike
     if top_driver == 'ft_pct':
         ft_delta = (window_avgs.get('ft_pct') or 0) - (season_avgs.get('ft_pct') or 0)
         if abs(ft_delta) > 8:
@@ -6532,13 +6530,27 @@ def _sustainability(season_avgs: dict, window_avgs: dict, drivers: list[dict]) -
                 'level': 'low',
                 'reason': f'FT% {ft_delta:+.1f}% above season — small sample',
             }
-    # Volume-driven without extra minutes
+
+    # ── Counting stat drivers: sustainable if minutes-driven, monitor if rate-driven
     if top_driver in ('pts', 'reb', 'ast', 'stl', 'blk'):
+        if min_delta >= 3:
+            return {
+                'label': 'Likely sustainable',
+                'level': 'high',
+                'reason': f'Role change: +{min_delta:.1f} MIN/g',
+            }
+        if minutes_up:
+            return {
+                'label': 'Probably sustainable',
+                'level': 'high',
+                'reason': f'Minutes up +{min_delta:.1f}/g — counting stats should follow',
+            }
         return {
             'label': 'Monitor',
             'level': 'medium',
-            'reason': 'Usage / role shift — watch for consistency',
+            'reason': 'Rate-driven — no minutes increase to support the bump',
         }
+
     return {
         'label': 'Monitor',
         'level': 'medium',
