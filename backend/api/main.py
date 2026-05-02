@@ -1259,11 +1259,14 @@ def get_projection(
     # already above P99 hold at their current level rather than being suppressed.
     _HARD_CAPS_P30 = {'pts': 38.0, 'reb': 16.0, 'ast': 13.0,
                       'stl': 3.5,  'blk': 4.0,  'fg3m': 6.0, 'fg_pct': 65.0}
+    # Use historical max (not P99) for pts and fg3m — elite scorers/shooters
+    # routinely exceed P99, so P99 is too restrictive for those stats.
+    _USE_MAX = {'pts', 'fg3m'}
     stat_caps_p30: dict = {}
     for _stat in PROJ_STATS:
         _col = f'p30_{_stat}' if _stat != 'fg_pct' else 'fg_pct'
         if _col in df.columns:
-            _p99  = float(df[_col].quantile(0.99))
+            _p99  = float(df[_col].quantile(0.99)) if _stat not in _USE_MAX else float(df[_col].max())
             _hard = _HARD_CAPS_P30.get(_stat)
             _norm_cap = min(_p99, _hard) if _hard is not None else _p99
             # Never suppress a player who is already above the historical cap
