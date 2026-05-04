@@ -3980,7 +3980,11 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     # This avoids the 403 we get from a bare requests.get() with expired cookies.
     try:
         _mset_data = league.espn_request.get(extend='', params={'view': 'mSettings'})
-        _roster_s  = _mset_data.get("settings", {}).get("rosterSettings", {})
+        logger.warning(f"[SLOT] mSettings top keys: {list(_mset_data.keys())}")
+        _settings_top = _mset_data.get("settings", {})
+        logger.warning(f"[SLOT] settings keys: {list(_settings_top.keys())}")
+        _roster_s  = _settings_top.get("rosterSettings", {})
+        logger.warning(f"[SLOT] rosterSettings: {_roster_s}")
         _raw_counts = _roster_s.get("lineupSlotCounts", {})
         logger.warning(f"[SLOT] lineupSlotCounts via espn_request: {_raw_counts}")
         if isinstance(_raw_counts, list):
