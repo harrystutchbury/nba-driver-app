@@ -3978,26 +3978,23 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
 
     # Use league.espn_request (already authenticated) to fetch mSettings.
     # This avoids the 403 we get from a bare requests.get() with expired cookies.
+    # Derive active lineup slots from any team's current roster lineupSlot values.
+    # The espn_api library already fetched this data — no extra API call needed.
+    _BENCH_SLOTS = {"BE", "IR", "Bench", "Injured Reserve"}
     try:
-        _mset_data = league.espn_request.get(extend='', params={'view': 'mSettings'})
-        logger.warning(f"[SLOT] mSettings top keys: {list(_mset_data.keys())}")
-        _settings_top = _mset_data.get("settings", {})
-        logger.warning(f"[SLOT] settings keys: {list(_settings_top.keys())}")
-        _roster_s  = _settings_top.get("rosterSettings", {})
-        logger.warning(f"[SLOT] rosterSettings: {_roster_s}")
-        _raw_counts = _roster_s.get("lineupSlotCounts", {})
-        logger.warning(f"[SLOT] lineupSlotCounts via espn_request: {_raw_counts}")
-        if isinstance(_raw_counts, list):
-            _raw_counts = {str(i): v for i, v in enumerate(_raw_counts)}
-        for _sid_str, _cnt in _raw_counts.items():
-            _sid = int(_sid_str)
-            _cnt = int(_cnt)
-            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
-                slot_instances.extend([_sid] * _cnt)
+        _sample_team = next(iter(league.teams), None)
+        if _sample_team:
+            for _player in _sample_team.roster:
+                _ls = getattr(_player, "lineupSlot", None)
+                if _ls and _ls not in _BENCH_SLOTS:
+                    _sid = _SLOT_NAME_TO_ID.get(_ls)
+                    if _sid is not None:
+                        slot_instances.append(_sid)
+            logger.warning(f"[SLOT] derived from roster lineupSlot: {slot_instances}")
     except Exception as _e:
-        logger.warning(f"[SLOT] espn_request mSettings failed: {_e}")
+        logger.warning(f"[SLOT] roster lineupSlot derivation failed: {_e}")
 
-    # Final fallback: stored scoring_settings
+    # Fallback: stored scoring_settings
     if not slot_instances:
         _stored_slots = (scoring.get("lineup_slots") if scoring else None) or {}
         for _sid_str, _cnt in _stored_slots.items():
