@@ -605,116 +605,7 @@ const ZONE_LABELS = {
 }
 
 
-// ── Half-court SVG ──────────────────────────────────────────────────────────
-// Court units: 500 wide × 470 tall (NBA half-court ~47ft × 50ft, scaled ×10)
-// Zones are approximate but spatially accurate enough to read.
 
-function CourtDiagram({ zones, period }) {
-  // zones: array of { zone, fg_pct, fga, net } — net = diet+efficiency contribution
-  const byZone = Object.fromEntries((zones || []).map(z => [z.zone, z]))
-  // total FGA for frequency calculation
-  const totalFga = (zones || []).reduce((s, z) => s + (z.fga || 0), 0)
-
-  function zoneColor(zoneKey) {
-    const z = byZone[zoneKey]
-    if (!z) return '#1e2235'
-    const net = z.net
-    const intensity = Math.min(Math.abs(net) / 0.03, 1)
-    const alpha = 0.15 + intensity * 0.4
-    // Pre-blend with dark background (#141828 = rgb(20,24,40)) so stacked zones don't mix
-    const bg = [20, 24, 40]
-    if (net > 0.002) {
-      const fg = [77, 255, 180]
-      return `rgb(${Math.round(fg[0]*alpha+bg[0]*(1-alpha))},${Math.round(fg[1]*alpha+bg[1]*(1-alpha))},${Math.round(fg[2]*alpha+bg[2]*(1-alpha))})`
-    }
-    if (net < -0.002) {
-      const fg = [255, 107, 107]
-      return `rgb(${Math.round(fg[0]*alpha+bg[0]*(1-alpha))},${Math.round(fg[1]*alpha+bg[1]*(1-alpha))},${Math.round(fg[2]*alpha+bg[2]*(1-alpha))})`
-    }
-    return '#1e2235'
-  }
-
-  function fgLabel(zoneKey) {
-    const z = byZone[zoneKey]
-    if (!z || z.fga === 0) return ''
-    return `${(z.fg_pct * 100).toFixed(0)}FG%`
-  }
-
-  function freqLabel(zoneKey) {
-    const z = byZone[zoneKey]
-    if (!z || z.fga === 0 || totalFga === 0) return ''
-    const freq = z.freq !== undefined ? z.freq : (z.fga / totalFga)
-    return `${(freq * 100).toFixed(0)}%`
-  }
-
-  const W = 500, H = 350
-  const stroke = '#2a3050'
-  const text = '#9aa0b8'
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="court-svg">
-      {/* Court outline */}
-      <rect x={0} y={0} width={W} height={H} fill="#141828" rx={4} />
-
-      {/* ── Zone fills (layered back-to-front) ── */}
-      {/* above_break_3: full court background */}
-      <rect x={0} y={0} width={W} height={H} fill={zoneColor('above_break_3')} />
-      {/* mid_range: full inside-3pt-line area (paint drawn on top) */}
-      <path d={`M 60,0 L 60,140 A 237,237 0 0,0 440,140 L 440,0 Z`} fill={zoneColor('mid_range')} />
-      {/* corner_3: left and right strips */}
-      <rect x={0}   y={0} width={60}  height={140} fill={zoneColor('corner_3')} />
-      <rect x={440} y={0} width={60}  height={140} fill={zoneColor('corner_3')} />
-      {/* paint_non_ra: covers paint area of mid_range */}
-      <rect x={160} y={0} width={180} height={190} fill={zoneColor('paint_non_ra')} />
-      {/* restricted_area: D-shape matching the RA arc */}
-      <path d={`M 190,0 L 190,80 A 60,60 0 0,0 310,80 L 310,0 Z`} fill={zoneColor('restricted_area')} />
-
-      {/* ── Court lines ── */}
-      {/* Baseline */}
-      <line x1={0} y1={0} x2={W} y2={0} stroke={stroke} strokeWidth={2} />
-      {/* Sidelines */}
-      <line x1={0} y1={0} x2={0} y2={H} stroke={stroke} strokeWidth={2} />
-      <line x1={W} y1={0} x2={W} y2={H} stroke={stroke} strokeWidth={2} />
-      {/* Half court */}
-      <line x1={0} y1={H} x2={W} y2={H} stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
-
-      {/* Paint */}
-      <rect x={160} y={0} width={180} height={190} fill="none" stroke={stroke} strokeWidth={1.5} />
-      {/* Paint lane lines */}
-      <line x1={160} y1={0}   x2={160} y2={190} stroke={stroke} strokeWidth={1} />
-      <line x1={340} y1={0}   x2={340} y2={190} stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle — inside paint (solid, sweep=0 arcs upward toward basket) */}
-      <path d="M 190,190 A 60,60 0 0,0 310,190" fill="none" stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle — outside paint (dashed, sweep=1 arcs downward away from basket) */}
-      <path d="M 190,190 A 60,60 0 0,1 310,190" fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
-      {/* Free throw line */}
-      <line x1={160} y1={190} x2={340} y2={190} stroke={stroke} strokeWidth={1.5} />
-
-      {/* Restricted area arc — small semicircle around basket */}
-      <path d="M 215,20 A 35,35 0 0,0 285,20" fill="none" stroke={stroke} strokeWidth={1.5} />
-
-      {/* 3pt line */}
-      <line x1={60} y1={0}   x2={60}  y2={140} stroke={stroke} strokeWidth={1.5} />
-      <line x1={440} y1={0}  x2={440} y2={140} stroke={stroke} strokeWidth={1.5} />
-      <path d={`M 60,140 A 237,237 0 0,0 440,140`} fill="none" stroke={stroke} strokeWidth={1.5} />
-
-      {/* Backboard */}
-      <line x1={210} y1={0} x2={290} y2={0} stroke="#4a5070" strokeWidth={4} />
-      {/* Rim */}
-      <circle cx={250} cy={20} r={15} fill="none" stroke="#4a5070" strokeWidth={2} />
-
-      {/* ── Labels (freq % only, heatmap communicates efficiency) ── */}
-      <text x={250} y={58}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('restricted_area')}</text>
-      <text x={250} y={155} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('paint_non_ra')}</text>
-      <text x={110} y={88}  textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('mid_range')}</text>
-      <text x={30}  y={88}  textAnchor="middle" fill={text} fontSize={9} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('corner_3')}</text>
-      <text x={250} y={305} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('above_break_3')}</text>
-
-      {/* Period label */}
-      <text x={250} y={340} textAnchor="middle" fill="#8a90a8" fontSize={12} fontFamily="DM Mono,monospace">{period}</text>
-    </svg>
-  )
-}
 
 // ─── Rankings Page ────────────────────────────────────────────────────────────
 
@@ -6079,8 +5970,37 @@ function AppMain({ onLogout, onOpenAccount }) {
                         }
                         return { ...z, net: z.diet_effect + z.efficiency_effect }
                       })
-                      const courtZonesA = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_a, fga: z.fga_a, freq: z.freq_a, net: z.net }))
-                      const courtZonesB = zoneRows.map(z => ({ zone: z.zone, fg_pct: z.fg_pct_b, fga: z.fga_b, freq: z.freq_b, net: z.net }))
+                      const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
+                      const BASE_COLOR = '#3a4470'
+                      const COMP_COLOR = '#4dffb4'
+                      const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
+                      const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
+                      const selChartData = {
+                        labels: zoneLabels,
+                        datasets: [
+                          { label: baseLabel, data: zoneRows.map(z => +(z.freq_a * 100).toFixed(1)), backgroundColor: BASE_COLOR, borderRadius: 2 },
+                          { label: compLabel, data: zoneRows.map(z => +(z.freq_b * 100).toFixed(1)), backgroundColor: COMP_COLOR, borderRadius: 2 },
+                        ],
+                      }
+                      const fgChartData = {
+                        labels: zoneLabels,
+                        datasets: [
+                          { label: baseLabel, data: zoneRows.map(z => z.fga_a > 0 ? +(z.fg_pct_a * 100).toFixed(1) : 0), backgroundColor: BASE_COLOR, borderRadius: 2 },
+                          { label: compLabel, data: zoneRows.map(z => z.fga_b > 0 ? +(z.fg_pct_b * 100).toFixed(1) : 0), backgroundColor: COMP_COLOR, borderRadius: 2 },
+                        ],
+                      }
+                      const zoneChartOpts = (yTitle) => ({
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                          legend: { display: true, labels: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, boxWidth: 10 } },
+                          tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
+                          datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
+                        },
+                        scales: {
+                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
+                          y: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, callback: v => `${v}%` }, title: { display: true, text: yTitle, color: '#888', font: { family: "'DM Mono', monospace", size: 9 } } },
+                        },
+                      })
                       return (
                         <div className="shot-diet-section">
                           <h2 className="panel-title">Shot diet analysis</h2>
@@ -6090,16 +6010,11 @@ function AppMain({ onLogout, onOpenAccount }) {
                             <div className="shot-metric"><span className="metric-label">Efficiency effect</span><span className={`metric-value ${shotDiet.efficiency_total >= 0 ? 'pos' : 'neg'}`}>{shotDiet.efficiency_total >= 0 ? '+' : ''}{(shotDiet.efficiency_total * 100).toFixed(1)}pp</span><span className="metric-sub">zone accuracy</span></div>
                             <div className="shot-metric"><span className="metric-label">Comparison FG%</span><span className="metric-value">{(shotDiet.fg_pct_b * 100).toFixed(1)}%</span><span className={`metric-sub metric-delta ${shotDiet.delta >= 0 ? 'pos' : 'neg'}`}>{shotDiet.delta >= 0 ? '+' : ''}{(shotDiet.delta * 100).toFixed(1)}pp</span></div>
                           </div>
-                          <div className="courts-row">
-                            <div className="court-wrap"><div className="court-label">Baseline</div><CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} /></div>
-                            <div className="court-wrap"><div className="court-label">Comparison</div><CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} /></div>
+                          <div className="shot-diet-charts">
+                            <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot selection %</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
+                            <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
                           </div>
-                          <div className="court-legend">
-                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: 'rgba(77,255,180,0.45)' }} />Positive net contribution</span>
-                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: 'rgba(255,107,107,0.45)' }} />Negative net contribution</span>
-                            <span className="court-legend-item"><span className="court-legend-swatch" style={{ background: '#1e2235' }} />Neutral / no shots</span>
-                            <span className="court-legend-note">Colour intensity = magnitude · Labels = shot frequency</span>
-                          </div>
+
                           <table className="shot-table">
                             <thead><tr><th>Zone</th><th className="num">Baseline FG%</th><th className="num">Selection impact</th><th className="num">Efficiency impact</th><th className="num">Comp FG%</th></tr></thead>
                             <tbody>
@@ -6809,99 +6724,37 @@ function AppMain({ onLogout, onOpenAccount }) {
                 return { ...z, net: z.diet_effect + z.efficiency_effect }
               })
 
-              const courtZonesA = zoneRows.map(z => ({
-                zone: z.zone, fg_pct: z.fg_pct_a, fga: z.fga_a, freq: z.freq_a, net: z.net,
-              }))
-              const courtZonesB = zoneRows.map(z => ({
-                zone: z.zone, fg_pct: z.fg_pct_b, fga: z.fga_b, freq: z.freq_b, net: z.net,
-              }))
-
-              const zoneLabels  = zoneRows.map(z => ZONE_LABELS[z.zone])
-              const attemptChartData = {
+              const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
+              const BASE_COLOR = '#3a4470'
+              const COMP_COLOR = '#4dffb4'
+              const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
+              const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
+              const selChartData = {
                 labels: zoneLabels,
                 datasets: [
-                  {
-                    label: 'Baseline',
-                    data: zoneRows.map(z => z.freq_a ? +(z.freq_a * 100).toFixed(1) : 0),
-                    backgroundColor: '#3a4470',
-                    borderRadius: 2,
-                  },
-                  {
-                    label: 'Comparison',
-                    data: zoneRows.map(z => z.freq_b ? +(z.freq_b * 100).toFixed(1) : 0),
-                    backgroundColor: '#4dffb4',
-                    borderRadius: 2,
-                  },
+                  { label: baseLabel, data: zoneRows.map(z => +(z.freq_a * 100).toFixed(1)), backgroundColor: BASE_COLOR, borderRadius: 2 },
+                  { label: compLabel, data: zoneRows.map(z => +(z.freq_b * 100).toFixed(1)), backgroundColor: COMP_COLOR, borderRadius: 2 },
                 ],
               }
-
-              const attemptChartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
+              const fgChartData = {
+                labels: zoneLabels,
+                datasets: [
+                  { label: baseLabel, data: zoneRows.map(z => z.fga_a > 0 ? +(z.fg_pct_a * 100).toFixed(1) : 0), backgroundColor: BASE_COLOR, borderRadius: 2 },
+                  { label: compLabel, data: zoneRows.map(z => z.fga_b > 0 ? +(z.fg_pct_b * 100).toFixed(1) : 0), backgroundColor: COMP_COLOR, borderRadius: 2 },
+                ],
+              }
+              const zoneChartOpts = (yTitle) => ({
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                  legend: {
-                    display: true,
-                    labels: {
-                      color: '#555',
-                      font: { family: "'DM Mono', monospace", size: 10 },
-                      boxWidth: 10,
-                    },
-                  },
-                  tooltip: {
-                    backgroundColor: '#1c1c1c',
-                    borderColor: '#2a2a2a',
-                    borderWidth: 1,
-                    titleColor: '#555',
-                    bodyColor: '#e8e8e8',
-                    titleFont: { family: "'DM Mono', monospace", size: 10 },
-                    bodyFont:  { family: "'DM Mono', monospace", size: 12 },
-                    padding: 10,
-                    cornerRadius: 4,
-                  },
-                  datalabels: {
-                    labels: {
-                      count: {
-                        anchor: 'end',
-                        align: 'end',
-                        formatter: (val) => val > 0 ? `${Math.round(val)}%` : null,
-                        color: '#9aa0b8',
-                        font: { family: "'DM Mono', monospace", size: 9 },
-                      },
-                      pct: {
-                        anchor: 'center',
-                        align: 'center',
-                        formatter: (val, ctx) => {
-                          if (val === 0) return null
-                          const z = zoneRows[ctx.dataIndex]
-                          if (!z) return null
-                          const pct = ctx.datasetIndex === 0 ? z.fg_pct_a : z.fg_pct_b
-                          const fga = ctx.datasetIndex === 0 ? z.fga_a : z.fga_b
-                          return fga > 0 ? `${Math.round(pct * 100)}FG%` : null
-                        },
-                        color: (ctx) => ctx.datasetIndex === 0 ? 'rgba(255,255,255,0.75)' : '#0d1a14',
-                        font: { family: "'DM Mono', monospace", size: 9, weight: '500' },
-                      },
-                    },
-                  },
+                  legend: { display: true, labels: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, boxWidth: 10 } },
+                  tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
+                  datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
                 },
                 scales: {
-                  x: {
-                    grid: { color: '#1a1a1a', drawTicks: false },
-                    border: { color: '#222' },
-                    ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } },
-                  },
-                  y: {
-                    grid: { color: '#1a1a1a' },
-                    border: { color: '#222' },
-                    ticks: {
-                      color: '#888',
-                      font: { family: "'DM Mono', monospace", size: 10 },
-                      callback: (v) => `${v}%`,
-                    },
-                    title: { display: true, text: '% of FGA', color: '#888', font: { family: "'DM Mono', monospace", size: 9 } },
-                  },
+                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
+                  y: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, callback: v => `${v}%` }, title: { display: true, text: yTitle, color: '#888', font: { family: "'DM Mono', monospace", size: 9 } } },
                 },
-              }
+              })
 
               return (
                 <div className="shot-diet-section">
@@ -6936,21 +6789,10 @@ function AppMain({ onLogout, onOpenAccount }) {
                     </div>
                   </div>
 
-                  {/* Courts + bar chart */}
-                  <div className="shot-diet-body">
-                    <div className="courts-row">
-                      <div className="court-wrap">
-                        <div className="court-label">Baseline</div>
-                        <CourtDiagram zones={courtZonesA} period={`${result.period_a.start} – ${result.period_a.end}`} />
-                      </div>
-                      <div className="court-wrap">
-                        <div className="court-label">Comparison</div>
-                        <CourtDiagram zones={courtZonesB} period={`${result.period_b.start} – ${result.period_b.end}`} />
-                      </div>
-                    </div>
-                    <div className="attempt-chart-wrap">
-                      <Bar data={attemptChartData} options={attemptChartOptions} />
-                    </div>
+                  {/* Bar charts */}
+                  <div className="shot-diet-charts">
+                    <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot selection %</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
+                    <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
                   </div>
 
                   {/* Zone detail table */}

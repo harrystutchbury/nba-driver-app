@@ -1643,85 +1643,30 @@
 }
 .shot-diet-close:hover { color: var(--text); }
 
-.shot-diet-body {
+.shot-diet-charts {
   display: flex;
-  gap: 16px;
-  height: 220px;
+  gap: 20px;
   margin-bottom: 24px;
-  align-items: stretch;
 }
 
-.courts-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.court-wrap {
+.shot-diet-chart-wrap {
   flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+  gap: 8px;
+  height: 280px;
+  position: relative;
 }
 
-.court-label {
+.shot-chart-title {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text);
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.court-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.court-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.court-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--sans);
-  font-size: 12px;
+  letter-spacing: 1px;
   color: var(--muted);
-}
-
-.court-legend-swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.court-legend-note {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: #444;
-  margin-left: auto;
-}
-
-.attempt-chart-wrap {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  position: relative;
+  text-align: center;
 }
 
 .shot-summary {
