@@ -3970,25 +3970,36 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     finally:
         conn2.close()
 
-    # Build slot_instances from stored scoring_settings (set at connect time).
-    # Fall back to a live mSettings fetch if not yet stored.
+    # Build slot_instances directly from the league object's roster_slots.
+    # This is more reliable than the mSettings API call which often returns 403.
     slot_instances: list = []
     active_capacity: int = 0
 
-    _stored_slots = scoring.get("lineup_slots") if scoring else None
-    if not _stored_slots:
-        # Older connection — fetch in-memory only (no inline DB write to avoid locking)
-        try:
-            _refreshed = _fetch_espn_scoring(fc["league_key"], fc["access_token"], fc["refresh_token"])
-            _stored_slots = _refreshed.get("lineup_slots") or {}
-        except Exception as _e:
-            logger.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
-            _stored_slots = {}
+    _BENCH_NAMES = {"BE", "IR", "Bench", "Injured Reserve"}
+    try:
+        _roster_slots = getattr(league.settings, "roster_slots", [])
+        logger.info(f"ESPN league.settings.roster_slots: {_roster_slots}")
+        for _slot_name in _roster_slots:
+            if _slot_name in _BENCH_NAMES:
+                continue
+            _sid = _SLOT_NAME_TO_ID.get(_slot_name)
+            if _sid is not None:
+                slot_instances.append(_sid)
+        if slot_instances:
+            logger.info(f"Lineup slots from league object: {len(slot_instances)} active ({slot_instances})")
+    except Exception as _e:
+        logger.warning(f"Could not read roster_slots from league object: {_e}")
 
-    for _sid_str, _cnt in (_stored_slots or {}).items():
-        _sid = int(_sid_str)
-        if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
-            slot_instances.extend([_sid] * _cnt)
+    # Fall back to stored scoring_settings if roster_slots wasn't available
+    if not slot_instances:
+        _stored_slots = scoring.get("lineup_slots") if scoring else None
+        if _stored_slots:
+            for _sid_str, _cnt in _stored_slots.items():
+                _sid = int(_sid_str)
+                if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+                    slot_instances.extend([_sid] * _cnt)
+            logger.info(f"Lineup slots from stored settings: {len(slot_instances)} active")
+
     active_capacity = len(slot_instances)
     logger.info(f"Lineup slot capacity: {active_capacity} active slots")
 
