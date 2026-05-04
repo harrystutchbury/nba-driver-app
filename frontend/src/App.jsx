@@ -1757,11 +1757,11 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
       return merged
     }
     let trendUp = null, trendDn = null
-    apiFetch('/api/trending?window=7&direction=up&limit=10')
+    apiFetch('/api/trending?window=14&direction=up&limit=10')
       .then(r => r.ok ? r.json() : null)
       .then(d => { trendUp = d; setTrending(mergeTrending(trendUp, trendDn)) })
       .catch(() => {})
-    apiFetch('/api/trending?window=7&direction=down&limit=10')
+    apiFetch('/api/trending?window=14&direction=down&limit=10')
       .then(r => r.ok ? r.json() : null)
       .then(d => { trendDn = d; setTrending(mergeTrending(trendUp, trendDn)) })
       .catch(() => {})
@@ -1797,7 +1797,7 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
     {/* ── Trending Ticker ────────────────────────────────── */}
     {trending.length > 0 && (
       <div className="dash-ticker-wrap">
-        <span className="dash-ticker-label">TRENDING</span>
+        <span className="dash-ticker-label">TRENDING · 14D</span>
         <div className="dash-ticker-viewport">
           <div className="dash-ticker-track" style={{ animationDuration: `${trending.length * 4}s` }}>
             {[...trending, ...trending].map((p, i) => (
@@ -1912,7 +1912,7 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
 
       {/* ── Blog Strip ─────────────────────────────────────── */}
       <div className="dash-blog-strip">
-        <h2 className="dash-card-title" style={{ marginBottom: 12 }}>From the Blog</h2>
+        <h2 className="dash-card-title">From the Blog</h2>
         {blogPosts.length === 0
           ? <div className="dash-empty">No posts yet.</div>
           : blogPosts.map(post => (
