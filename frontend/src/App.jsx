@@ -683,9 +683,9 @@ function CourtDiagram({ zones, period }) {
       {/* Paint lane lines */}
       <line x1={160} y1={0}   x2={160} y2={190} stroke={stroke} strokeWidth={1} />
       <line x1={340} y1={0}   x2={340} y2={190} stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle — upper half (solid, inside paint) */}
+      {/* Free throw circle — inside paint (solid, sweep=1 arcs upward toward basket) */}
       <path d="M 190,190 A 60,60 0 0,1 310,190" fill="none" stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle — lower half (dashed, below free throw line) */}
+      {/* Free throw circle — outside paint (dashed, sweep=0 arcs downward away from basket) */}
       <path d="M 190,190 A 60,60 0 0,0 310,190" fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
       {/* Free throw line */}
       <line x1={160} y1={190} x2={340} y2={190} stroke={stroke} strokeWidth={1.5} />
