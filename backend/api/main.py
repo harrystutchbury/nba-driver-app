@@ -3976,29 +3976,40 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     slot_instances: list = []
     active_capacity: int = 0
 
+    # Diagnostic dump — uses WARNING so it appears in Render logs
     try:
-        _raw = getattr(league, "_raw_data", {}) or {}
-        _roster_s = _raw.get("settings", {}).get("rosterSettings", {})
-        logger.info(f"ESPN _raw_data rosterSettings keys: {list(_roster_s.keys())}")
-        _raw_counts = _roster_s.get("lineupSlotCounts", {})
-        logger.info(f"ESPN lineupSlotCounts from _raw_data: {_raw_counts}")
-        if isinstance(_raw_counts, list):
-            _raw_counts = {str(i): v for i, v in enumerate(_raw_counts)}
-        for _sid_str, _cnt in _raw_counts.items():
-            _sid = int(_sid_str)
-            _cnt = int(_cnt)
-            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
-                slot_instances.extend([_sid] * _cnt)
-        logger.info(f"Lineup slots from _raw_data: {len(slot_instances)} active slots")
+        _league_attrs = [a for a in dir(league) if not a.startswith("__")]
+        logger.warning(f"[SLOT-DEBUG] league attrs: {_league_attrs}")
+        _raw = getattr(league, "_raw_data", None)
+        if _raw is None:
+            _raw = getattr(league, "data", None)
+        logger.warning(f"[SLOT-DEBUG] _raw type={type(_raw)} keys={list(_raw.keys()) if isinstance(_raw, dict) else 'N/A'}")
+        if isinstance(_raw, dict):
+            _settings_raw = _raw.get("settings", {})
+            logger.warning(f"[SLOT-DEBUG] settings keys: {list(_settings_raw.keys())}")
+            _roster_s = _settings_raw.get("rosterSettings", {})
+            logger.warning(f"[SLOT-DEBUG] rosterSettings keys: {list(_roster_s.keys())}")
+            _raw_counts = _roster_s.get("lineupSlotCounts", {})
+            logger.warning(f"[SLOT-DEBUG] lineupSlotCounts: {_raw_counts}")
+            if isinstance(_raw_counts, list):
+                _raw_counts = {str(i): v for i, v in enumerate(_raw_counts)}
+            for _sid_str, _cnt in _raw_counts.items():
+                _sid = int(_sid_str)
+                _cnt = int(_cnt)
+                if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+                    slot_instances.extend([_sid] * _cnt)
+        logger.warning(f"[SLOT-DEBUG] slots from _raw_data: {slot_instances}")
     except Exception as _e:
-        logger.warning(f"Could not read lineupSlotCounts from league._raw_data: {_e}")
+        logger.warning(f"[SLOT-DEBUG] _raw_data failed: {_e}")
 
     # Fall back: try roster_slots attribute on settings object
     if not slot_instances:
         _BENCH_NAMES = {"BE", "IR", "Bench", "Injured Reserve"}
         try:
+            _settings_attrs = [a for a in dir(league.settings) if not a.startswith("__")]
+            logger.warning(f"[SLOT-DEBUG] league.settings attrs: {_settings_attrs}")
             _roster_slots = getattr(league.settings, "roster_slots", []) or []
-            logger.info(f"ESPN league.settings.roster_slots fallback: {_roster_slots}")
+            logger.warning(f"[SLOT-DEBUG] roster_slots: {_roster_slots}")
             for _slot_name in _roster_slots:
                 if _slot_name in _BENCH_NAMES:
                     continue
@@ -4006,9 +4017,9 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 if _sid is not None:
                     slot_instances.append(_sid)
         except Exception as _e:
-            logger.warning(f"Could not read roster_slots from league.settings: {_e}")
+            logger.warning(f"[SLOT-DEBUG] roster_slots fallback failed: {_e}")
 
-    # Final fall back: stored scoring_settings
+    # Final fallback: stored scoring_settings
     if not slot_instances:
         _stored_slots = (scoring.get("lineup_slots") if scoring else None) or {}
         for _sid_str, _cnt in _stored_slots.items():
@@ -4016,7 +4027,7 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
             if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
                 slot_instances.extend([_sid] * _cnt)
         if slot_instances:
-            logger.info(f"Lineup slots from stored scoring_settings: {len(slot_instances)} active")
+            logger.warning(f"[SLOT-DEBUG] slots from stored scoring_settings: {slot_instances}")
 
     active_capacity = len(slot_instances)
     logger.info(f"Lineup slot capacity: {active_capacity} active slots")
