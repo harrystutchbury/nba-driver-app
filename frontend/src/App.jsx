@@ -4192,7 +4192,8 @@ function MatchupProjection({ onSelectPlayer }) {
     const activeCapacity = d.active_capacity || 0
     const pastEndIdx     = d.past_end_idx ?? -1  // index of last past day (-1 = all projected)
     const totalEffGP = players.reduce((s, p) => s + (p.effective_games ?? p.games), 0)
-    const dayTotals  = d.day_labels.map((_, i) => players.filter(p => p.days[i]).length)
+    // dayTotals = count of players with a game (slotted or benched) per day
+    const dayTotals  = d.day_labels.map((_, i) => players.filter(p => p.days[i] != null).length)
     return (
       <div className="mp-grid-section">
         <div className="mp-grid-label">
@@ -4221,9 +4222,9 @@ function MatchupProjection({ onSelectPlayer }) {
                   </td>
                   <td className="mp-col-team">{TEAM_ABBREV[p.nba_team] || p.nba_team?.slice(0,3) || '—'}</td>
                   <td className={`mp-col-gp mp-gp-${p.games}`}>{p.games}</td>
-                  {p.days.map((plays, i) => (
-                    <td key={i} className={`mp-col-day${plays ? ' mp-plays' : ' mp-off'}${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
-                      {plays ? '●' : ''}
+                  {p.days.map((status, i) => (
+                    <td key={i} className={`mp-col-day${status ? (status === 'benched' ? ' mp-benched' : ' mp-plays') : ' mp-off'}${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
+                      {status ? '●' : ''}
                     </td>
                   ))}
                 </tr>
@@ -4236,9 +4237,11 @@ function MatchupProjection({ onSelectPlayer }) {
                 <td className="mp-col-gp">{players.reduce((s, p) => s + p.games, 0)}</td>
                 {dayTotals.map((n, i) => {
                   const overbooked = activeCapacity > 0 && n > activeCapacity
+                  // Show slotted count when capacity is active
+                  const slottedN = activeCapacity > 0 ? players.filter(p => p.days[i] === 'slotted').length : n
                   return (
                     <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}${overbooked ? ' mp-day-overbooked' : ''}${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
-                      {n > 0 ? (overbooked ? `${n}↑` : n) : ''}
+                      {n > 0 ? (overbooked ? `${n}↑` : slottedN) : ''}
                     </td>
                   )
                 })}

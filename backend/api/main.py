@@ -4067,23 +4067,27 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     def _compute_effective_games(players_raw):
         """
         players_raw: list of (name, slug, eligible_slot_ids)
-        Returns (eff, past_eff, future_eff):
-          eff        - total effective games (slot-constrained)
-          past_eff   - effective games for days <= as_of_dt (from actual game logs)
-          future_eff - effective games for days >  as_of_dt (from schedule projections)
+        Returns (eff, past_eff, future_eff, day_statuses):
+          eff         - total effective games (slot-constrained)
+          past_eff    - effective games for days <= as_of_dt (from actual game logs)
+          future_eff  - effective games for days >  as_of_dt (from schedule projections)
+          day_statuses- list per player of per-day status: 'slotted'|'benched'|None
         """
         n = len(players_raw)
         eff        = [0.0] * n
         past_eff   = [0.0] * n
         future_eff = [0.0] * n
+        # day_statuses[player_idx][day_idx] = 'slotted' | 'benched' | None
+        day_statuses = [[None] * len(day_dates) for _ in range(n)]
 
-        def _apply_day(day_dt, playing_indices, target_eff):
+        def _apply_day(day_i, playing_indices, target_eff):
             if not playing_indices:
                 return
             if not slot_instances:
                 for pi in playing_indices:
                     eff[pi] += 1.0
                     target_eff[pi] += 1.0
+                    day_statuses[pi][day_i] = 'slotted'
                 return
             day_players = [
                 (pi, players_raw[pi][2], player_z_scores.get(players_raw[pi][1], 0.0))
@@ -4094,24 +4098,25 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
                 hit = 1.0 if pi in matched else 0.0
                 eff[pi]        += hit
                 target_eff[pi] += hit
+                day_statuses[pi][day_i] = 'slotted' if pi in matched else 'benched'
 
         for day_dt in past_days:
-            # Past: use actual game logs — player must have a game_log entry for this date
+            day_i = day_dates.index(day_dt)
             playing_indices = [
                 pi for pi, (_, slug, _elig) in enumerate(players_raw)
                 if slug and day_dt in actual_by_slug.get(slug, {})
             ]
-            _apply_day(day_dt, playing_indices, past_eff)
+            _apply_day(day_i, playing_indices, past_eff)
 
         for day_dt in future_days:
-            # Future: use schedule
+            day_i = day_dates.index(day_dt)
             playing_indices = [
                 pi for pi, (_, slug, _elig) in enumerate(players_raw)
                 if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
             ]
-            _apply_day(day_dt, playing_indices, future_eff)
+            _apply_day(day_i, playing_indices, future_eff)
 
-        return eff, past_eff, future_eff
+        return eff, past_eff, future_eff, day_statuses
 
     # Helper: build player info dict
     def _player_info(name, slug, effective_games, raw_games, days):
@@ -4151,16 +4156,16 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
         slug = _resolve_slug(p)
         opp_raw.append((p.name, slug, _eligible_ids(p)))
 
-    my_eff,  my_past_eff,  my_future_eff  = _compute_effective_games(my_raw)
-    opp_eff, opp_past_eff, opp_future_eff = _compute_effective_games(opp_raw)
+    my_eff,  my_past_eff,  my_future_eff,  my_day_statuses  = _compute_effective_games(my_raw)
+    opp_eff, opp_past_eff, opp_future_eff, opp_day_statuses = _compute_effective_games(opp_raw)
 
-    def _build_players(raw_list, eff_list, past_eff_list, future_eff_list):
+    def _build_players(raw_list, eff_list, past_eff_list, future_eff_list, day_statuses_list):
         result = []
         for i, ((name, slug, _), eff) in enumerate(zip(raw_list, eff_list)):
             nba_team   = slug_to_team.get(slug, "") if slug else ""
             week_dates = team_week_dates.get(nba_team, set())
             raw_games  = len(week_dates)
-            days       = [d in week_dates for d in day_dates]
+            days       = day_statuses_list[i]  # per-day: 'slotted'|'benched'|None
             info = _player_info(name, slug, eff, raw_games, days)
             info["past_eff"]   = round(past_eff_list[i], 2)
             info["future_eff"] = round(future_eff_list[i], 2)
@@ -4186,8 +4191,8 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             result.append(info)
         return result
 
-    my_players  = sorted(_build_players(my_raw,  my_eff,  my_past_eff,  my_future_eff),  key=lambda p: -p["effective_games"])
-    opp_players = sorted(_build_players(opp_raw, opp_eff, opp_past_eff, opp_future_eff), key=lambda p: -p["effective_games"])
+    my_players  = sorted(_build_players(my_raw,  my_eff,  my_past_eff,  my_future_eff,  my_day_statuses),  key=lambda p: -p["effective_games"])
+    opp_players = sorted(_build_players(opp_raw, opp_eff, opp_past_eff, opp_future_eff, opp_day_statuses), key=lambda p: -p["effective_games"])
 
     # Compute category projections: actual accumulated stats (past) + projected (future)
     def _project(players):

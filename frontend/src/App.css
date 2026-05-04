@@ -4162,8 +4162,9 @@ td.bs-pos {
 .mp-gp-3 { color: var(--skill); font-weight: 700; }
 .mp-gp-4 { color: var(--skill); font-weight: 700; }
 
-.mp-plays { color: var(--skill); font-size: 14px; }
-.mp-off   { color: transparent; }
+.mp-plays   { color: var(--skill); font-size: 14px; }
+.mp-benched { color: var(--muted); font-size: 14px; opacity: 0.5; }
+.mp-off     { color: transparent; }
 
 .mp-row-drop { background: rgba(255,107,107,0.08); }
 .mp-drop-tag { color: var(--neg); font-size: 10px; font-weight: 600; margin-left: 4px; }
