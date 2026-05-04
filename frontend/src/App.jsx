@@ -1716,10 +1716,12 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
 function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
   const todayET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-  const [games,    setGames]    = useState(null)
-  const [injuries, setInjuries] = useState(null)
-  const [news,     setNews]     = useState(null)
-  const [comments, setComments] = useState(null)
+  const [games,     setGames]     = useState(null)
+  const [injuries,  setInjuries]  = useState(null)
+  const [news,      setNews]      = useState(null)
+  const [comments,  setComments]  = useState(null)
+  const [trending,  setTrending]  = useState([])
+  const [blogPosts, setBlogPosts] = useState([])
 
   useEffect(() => {
     apiFetch(`/api/box-score?date=${todayET()}`)
@@ -1741,6 +1743,28 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
       .then(r => r.ok ? r.json() : [])
       .then(d => setComments(Array.isArray(d) ? d : []))
       .catch(() => setComments([]))
+
+    // Fetch trending players (mix up + down, 7-day window)
+    Promise.all([
+      apiFetch('/api/trending?window=7&direction=up&limit=10').then(r => r.ok ? r.json() : null),
+      apiFetch('/api/trending?window=7&direction=down&limit=10').then(r => r.ok ? r.json() : null),
+    ]).then(([up, dn]) => {
+      const upPlayers = (up?.players || []).map(p => ({ ...p, dir: 'up' }))
+      const dnPlayers = (dn?.players || []).map(p => ({ ...p, dir: 'down' }))
+      // Interleave up/down
+      const merged = []
+      const max = Math.max(upPlayers.length, dnPlayers.length)
+      for (let i = 0; i < max; i++) {
+        if (i < upPlayers.length) merged.push(upPlayers[i])
+        if (i < dnPlayers.length) merged.push(dnPlayers[i])
+      }
+      setTrending(merged)
+    }).catch(() => {})
+
+    apiFetch('/api/blog/posts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setBlogPosts((d?.posts || []).filter(p => p.is_published).slice(0, 8)))
+      .catch(() => {})
   }, [])
 
   const DES_ORDER = { 'Out': 0, 'Doubtful': 1, 'Questionable': 2, 'Day-To-Day': 3 }
@@ -1752,7 +1776,38 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
         .sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9))
     : null
 
+  // Format a single ticker item label
+  function tickerLabel(p) {
+    const d = p.drivers?.[0]
+    const stat = d ? STAT_LABELS[d.stat] || d.stat : null
+    const delta = d ? `${d.delta > 0 ? '+' : ''}${d.delta.toFixed(1)} ${stat}` : null
+    const dz = `${p.delta_z > 0 ? '+' : ''}${p.delta_z.toFixed(2)}ΔZ`
+    return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta ? `${delta} · ` : ''}${dz}`
+  }
+
   return (
+    <>
+    {/* ── Trending Ticker ────────────────────────────────── */}
+    {trending.length > 0 && (
+      <div className="dash-ticker-wrap">
+        <span className="dash-ticker-label">TRENDING</span>
+        <div className="dash-ticker-viewport">
+          <div className="dash-ticker-track" style={{ animationDuration: `${trending.length * 4}s` }}>
+            {[...trending, ...trending].map((p, i) => (
+              <span
+                key={i}
+                className={`dash-ticker-item ${p.dir === 'up' ? 'dash-ticker-up' : 'dash-ticker-down'}`}
+                onClick={() => onSelectPlayer?.({ slug: p.slug, name: p.name })}
+              >
+                {tickerLabel(p)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div className="dash-outer">
     <div className="dash-grid">
 
       {/* ── Today's Games ──────────────────────────────────── */}
@@ -1847,6 +1902,34 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
       </div>
 
     </div>
+
+      {/* ── Blog Strip ─────────────────────────────────────── */}
+      <div className="dash-blog-strip">
+        <h2 className="dash-card-title" style={{ marginBottom: 12 }}>From the Blog</h2>
+        {blogPosts.length === 0
+          ? <div className="dash-empty">No posts yet.</div>
+          : blogPosts.map(post => (
+            <div
+              key={post.id}
+              className="dash-blog-item"
+              onClick={() => onSelectBlogPost?.(post.slug)}
+            >
+              {post.cover_image && (
+                <img className="dash-blog-thumb" src={post.cover_image} alt="" />
+              )}
+              <div className="dash-blog-info">
+                {post.category && <span className="dash-blog-cat">{post.category}</span>}
+                <div className="dash-blog-title">{post.title}</div>
+                <div className="dash-blog-date">
+                  {new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+    </>
   )
 }
 
