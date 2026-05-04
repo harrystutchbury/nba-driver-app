@@ -3116,11 +3116,6 @@ def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
     scoring  = settings.get("scoringSettings", {})
     scoring_type = scoring.get("scoringType", "UNKNOWN")  # H2H_CATEGORY / H2H_POINTS / ROTISSERIE
 
-    logger.info(f"ESPN mSettings top-level keys: {list(data.keys())}")
-    logger.info(f"ESPN settings keys: {list(settings.keys())}")
-    roster_settings = settings.get("rosterSettings", {})
-    logger.info(f"ESPN rosterSettings keys: {list(roster_settings.keys())}")
-
     items = []
     for item in scoring.get("scoringItems", []):
         stat_id = item.get("statId")
@@ -3137,14 +3132,11 @@ def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
     # For category leagues, also capture which cats are active
     cat_ids = [it["stat"] for it in items] if scoring_type == "H2H_CATEGORY" else []
 
-    # Lineup slot counts — stored so matchup projection doesn't need a separate live fetch
-    raw_slot_counts = roster_settings.get("lineupSlotCounts", {})
-    logger.info(f"ESPN lineupSlotCounts raw: {raw_slot_counts}")
+    # Lineup slot counts (best-effort — the live roster derivation in matchup projection is more reliable)
+    raw_slot_counts = settings.get("rosterSettings", {}).get("lineupSlotCounts", {})
     if isinstance(raw_slot_counts, list):
-        # Some ESPN API versions return as a list where index=slot_id, value=count
         raw_slot_counts = {str(i): v for i, v in enumerate(raw_slot_counts)}
     lineup_slots = {k: v for k, v in raw_slot_counts.items() if v > 0}
-    logger.info(f"ESPN lineup_slots (active): {lineup_slots}")
 
     return {
         "scoring_type": scoring_type,
@@ -3990,9 +3982,8 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                     _sid = _SLOT_NAME_TO_ID.get(_ls)
                     if _sid is not None:
                         slot_instances.append(_sid)
-            logger.warning(f"[SLOT] derived from roster lineupSlot: {slot_instances}")
     except Exception as _e:
-        logger.warning(f"[SLOT] roster lineupSlot derivation failed: {_e}")
+        logger.warning(f"Could not derive lineup slots from roster: {_e}")
 
     # Fallback: stored scoring_settings
     if not slot_instances:
@@ -4001,8 +3992,6 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
             _sid = int(_sid_str)
             if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
                 slot_instances.extend([_sid] * _cnt)
-        if slot_instances:
-            logger.warning(f"[SLOT] slots from stored scoring_settings: {slot_instances}")
 
     active_capacity = len(slot_instances)
     logger.info(f"Lineup slot capacity: {active_capacity} active slots")
