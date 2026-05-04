@@ -4062,6 +4062,48 @@ td.bs-pos {
   min-width: 200px;
 }
 
+.mp-controls-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.mp-asof-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mp-asof-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.mp-asof-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.mp-asof-btn:hover { border-color: var(--text); color: var(--text); }
+.mp-asof-active {
+  border-color: var(--skill) !important;
+  color: var(--skill) !important;
+  background: rgba(77,255,180,0.08);
+}
+
+/* Past-day columns: slightly dimmed with right-border divider on last past day */
+.mp-col-past     { opacity: 0.65; }
+.mp-col-past-last { border-right: 2px solid var(--border) !important; }
+.mp-day-past     { opacity: 0.65; }
+
 /* Category table */
 .mp-cats-section { margin-bottom: 24px; overflow-x: auto; }
 

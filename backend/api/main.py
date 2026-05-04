@@ -3770,9 +3770,11 @@ def _optimal_lineup_matching(players_indexed: list, slot_instances: list) -> set
     return matched
 
 
-def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slugs=None):
+def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slugs=None, drop_slugs=None):
     """
     Core logic for the matchup projection view. Called from GET (browse) and POST (simulate).
+    as_of_date: date string YYYY-MM-DD — days up to this date use actual game logs;
+                days after are projections. Defaults to today.
     add_slugs / drop_slugs: slugs to add/remove from MY roster before computing projection.
     """
     import json as _json
@@ -3782,6 +3784,16 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
 
     add_slugs  = set(add_slugs  or [])
     drop_slugs = set(drop_slugs or [])
+
+    from datetime import date as _date
+    today = _date.today()
+    if as_of_date:
+        try:
+            as_of_dt = _date.fromisoformat(as_of_date)
+        except ValueError:
+            as_of_dt = today
+    else:
+        as_of_dt = today
 
     conn = get_conn()
     fc = conn.execute(
@@ -3848,6 +3860,13 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         SELECT player_slug, pts, reb, ast, stl, blk, tov, fg3m, fgm, fga, ftm, fta
         FROM game_logs WHERE season=? AND min>5
         ORDER BY player_slug, game_date
+    """, [season]).fetchall()
+
+    # Actual game logs for the matchup week — fetched now, filtered later once we know week dates.
+    # Keyed by (player_slug, game_date_str).
+    actual_week_rows = conn.execute("""
+        SELECT player_slug, game_date, pts, reb, ast, stl, blk, tov, fg3m, fgm, fga, ftm, fta
+        FROM game_logs WHERE season=? AND min>5
     """, [season]).fetchall()
     conn.close()
 
@@ -3948,12 +3967,27 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     day_dates   = [week_start_dt + timedelta(days=i) for i in range(7)]
     day_labels  = [d.strftime('%a %-d') for d in day_dates]
 
+    # Clamp as_of_dt to the week range for categorising past vs future days
+    past_cutoff = min(as_of_dt, week_end_dt)
+    past_days   = [d for d in day_dates if d <= past_cutoff]
+    future_days = [d for d in day_dates if d >  past_cutoff]
+    # Index within day_dates of the last past day (-1 if all projected)
+    past_end_idx = len(past_days) - 1
+
     # Which dates each NBA team plays this week
     team_week_dates = defaultdict(set)
     for row in game_team_rows:
         gd = date.fromisoformat(row["game_date"])
         if week_start_dt <= gd <= week_end_dt:
             team_week_dates[row["team"]].add(gd)
+
+    # Actual games played per player for past days in this week
+    # {slug: {date: {stat: val, ...}}}
+    actual_by_slug: dict = defaultdict(dict)
+    for row in actual_week_rows:
+        gd = date.fromisoformat(row["game_date"])
+        if gd in past_days:
+            actual_by_slug[row["player_slug"]][gd] = row
 
     # Load ESPN league
     conn2 = get_conn()
@@ -4033,31 +4067,51 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     def _compute_effective_games(players_raw):
         """
         players_raw: list of (name, slug, eligible_slot_ids)
-        Returns list of effective_games floats accounting for lineup slot constraints.
-        When slots are contested, highest z-score players are slotted first.
+        Returns (eff, past_eff, future_eff):
+          eff        - total effective games (slot-constrained)
+          past_eff   - effective games for days <= as_of_dt (from actual game logs)
+          future_eff - effective games for days >  as_of_dt (from schedule projections)
         """
         n = len(players_raw)
-        eff = [0.0] * n
-        for day_dt in day_dates:
-            playing_indices = [
-                pi for pi, (_, slug, _elig) in enumerate(players_raw)
-                if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
-            ]
+        eff        = [0.0] * n
+        past_eff   = [0.0] * n
+        future_eff = [0.0] * n
+
+        def _apply_day(day_dt, playing_indices, target_eff):
             if not playing_indices:
-                continue
+                return
             if not slot_instances:
-                # No slot constraint data: all players play
                 for pi in playing_indices:
                     eff[pi] += 1.0
-                continue
+                    target_eff[pi] += 1.0
+                return
             day_players = [
                 (pi, players_raw[pi][2], player_z_scores.get(players_raw[pi][1], 0.0))
                 for pi in playing_indices
             ]
             matched = _optimal_lineup_matching(day_players, slot_instances)
             for pi in playing_indices:
-                eff[pi] += 1.0 if pi in matched else 0.0
-        return eff
+                hit = 1.0 if pi in matched else 0.0
+                eff[pi]        += hit
+                target_eff[pi] += hit
+
+        for day_dt in past_days:
+            # Past: use actual game logs — player must have a game_log entry for this date
+            playing_indices = [
+                pi for pi, (_, slug, _elig) in enumerate(players_raw)
+                if slug and day_dt in actual_by_slug.get(slug, {})
+            ]
+            _apply_day(day_dt, playing_indices, past_eff)
+
+        for day_dt in future_days:
+            # Future: use schedule
+            playing_indices = [
+                pi for pi, (_, slug, _elig) in enumerate(players_raw)
+                if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
+            ]
+            _apply_day(day_dt, playing_indices, future_eff)
+
+        return eff, past_eff, future_eff
 
     # Helper: build player info dict
     def _player_info(name, slug, effective_games, raw_games, days):
@@ -4097,23 +4151,45 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         slug = _resolve_slug(p)
         opp_raw.append((p.name, slug, _eligible_ids(p)))
 
-    my_eff  = _compute_effective_games(my_raw)
-    opp_eff = _compute_effective_games(opp_raw)
+    my_eff,  my_past_eff,  my_future_eff  = _compute_effective_games(my_raw)
+    opp_eff, opp_past_eff, opp_future_eff = _compute_effective_games(opp_raw)
 
-    def _build_players(raw_list, eff_list):
+    def _build_players(raw_list, eff_list, past_eff_list, future_eff_list):
         result = []
-        for (name, slug, _), eff in zip(raw_list, eff_list):
+        for i, ((name, slug, _), eff) in enumerate(zip(raw_list, eff_list)):
             nba_team   = slug_to_team.get(slug, "") if slug else ""
             week_dates = team_week_dates.get(nba_team, set())
             raw_games  = len(week_dates)
             days       = [d in week_dates for d in day_dates]
-            result.append(_player_info(name, slug, eff, raw_games, days))
+            info = _player_info(name, slug, eff, raw_games, days)
+            info["past_eff"]   = round(past_eff_list[i], 2)
+            info["future_eff"] = round(future_eff_list[i], 2)
+            # Actual accumulated stats for past slot-matched games
+            _actual_games = actual_by_slug.get(slug, {})
+            _actual_slugged = {d: _actual_games[d] for d in past_days if d in _actual_games}
+            # Only count games that were slot-matched (past_eff counts them)
+            # Approximate: take top past_eff_list[i] games by z-score ordering
+            # For simplicity: sum all actual games (slot matching already reflected in past_eff)
+            _actual_rows = list(_actual_slugged.values())
+            if _actual_rows:
+                def _s(k): return sum(r[k] or 0 for r in _actual_rows)
+                info["actual_stats"] = {
+                    "pts": round(_s("pts"), 1), "reb": round(_s("reb"), 1),
+                    "ast": round(_s("ast"), 1), "stl": round(_s("stl"), 1),
+                    "blk": round(_s("blk"), 1), "tov": round(_s("tov"), 1),
+                    "fg3m": round(_s("fg3m"), 1), "fgm": _s("fgm"), "fga": _s("fga"),
+                    "ftm": _s("ftm"), "fta": _s("fta"),
+                    "games": len(_actual_rows),
+                }
+            else:
+                info["actual_stats"] = None
+            result.append(info)
         return result
 
-    my_players  = sorted(_build_players(my_raw, my_eff),  key=lambda p: -p["effective_games"])
-    opp_players = sorted(_build_players(opp_raw, opp_eff), key=lambda p: -p["effective_games"])
+    my_players  = sorted(_build_players(my_raw,  my_eff,  my_past_eff,  my_future_eff),  key=lambda p: -p["effective_games"])
+    opp_players = sorted(_build_players(opp_raw, opp_eff, opp_past_eff, opp_future_eff), key=lambda p: -p["effective_games"])
 
-    # Compute category projections with ranges
+    # Compute category projections: actual accumulated stats (past) + projected (future)
     def _project(players):
         cat_data = {}
         for cat in tracked_cats:
@@ -4123,13 +4199,20 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 for p in players:
                     s = player_stats.get(p["slug"]) if p["slug"] else None
                     if not s: continue
-                    g = p.get("effective_games", p["games"])
+                    fut_g = p.get("future_eff", p.get("effective_games", p["games"]))
+                    act   = p.get("actual_stats")
                     if cat == "FG%":
-                        total_att  += s["fga_pg"] * g
-                        total_made += s["fga_pg"] * (s["fg_pct"] / 100) * g
+                        # Actual past games
+                        if act:
+                            total_made += act["fgm"]; total_att += act["fga"]
+                        # Projected future games
+                        total_att  += s["fga_pg"] * fut_g
+                        total_made += s["fga_pg"] * (s["fg_pct"] / 100) * fut_g
                     else:
-                        total_att  += s["fta_pg"] * g
-                        total_made += s["fta_pg"] * (s["ft_pct"] / 100) * g
+                        if act:
+                            total_made += act["ftm"]; total_att += act["fta"]
+                        total_att  += s["fta_pg"] * fut_g
+                        total_made += s["fta_pg"] * (s["ft_pct"] / 100) * fut_g
                 proj  = (total_made / total_att * 100) if total_att else 0.0
                 p_val = proj / 100
                 sigma = math.sqrt(p_val * (1 - p_val) / total_att) * 100 if total_att > 0 else 0.0
@@ -4143,11 +4226,16 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
                 for p in players:
                     s = player_stats.get(p["slug"]) if p["slug"] else None
                     if not s: continue
-                    g  = p.get("effective_games", p["games"])
+                    fut_g = p.get("future_eff", p.get("effective_games", p["games"]))
+                    act   = p.get("actual_stats")
+                    # Actual accumulated
+                    if act:
+                        tp += act.get(sk, 0) or 0
+                    # Projected future
                     mu = s.get(sk) or 0.0
                     sd = s.get(f"{sk}_sd") or (mu * 0.3)
-                    tp += mu * g
-                    tv += sd * sd * g
+                    tp += mu * fut_g
+                    tv += sd * sd * fut_g
                 sigma = math.sqrt(tv) if tv > 0 else 0.0
                 cat_data[cat] = {
                     "proj": round(tp, 1), "lo": round(max(0.0, tp - sigma), 1),
@@ -4209,16 +4297,19 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
         "cat_total":        len(categories),
         "team_week_games":  {team: len(dates) for team, dates in team_week_dates.items()},
         "active_capacity":  active_capacity,
+        "as_of_date":       as_of_dt.isoformat(),
+        "past_end_idx":     past_end_idx,  # index of last past day in day_labels (-1 = all projected)
     }
 
 
 @fantasy_router.get("/espn/matchup-projection")
 def espn_matchup_projection(
     week: Optional[int] = Query(None),
+    as_of_date: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user),
 ):
     """Return matchup projection for the given scoring week (defaults to current week)."""
-    return _espn_matchup_projection_inner(current_user=current_user, week=week)
+    return _espn_matchup_projection_inner(current_user=current_user, week=week, as_of_date=as_of_date)
 
 
 @fantasy_router.post("/espn/matchup-projection/simulate")
@@ -4230,6 +4321,7 @@ def espn_matchup_projection_simulate(
     return _espn_matchup_projection_inner(
         current_user=current_user,
         week=body.get("week"),
+        as_of_date=body.get("as_of_date"),
         add_slugs=body.get("add_slugs", []),
         drop_slugs=body.get("drop_slugs", []),
     )

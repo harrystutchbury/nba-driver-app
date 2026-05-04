@@ -4102,10 +4102,14 @@ function MatchupProjection({ onSelectPlayer }) {
   const [dropSlug,   setDropSlug]   = useState(null)
   const [simLoading, setSimLoading] = useState(false)
   const [simData,    setSimData]    = useState(null)
+  const [asOfDate,   setAsOfDate]   = useState(null)  // YYYY-MM-DD, null = today
 
-  function load(w) {
+  function load(w, aod) {
     setLoading(true); setError(null); setSimData(null)
-    const url = `/api/fantasy/espn/matchup-projection${w ? `?week=${w}` : ''}`
+    const params = new URLSearchParams()
+    if (w)   params.set('week', w)
+    if (aod) params.set('as_of_date', aod)
+    const url = `/api/fantasy/espn/matchup-projection${params.size ? `?${params}` : ''}`
     apiFetch(url)
       .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail || r.statusText)))
       .then(d => { setData(d); setWeek(d.week); setLoading(false) })
@@ -4113,7 +4117,7 @@ function MatchupProjection({ onSelectPlayer }) {
   }
 
   useEffect(() => {
-    load(null)
+    load(null, null)
     setFaLoading(true)
     apiFetch('/api/fantasy/espn/free-agents')
       .then(r => r.ok ? r.json() : null)
@@ -4139,6 +4143,7 @@ function MatchupProjection({ onSelectPlayer }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         week,
+        as_of_date: asOfDate || (data?.as_of_date),
         add_slugs:  addSlug  ? [addSlug]  : [],
         drop_slugs: dropSlug ? [dropSlug] : [],
       }),
@@ -4185,6 +4190,7 @@ function MatchupProjection({ onSelectPlayer }) {
 
   function DayGrid({ players, label, isMyTeam }) {
     const activeCapacity = d.active_capacity || 0
+    const pastEndIdx     = d.past_end_idx ?? -1  // index of last past day (-1 = all projected)
     const totalEffGP = players.reduce((s, p) => s + (p.effective_games ?? p.games), 0)
     const dayTotals  = d.day_labels.map((_, i) => players.filter(p => p.days[i]).length)
     return (
@@ -4199,7 +4205,9 @@ function MatchupProjection({ onSelectPlayer }) {
                 <th className="mp-col-player">Player</th>
                 <th className="mp-col-team">Tm</th>
                 <th className="mp-col-gp">GP</th>
-                {d.day_labels.map((lbl, i) => <th key={i} className="mp-col-day">{lbl}</th>)}
+                {d.day_labels.map((lbl, i) => (
+                  <th key={i} className={`mp-col-day${i === pastEndIdx ? ' mp-col-past-last' : i <= pastEndIdx ? ' mp-col-past' : ''}`}>{lbl}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -4214,7 +4222,7 @@ function MatchupProjection({ onSelectPlayer }) {
                   <td className="mp-col-team">{TEAM_ABBREV[p.nba_team] || p.nba_team?.slice(0,3) || '—'}</td>
                   <td className={`mp-col-gp mp-gp-${p.games}`}>{p.games}</td>
                   {p.days.map((plays, i) => (
-                    <td key={i} className={`mp-col-day${plays ? ' mp-plays' : ' mp-off'}`}>
+                    <td key={i} className={`mp-col-day${plays ? ' mp-plays' : ' mp-off'}${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
                       {plays ? '●' : ''}
                     </td>
                   ))}
@@ -4229,7 +4237,7 @@ function MatchupProjection({ onSelectPlayer }) {
                 {dayTotals.map((n, i) => {
                   const overbooked = activeCapacity > 0 && n > activeCapacity
                   return (
-                    <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}${overbooked ? ' mp-day-overbooked' : ''}`}>
+                    <td key={i} className={`mp-col-day mp-day-total${n > 0 ? ' mp-day-total-has' : ''}${overbooked ? ' mp-day-overbooked' : ''}${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
                       {n > 0 ? (overbooked ? `${n}↑` : n) : ''}
                     </td>
                   )
@@ -4241,7 +4249,7 @@ function MatchupProjection({ onSelectPlayer }) {
                   <td className="mp-col-team"></td>
                   <td className="mp-col-gp">{activeCapacity}</td>
                   {dayTotals.map((n, i) => (
-                    <td key={i} className="mp-col-day mp-slot-cap">
+                    <td key={i} className={`mp-col-day mp-slot-cap${i <= pastEndIdx ? ' mp-day-past' : ''}${i === pastEndIdx ? ' mp-col-past-last' : ''}`}>
                       {n > 0 ? Math.min(n, activeCapacity) : ''}
                     </td>
                   ))}
@@ -4280,15 +4288,36 @@ function MatchupProjection({ onSelectPlayer }) {
           <span className={`mp-overall-badge ${overallCls}`}>{d.cat_wins}–{d.cat_total - d.cat_wins} ({overallPct}%)</span>
           <span className="mp-team-name mp-opp-team">{d.opp_team_name}</span>
         </div>
-        <select
-          className="mp-week-select"
-          value={week || ''}
-          onChange={e => { const w = Number(e.target.value); setWeek(w); load(w); clearSim() }}
-        >
-          {data.all_weeks.map(w => (
-            <option key={w.week} value={w.week}>Week {w.week}: {w.label}</option>
-          ))}
-        </select>
+        <div className="mp-controls-row">
+          <select
+            className="mp-week-select"
+            value={week || ''}
+            onChange={e => { const w = Number(e.target.value); setWeek(w); setAsOfDate(null); load(w, null); clearSim() }}
+          >
+            {data.all_weeks.map(w => (
+              <option key={w.week} value={w.week}>Week {w.week}: {w.label}</option>
+            ))}
+          </select>
+          <div className="mp-asof-row">
+            <span className="mp-asof-label">Results through:</span>
+            {data.day_labels.map((lbl, i) => {
+              const dayIso = data.week_start ? (() => {
+                const d0 = new Date(data.week_start + 'T12:00:00')
+                d0.setDate(d0.getDate() + i)
+                return d0.toISOString().slice(0, 10)
+              })() : null
+              const active = dayIso === (asOfDate || data.as_of_date)
+              return (
+                <button
+                  key={i}
+                  className={`mp-asof-btn${active ? ' mp-asof-active' : ''}`}
+                  onClick={() => { setAsOfDate(dayIso); load(week, dayIso); clearSim() }}
+                >{lbl}</button>
+              )
+            })}
+            {(asOfDate && asOfDate !== data.as_of_date) || true ? null : null}
+          </div>
+        </div>
       </div>
 
       {/* Category projections + outcome distribution side by side */}
