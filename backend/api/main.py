@@ -3970,35 +3970,53 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     finally:
         conn2.close()
 
-    # Build slot_instances directly from the league object's roster_slots.
-    # This is more reliable than the mSettings API call which often returns 403.
+    # Build slot_instances from the league's raw API data (most reliable source).
+    # The espn_api library stores the full JSON response in _raw_data which includes
+    # rosterSettings.lineupSlotCounts — already fetched with valid auth.
     slot_instances: list = []
     active_capacity: int = 0
 
-    _BENCH_NAMES = {"BE", "IR", "Bench", "Injured Reserve"}
     try:
-        _roster_slots = getattr(league.settings, "roster_slots", [])
-        logger.info(f"ESPN league.settings.roster_slots: {_roster_slots}")
-        for _slot_name in _roster_slots:
-            if _slot_name in _BENCH_NAMES:
-                continue
-            _sid = _SLOT_NAME_TO_ID.get(_slot_name)
-            if _sid is not None:
-                slot_instances.append(_sid)
-        if slot_instances:
-            logger.info(f"Lineup slots from league object: {len(slot_instances)} active ({slot_instances})")
+        _raw = getattr(league, "_raw_data", {}) or {}
+        _roster_s = _raw.get("settings", {}).get("rosterSettings", {})
+        logger.info(f"ESPN _raw_data rosterSettings keys: {list(_roster_s.keys())}")
+        _raw_counts = _roster_s.get("lineupSlotCounts", {})
+        logger.info(f"ESPN lineupSlotCounts from _raw_data: {_raw_counts}")
+        if isinstance(_raw_counts, list):
+            _raw_counts = {str(i): v for i, v in enumerate(_raw_counts)}
+        for _sid_str, _cnt in _raw_counts.items():
+            _sid = int(_sid_str)
+            _cnt = int(_cnt)
+            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+                slot_instances.extend([_sid] * _cnt)
+        logger.info(f"Lineup slots from _raw_data: {len(slot_instances)} active slots")
     except Exception as _e:
-        logger.warning(f"Could not read roster_slots from league object: {_e}")
+        logger.warning(f"Could not read lineupSlotCounts from league._raw_data: {_e}")
 
-    # Fall back to stored scoring_settings if roster_slots wasn't available
+    # Fall back: try roster_slots attribute on settings object
     if not slot_instances:
-        _stored_slots = scoring.get("lineup_slots") if scoring else None
-        if _stored_slots:
-            for _sid_str, _cnt in _stored_slots.items():
-                _sid = int(_sid_str)
-                if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
-                    slot_instances.extend([_sid] * _cnt)
-            logger.info(f"Lineup slots from stored settings: {len(slot_instances)} active")
+        _BENCH_NAMES = {"BE", "IR", "Bench", "Injured Reserve"}
+        try:
+            _roster_slots = getattr(league.settings, "roster_slots", []) or []
+            logger.info(f"ESPN league.settings.roster_slots fallback: {_roster_slots}")
+            for _slot_name in _roster_slots:
+                if _slot_name in _BENCH_NAMES:
+                    continue
+                _sid = _SLOT_NAME_TO_ID.get(_slot_name)
+                if _sid is not None:
+                    slot_instances.append(_sid)
+        except Exception as _e:
+            logger.warning(f"Could not read roster_slots from league.settings: {_e}")
+
+    # Final fall back: stored scoring_settings
+    if not slot_instances:
+        _stored_slots = (scoring.get("lineup_slots") if scoring else None) or {}
+        for _sid_str, _cnt in _stored_slots.items():
+            _sid = int(_sid_str)
+            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+                slot_instances.extend([_sid] * _cnt)
+        if slot_instances:
+            logger.info(f"Lineup slots from stored scoring_settings: {len(slot_instances)} active")
 
     active_capacity = len(slot_instances)
     logger.info(f"Lineup slot capacity: {active_capacity} active slots")
