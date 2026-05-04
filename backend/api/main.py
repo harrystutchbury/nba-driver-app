@@ -3132,11 +3132,16 @@ def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
     # For category leagues, also capture which cats are active
     cat_ids = [it["stat"] for it in items] if scoring_type == "H2H_CATEGORY" else []
 
+    # Lineup slot counts — stored so matchup projection doesn't need a separate live fetch
+    raw_slot_counts = settings.get("rosterSettings", {}).get("lineupSlotCounts", {})
+    lineup_slots = {k: v for k, v in raw_slot_counts.items() if v > 0}
+
     return {
         "scoring_type": scoring_type,
         "items": items,
         "categories": cat_ids,  # meaningful for H2H_CATEGORY
         "league_name": settings.get("name", ""),
+        "lineup_slots": lineup_slots,  # {slot_id_str: count} for all non-zero slots
     }
 
 
@@ -3955,35 +3960,35 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
     finally:
         conn2.close()
 
-    # Fetch lineup slot counts from ESPN mSettings API
-    slot_instances: list = []   # expanded list of active slot IDs
+    # Build slot_instances from stored scoring_settings (set at connect time).
+    # Fall back to a live mSettings fetch if not yet stored.
+    slot_instances: list = []
     active_capacity: int = 0
-    try:
-        import urllib.request as _urlreq2
-        _lid  = fc["league_key"]
-        _s2   = fc["access_token"]
-        _swid = fc["refresh_token"]
-        _murl = (
-            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{season_year}"
-            f"/segments/0/leagues/{_lid}?view=mSettings"
-        )
-        _mreq = _urlreq2.Request(_murl, headers={"Cookie": f"espn_s2={_s2}; SWID={_swid}"})
-        with _urlreq2.urlopen(_mreq, timeout=15) as _r:
-            _msettings = _json.loads(_r.read())
-        _raw_counts = (
-            _msettings.get("settings", {})
-            .get("rosterSettings", {})
-            .get("lineupSlotCounts", {})
-        )
-        # Expand active slots only (exclude BE=12, IR=13)
-        for _sid_str, _cnt in _raw_counts.items():
-            _sid = int(_sid_str)
-            if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
-                slot_instances.extend([_sid] * _cnt)
-        active_capacity = len(slot_instances)
-        logger.info(f"Lineup slot capacity: {active_capacity} active slots")
-    except Exception as _e:
-        logger.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
+
+    _stored_slots = scoring.get("lineup_slots") if scoring else None
+    if not _stored_slots:
+        # Older connection — refresh scoring_settings (includes lineup_slots now)
+        try:
+            _refreshed = _fetch_espn_scoring(fc["league_key"], fc["access_token"], fc["refresh_token"])
+            _stored_slots = _refreshed.get("lineup_slots") or {}
+            # Persist the refreshed settings
+            conn3 = get_conn()
+            conn3.execute(
+                "UPDATE fantasy_connections SET scoring_settings=? WHERE username=? AND provider='espn'",
+                [_json.dumps(_refreshed), current_user]
+            )
+            conn3.commit()
+            conn3.close()
+        except Exception as _e:
+            logger.warning(f"Could not refresh ESPN lineup slot counts: {_e}")
+            _stored_slots = {}
+
+    for _sid_str, _cnt in (_stored_slots or {}).items():
+        _sid = int(_sid_str)
+        if _sid in _ACTIVE_SLOT_IDS and _cnt > 0:
+            slot_instances.extend([_sid] * _cnt)
+    active_capacity = len(slot_instances)
+    logger.info(f"Lineup slot capacity: {active_capacity} active slots")
 
     def _resolve_slug(player):
         slug = espn_id_to_slug.get(str(player.playerId))
