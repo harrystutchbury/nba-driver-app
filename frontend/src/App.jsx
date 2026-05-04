@@ -1744,22 +1744,27 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
       .then(d => setComments(Array.isArray(d) ? d : []))
       .catch(() => setComments([]))
 
-    // Fetch trending players (mix up + down, 7-day window)
-    Promise.all([
-      apiFetch('/api/trending?window=7&direction=up&limit=10').then(r => r.ok ? r.json() : null),
-      apiFetch('/api/trending?window=7&direction=down&limit=10').then(r => r.ok ? r.json() : null),
-    ]).then(([up, dn]) => {
-      const upPlayers = (up?.players || []).map(p => ({ ...p, dir: 'up' }))
-      const dnPlayers = (dn?.players || []).map(p => ({ ...p, dir: 'down' }))
-      // Interleave up/down
+    // Fetch trending players (up + down, 7-day window) — fire independently
+    const mergeTrending = (up, dn) => {
+      const upP = (up?.players || []).map(p => ({ ...p, dir: 'up' }))
+      const dnP = (dn?.players || []).map(p => ({ ...p, dir: 'down' }))
       const merged = []
-      const max = Math.max(upPlayers.length, dnPlayers.length)
+      const max = Math.max(upP.length, dnP.length)
       for (let i = 0; i < max; i++) {
-        if (i < upPlayers.length) merged.push(upPlayers[i])
-        if (i < dnPlayers.length) merged.push(dnPlayers[i])
+        if (i < upP.length) merged.push(upP[i])
+        if (i < dnP.length) merged.push(dnP[i])
       }
-      setTrending(merged)
-    }).catch(() => {})
+      return merged
+    }
+    let trendUp = null, trendDn = null
+    apiFetch('/api/trending?window=7&direction=up&limit=10')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { trendUp = d; setTrending(mergeTrending(trendUp, trendDn)) })
+      .catch(() => {})
+    apiFetch('/api/trending?window=7&direction=down&limit=10')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { trendDn = d; setTrending(mergeTrending(trendUp, trendDn)) })
+      .catch(() => {})
 
     apiFetch('/api/blog/posts')
       .then(r => r.ok ? r.json() : null)
@@ -1771,18 +1776,20 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
   const isGenericImage = url => !url || url.includes('nophoto')
 
   // Flatten injuries to a sorted list
-  const injList = injuries
+  const injList = injuries?.teams
     ? Object.values(injuries.teams).flat()
         .sort((a, b) => (DES_ORDER[a.designation] ?? 9) - (DES_ORDER[b.designation] ?? 9))
-    : null
+    : injuries ? [] : null
 
-  // Format a single ticker item label
+  const TICKER_STAT = { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK', tov:'TOV', fg3m:'3PM', fg_pct:'FG%', ft_pct:'FT%' }
   function tickerLabel(p) {
-    const d = p.drivers?.[0]
-    const stat = d ? STAT_LABELS[d.stat] || d.stat : null
-    const delta = d ? `${d.delta > 0 ? '+' : ''}${d.delta.toFixed(1)} ${stat}` : null
-    const dz = `${p.delta_z > 0 ? '+' : ''}${p.delta_z.toFixed(2)}ΔZ`
-    return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta ? `${delta} · ` : ''}${dz}`
+    try {
+      const d     = p.drivers?.[0]
+      const stat  = d ? (TICKER_STAT[d.stat] || d.stat) : null
+      const delta = (d && d.delta != null) ? `${d.delta > 0 ? '+' : ''}${Number(d.delta).toFixed(1)} ${stat}` : null
+      const dz    = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(2)}ΔZ` : ''
+      return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta ? `${delta} · ` : ''}${dz}`
+    } catch { return p.name || '' }
   }
 
   return (
