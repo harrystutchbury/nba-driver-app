@@ -3933,27 +3933,82 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     all_dates = [date.fromisoformat(r["game_date"]) for r in game_team_rows]
     season_start = min(all_dates)
     season_end   = max(all_dates)
-    season_start_monday = season_start - timedelta(days=season_start.weekday())
 
+    # ── Load ESPN league (needed for matchup_ids before week list is built) ──
+    conn2 = get_conn()
+    try:
+        league = _espn_league(conn2, current_user)
+    finally:
+        conn2.close()
+
+    # ── Build matchup period map from league.matchup_ids ─────────────────────
+    # matchup_ids: {mp_id_str: [daily_sp_id, ...]} — len() gives 7 or 14 days.
+    lib_ids = {
+        int(mp_id): sorted(int(sp) for sp in sp_ids)
+        for mp_id, sp_ids in (getattr(league, 'matchup_ids', {}) or {}).items()
+        if mp_id is not None
+    }
+
+    # ── Opponent lookup: sorted mp_ids map 1:1 to team.schedule entries ──────
+    my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
+    if not my_team_obj:
+        raise HTTPException(status_code=400, detail="Team not found in league")
+
+    mp_to_opp: dict = {}
+    team_sched = getattr(my_team_obj, 'schedule', []) or []
+    for idx, mp_id in enumerate(sorted(lib_ids.keys())):
+        if idx >= len(team_sched):
+            break
+        m        = team_sched[idx]
+        home_id  = str(getattr(getattr(m, 'home_team', None), 'team_id', ''))
+        away_id  = str(getattr(getattr(m, 'away_team', None), 'team_id', ''))
+        opp_id   = away_id if home_id == my_team_id else (home_id if away_id == my_team_id else None)
+        if opp_id:
+            mp_to_opp[mp_id] = opp_id
+
+    # ── Build all_weeks using ESPN matchup periods (handles 2-week playoffs) ──
     all_weeks = []
-    ws = season_start_monday
-    while ws <= season_end:
-        we = ws + timedelta(days=6)
-        wnum = (ws - season_start_monday).days // 7 + 1
-        all_weeks.append({
-            "week":  wnum,
-            "start": ws.isoformat(),
-            "end":   we.isoformat(),
-            "label": f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
-        })
-        ws += timedelta(weeks=1)
+    if lib_ids:
+        cur_date = season_start
+        for mp_id in sorted(lib_ids.keys()):
+            num_days = len(lib_ids[mp_id])   # 7 = standard week, 14 = two-week period
+            mp_start = cur_date
+            mp_end   = cur_date + timedelta(days=num_days - 1)
+            cur_date = mp_end + timedelta(days=1)
+            if mp_start > season_end + timedelta(days=14):
+                break
+            all_weeks.append({
+                "week":   len(all_weeks) + 1,
+                "mp_id":  mp_id,
+                "start":  mp_start.isoformat(),
+                "end":    mp_end.isoformat(),
+                "label":  f"{mp_start.strftime('%b %-d')}–{mp_end.strftime('%b %-d')}",
+                "days":   num_days,
+            })
+    else:
+        # Fallback: plain Mon–Sun calendar weeks
+        season_start_monday = season_start - timedelta(days=season_start.weekday())
+        ws = season_start_monday
+        while ws <= season_end:
+            we = ws + timedelta(days=6)
+            all_weeks.append({
+                "week":  len(all_weeks) + 1,
+                "mp_id": None,
+                "start": ws.isoformat(),
+                "end":   we.isoformat(),
+                "label": f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}",
+                "days":  7,
+            })
+            ws += timedelta(weeks=1)
 
     # Determine which week to show (default: current)
     if week is None:
-        today = date.today()
-        cur_monday = today - timedelta(days=today.weekday())
-        week_idx   = max(0, min((cur_monday - season_start_monday).days // 7, len(all_weeks) - 1))
-        week = week_idx + 1
+        today_dt = date.today()
+        week = next(
+            (w["week"] for w in all_weeks
+             if date.fromisoformat(w["start"]) <= today_dt <= date.fromisoformat(w["end"])),
+            all_weeks[-1]["week"] if all_weeks else 1,
+        )
 
     week_idx = week - 1
     if week_idx < 0 or week_idx >= len(all_weeks):
@@ -3962,9 +4017,10 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     wi             = all_weeks[week_idx]
     week_start_dt  = date.fromisoformat(wi["start"])
     week_end_dt    = date.fromisoformat(wi["end"])
+    num_days       = wi["days"]
 
-    # Day metadata for this week
-    day_dates   = [week_start_dt + timedelta(days=i) for i in range(7)]
+    # Day metadata for this period (7 or 14 days)
+    day_dates   = [week_start_dt + timedelta(days=i) for i in range(num_days)]
     day_labels  = [d.strftime('%a %-d') for d in day_dates]
 
     # Clamp as_of_dt to the week range for categorising past vs future days
@@ -3989,23 +4045,11 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
         if gd in past_days:
             actual_by_slug[row["player_slug"]][gd] = row
 
-    # Load ESPN league
-    conn2 = get_conn()
-    try:
-        league = _espn_league(conn2, current_user)
-    finally:
-        conn2.close()
-
-    # Build slot_instances from the league's raw API data (most reliable source).
-    # The espn_api library stores the full JSON response in _raw_data which includes
-    # rosterSettings.lineupSlotCounts — already fetched with valid auth.
+    # Derive active lineup slots from any team's current roster lineupSlot values.
+    # league was already loaded above for matchup_ids.
     slot_instances: list = []
     active_capacity: int = 0
 
-    # Use league.espn_request (already authenticated) to fetch mSettings.
-    # This avoids the 403 we get from a bare requests.get() with expired cookies.
-    # Derive active lineup slots from any team's current roster lineupSlot values.
-    # The espn_api library already fetched this data — no extra API call needed.
     _BENCH_SLOTS = {"BE", "IR", "Bench", "Injured Reserve"}
     try:
         _sample_team = next(iter(league.teams), None)
@@ -4038,23 +4082,12 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
                 slug = name_to_slug[m[0]]
         return slug
 
-    my_team_obj = next((t for t in league.teams if str(t.team_id) == my_team_id), None)
-    if not my_team_obj:
-        raise HTTPException(status_code=400, detail="Team not found in league")
-
-    # Determine opponent for this week
+    # my_team_obj already set above; look up opponent via mp_to_opp
     opp_team_obj = None
-    team_sched   = getattr(my_team_obj, "schedule", []) or []
-    if week_idx < len(team_sched):
-        matchup  = team_sched[week_idx]
-        home     = getattr(matchup, "home_team", None)
-        away     = getattr(matchup, "away_team", None)
-        if home and away:
-            home_id = str(getattr(home, "team_id", ""))
-            away_id = str(getattr(away, "team_id", ""))
-            opp_id  = away_id if home_id == my_team_id else (home_id if away_id == my_team_id else None)
-            if opp_id:
-                opp_team_obj = next((t for t in league.teams if str(t.team_id) == opp_id), None)
+    mp_id = wi.get("mp_id")
+    if mp_id and mp_id in mp_to_opp:
+        opp_id = mp_to_opp[mp_id]
+        opp_team_obj = next((t for t in league.teams if str(t.team_id) == opp_id), None)
 
     def _eligible_ids(player):
         """Return set of active slot IDs a player is eligible for."""
