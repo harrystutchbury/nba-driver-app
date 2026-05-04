@@ -683,8 +683,10 @@ function CourtDiagram({ zones, period }) {
       {/* Paint lane lines */}
       <line x1={160} y1={0}   x2={160} y2={190} stroke={stroke} strokeWidth={1} />
       <line x1={340} y1={0}   x2={340} y2={190} stroke={stroke} strokeWidth={1} />
-      {/* Free throw circle — upper semicircle only (dashed) */}
-      <path d="M 190,190 A 60,60 0 0,1 310,190" fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
+      {/* Free throw circle — upper half (solid, inside paint) */}
+      <path d="M 190,190 A 60,60 0 0,1 310,190" fill="none" stroke={stroke} strokeWidth={1} />
+      {/* Free throw circle — lower half (dashed, below free throw line) */}
+      <path d="M 190,190 A 60,60 0 0,0 310,190" fill="none" stroke={stroke} strokeWidth={1} strokeDasharray="4 4" />
       {/* Free throw line */}
       <line x1={160} y1={190} x2={340} y2={190} stroke={stroke} strokeWidth={1.5} />
 
@@ -709,7 +711,7 @@ function CourtDiagram({ zones, period }) {
       <text x={250} y={305} textAnchor="middle" fill={text} fontSize={11} fontFamily="DM Mono,monospace" stroke="#141828" strokeWidth={2} paintOrder="stroke fill">{freqLabel('above_break_3')}</text>
 
       {/* Period label */}
-      <text x={250} y={340} textAnchor="middle" fill="#555" fontSize={10} fontFamily="DM Mono,monospace">{period}</text>
+      <text x={250} y={340} textAnchor="middle" fill="#8a90a8" fontSize={12} fontFamily="DM Mono,monospace">{period}</text>
     </svg>
   )
 }
