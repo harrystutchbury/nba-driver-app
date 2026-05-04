@@ -3967,20 +3967,12 @@ def _espn_matchup_projection_inner(current_user, week, add_slugs=None, drop_slug
 
     _stored_slots = scoring.get("lineup_slots") if scoring else None
     if not _stored_slots:
-        # Older connection — refresh scoring_settings (includes lineup_slots now)
+        # Older connection — fetch in-memory only (no inline DB write to avoid locking)
         try:
             _refreshed = _fetch_espn_scoring(fc["league_key"], fc["access_token"], fc["refresh_token"])
             _stored_slots = _refreshed.get("lineup_slots") or {}
-            # Persist the refreshed settings
-            conn3 = get_conn()
-            conn3.execute(
-                "UPDATE fantasy_connections SET scoring_settings=? WHERE username=? AND provider='espn'",
-                [_json.dumps(_refreshed), current_user]
-            )
-            conn3.commit()
-            conn3.close()
         except Exception as _e:
-            logger.warning(f"Could not refresh ESPN lineup slot counts: {_e}")
+            logger.warning(f"Could not fetch ESPN lineup slot counts: {_e}")
             _stored_slots = {}
 
     for _sid_str, _cnt in (_stored_slots or {}).items():
