@@ -359,7 +359,7 @@ def init_db():
     # Moderation: hidden flag on comments
     for _tbl in ("comments", "blog_comments"):
         try:
-            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER DEFAULT 0")
         except Exception:
             pass  # already exists
 

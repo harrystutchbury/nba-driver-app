@@ -6017,24 +6017,25 @@ def mod_get_comments(
         conn.close()
         raise HTTPException(status_code=403, detail="Admin only")
 
-    # Ensure migration has run on this DB
+    # Ensure columns exist (DROP NOT NULL constraint for older SQLite compat)
     for _tbl in ("comments", "blog_comments"):
         try:
-            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER DEFAULT 0")
             conn.commit()
         except Exception:
-            pass
+            pass  # column already exists
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS blocked_words (word TEXT PRIMARY KEY, added_at TEXT DEFAULT (datetime('now')))")
         conn.commit()
     except Exception:
         pass
 
-    hidden_filter_player = "WHERE c.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
-    hidden_filter_blog   = "WHERE bc.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
+    hidden_filter_player = "WHERE COALESCE(c.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
+    hidden_filter_blog   = "WHERE COALESCE(bc.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
 
     rows = conn.execute(f"""
-        SELECT c.id, c.body, c.created_at, c.is_hidden,
+        SELECT c.id, c.body, c.created_at,
+               COALESCE(c.is_hidden, 0) AS is_hidden,
                COALESCE(u.display_name, c.username) AS author,
                c.username,
                c.player_slug AS context_slug,
@@ -6044,7 +6045,8 @@ def mod_get_comments(
         LEFT JOIN users u ON u.username = c.username
         {hidden_filter_player}
         UNION ALL
-        SELECT bc.id, bc.body, bc.created_at, bc.is_hidden,
+        SELECT bc.id, bc.body, bc.created_at,
+               COALESCE(bc.is_hidden, 0) AS is_hidden,
                COALESCE(u.display_name, bc.username) AS author,
                bc.username,
                NULL AS context_slug,
