@@ -229,7 +229,6 @@ def _weekly_schedule_sync():
         logger.exception("Weekly schedule sync failed")
 
 
-@asynccontextmanager
 async def _box_score_live_poller():
     """Poll today's box scores every 60 s and broadcast to SSE subscribers."""
     from datetime import timezone, timedelta
@@ -247,6 +246,7 @@ async def _box_score_live_poller():
             logger.exception("box score live poller error")
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     global _bs_condition
     _bs_condition = asyncio.Condition()
