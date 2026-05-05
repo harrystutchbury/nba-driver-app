@@ -4772,6 +4772,30 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     }
 
 
+@fantasy_router.get("/week-detail")
+def fantasy_week_detail(
+    start: str = Query(...),
+    end:   str = Query(...),
+    current_user: str = Depends(get_current_user),
+):
+    """Return per-team, per-day game data for a date range (week drill-down)."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT DISTINCT game_date, team, opponent, home_away
+        FROM game_logs
+        WHERE game_date >= ? AND game_date <= ? AND opponent IS NOT NULL
+        ORDER BY game_date, team
+    """, [start, end]).fetchall()
+    conn.close()
+    result: dict = {}
+    for r in rows:
+        result.setdefault(r["team"], {})[r["game_date"]] = {
+            "opp":  r["opponent"],
+            "home": r["home_away"] == "H" if r["home_away"] else None,
+        }
+    return result
+
+
 @fantasy_router.get("/yahoo/schedule-grid")
 def yahoo_schedule_grid(current_user: str = Depends(get_current_user)):
     """Return schedule grid for a Yahoo Fantasy Basketball league."""

@@ -4597,12 +4597,87 @@ function MatchupProjection({ onSelectPlayer }) {
 }
 
 
+// ── WeekDrillDown ──────────────────────────────────────────────────────────────
+
+function WeekDrillDown({ week, drillData, loading, allTeams, myTeams, abbrev, onClose }) {
+  const mySet = new Set(myTeams)
+
+  // Build Mon–Sun column dates for this week
+  const days = []
+  const start = new Date(week.start + 'T00:00:00')
+  const end   = new Date(week.end   + 'T00:00:00')
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    days.push(new Date(d))
+  }
+
+  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const fmt = (d) => d.toISOString().slice(0, 10)
+
+  return (
+    <div className="sg-drill-overlay">
+      <div className="sg-drill-header">
+        <button className="sg-drill-back" onClick={onClose}>← Back</button>
+        <span className="sg-drill-title">Week: {week.label}</span>
+      </div>
+      {loading ? (
+        <div className="dash-empty">Loading…</div>
+      ) : (
+        <div className="sg-drill-scroll">
+          <table className="sg-drill-table">
+            <thead>
+              <tr>
+                <th className="sg-drill-team-col">Team</th>
+                {days.map((d, i) => (
+                  <th key={i} className="sg-drill-day-col">
+                    <div className="sg-drill-day-name">{DAY_LABELS[i % 7]}</div>
+                    <div className="sg-drill-day-date">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                  </th>
+                ))}
+                <th className="sg-drill-gp-col">GP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allTeams.map(team => {
+                const teamData = drillData?.[team] || {}
+                const gp = days.filter(d => teamData[fmt(d)]).length
+                return (
+                  <tr key={team} className={mySet.has(team) ? 'sg-drill-my-team' : ''}>
+                    <td className="sg-drill-team-col">{abbrev[team] || team.slice(0, 3)}</td>
+                    {days.map((d, i) => {
+                      const game = teamData[fmt(d)]
+                      return (
+                        <td key={i} className={`sg-drill-cell${game ? ' sg-drill-has-game' : ''}`}>
+                          {game ? (
+                            <>
+                              <span className="sg-drill-opp">{abbrev[game.opp] || (game.opp || '').slice(0, 3)}</span>
+                              {game.home != null && <span className="sg-drill-ha">{game.home ? 'H' : 'A'}</span>}
+                            </>
+                          ) : <span className="sg-drill-rest">–</span>}
+                        </td>
+                      )
+                    })}
+                    <td className="sg-drill-gp-col">{gp > 0 ? gp : '–'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ── ScheduleGrid ───────────────────────────────────────────────────────────────
 
 function ScheduleGrid({ provider = 'espn' }) {
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [data,      setData]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
+  const [drillWeek, setDrillWeek] = useState(null)   // { start, end, label }
+  const [drillData, setDrillData] = useState(null)   // {team: {date: {opp, home}}}
+  const [drillLoad, setDrillLoad] = useState(false)
 
   useEffect(() => {
     apiFetch(`/api/fantasy/${provider}/schedule-grid`)
@@ -4610,6 +4685,16 @@ function ScheduleGrid({ provider = 'espn' }) {
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [provider])
+
+  const openDrill = (week) => {
+    setDrillWeek(week)
+    setDrillData(null)
+    setDrillLoad(true)
+    apiFetch(`/api/fantasy/week-detail?start=${week.start}&end=${week.end}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { setDrillData(d); setDrillLoad(false) })
+      .catch(() => setDrillLoad(false))
+  }
 
   if (loading) return <div className="dash-empty">Loading schedule…</div>
   if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
@@ -4647,12 +4732,24 @@ function ScheduleGrid({ provider = 'espn' }) {
 
   return (
     <div className="sg-wrap">
+      {drillWeek && (
+        <WeekDrillDown
+          week={drillWeek}
+          drillData={drillData}
+          loading={drillLoad}
+          allTeams={all_teams}
+          myTeams={my_nba_teams}
+          abbrev={ABBREV}
+          onClose={() => { setDrillWeek(null); setDrillData(null) }}
+        />
+      )}
       <div className="sg-legend">
         <span className="sg-legend-item sg-legend-nba">NBA Playoffs</span>
         <span className="sg-legend-item sg-legend-fantasy">Fantasy Playoffs</span>
         <span className="sg-legend-item sg-legend-ease-easy">Easier matchups</span>
         <span className="sg-legend-item sg-legend-ease-hard">Harder matchups</span>
         <span className="sg-legend-cell-key">Cell: <strong>games</strong> / <span className="sg-legend-pts">avg opp PTS allowed</span></span>
+        <span className="sg-drill-hint">Double-click a row to drill into day-by-day view</span>
       </div>
       <div className="sg-scroll">
         <table className="sg-table">
@@ -4681,7 +4778,7 @@ function ScheduleGrid({ provider = 'espn' }) {
                 w.is_fantasy_playoff ? 'sg-fantasy-playoff' : '',
               ].filter(Boolean).join(' ')
               return (
-                <tr key={w.start} className={rowCls}>
+                <tr key={w.start} className={rowCls + ' sg-row-drillable'} onDoubleClick={() => openDrill(w)} title="Double-click to see day-by-day breakdown">
                   <td className="sg-col-week">
                     <span className="sg-week-label">{w.label}</span>
                     {w.is_fantasy_playoff && !w.is_nba_playoff && <span className="sg-playoff-tag sg-playoff-tag-fantasy">Fantasy PO</span>}

@@ -4876,3 +4876,36 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .mod-word-chip { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 4px 12px 4px 14px; font-size: 13px; font-weight: 600; }
 .mod-word-remove { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1; padding: 0; }
 .mod-word-remove:hover { color: var(--neg); }
+
+/* ── Week Drill-Down ─────────────────────────────────────────────────────── */
+.sg-drill-hint { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
+.sg-row-drillable { cursor: pointer; }
+.sg-row-drillable:hover { filter: brightness(1.08); }
+
+.sg-drill-overlay { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+
+.sg-drill-header { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.sg-drill-back { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 6px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sg-drill-back:hover { background: rgba(255,255,255,0.1); }
+.sg-drill-title { font-size: 15px; font-weight: 700; }
+
+.sg-drill-scroll { overflow-x: auto; }
+
+.sg-drill-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sg-drill-table th { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; font-weight: 700; }
+.sg-drill-table td { padding: 5px 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.04); }
+
+.sg-drill-team-col { text-align: left !important; font-weight: 700; font-size: 11px; padding-left: 14px !important; white-space: nowrap; min-width: 44px; }
+.sg-drill-day-col { min-width: 56px; }
+.sg-drill-day-name { font-weight: 700; }
+.sg-drill-day-date { font-size: 10px; font-weight: 400; opacity: 0.7; }
+.sg-drill-gp-col { font-weight: 700; min-width: 36px; color: var(--text); }
+
+.sg-drill-my-team { background: rgba(255,255,255,0.035); }
+.sg-drill-my-team .sg-drill-team-col { color: var(--accent); }
+
+.sg-drill-cell { }
+.sg-drill-has-game { }
+.sg-drill-opp { font-weight: 700; font-size: 12px; display: block; }
+.sg-drill-ha { font-size: 10px; color: var(--muted); display: block; font-weight: 600; }
+.sg-drill-rest { color: rgba(255,255,255,0.15); font-size: 13px; }
