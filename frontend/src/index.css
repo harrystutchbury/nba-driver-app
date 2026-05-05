@@ -2,7 +2,7 @@
 
 :root {
   --mono: 'DM Mono', ui-monospace, monospace;
-  --sans: 'DM Sans', system-ui, sans-serif;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
 }
 
 :root, [data-theme="dark"] {
