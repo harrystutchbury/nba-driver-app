@@ -1261,11 +1261,16 @@ function BoxScorePage({ onSelectPlayer, ownership }) {
     setData(null)
     fetchScores()
 
-    // Auto-refresh every 30s for today only
-    const isToday = date === todayEt
-    if (!isToday) return
-    const interval = setInterval(fetchScores, 30000)
-    return () => clearInterval(interval)
+    if (date !== todayEt) return
+
+    // Use SSE for live updates — single backend poll shared across all users
+    const token = localStorage.getItem('token')
+    if (!token) return
+    const es = new EventSource(`/api/box-score/stream?token=${encodeURIComponent(token)}`)
+    es.onmessage = e => {
+      try { const d = JSON.parse(e.data); setData(d); setLoading(false) } catch {}
+    }
+    return () => es.close()
   }, [date, todayEt, fetchScores])
 
   function shiftDate(days) {

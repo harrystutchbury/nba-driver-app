@@ -15,7 +15,10 @@ Run locally:
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Request
+import asyncio
+import json as _json_mod
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -227,9 +230,29 @@ def _weekly_schedule_sync():
 
 
 @asynccontextmanager
+async def _box_score_live_poller():
+    """Poll today's box scores every 60 s and broadcast to SSE subscribers."""
+    from datetime import timezone, timedelta
+    ET = timezone(timedelta(hours=-5))
+    while True:
+        await asyncio.sleep(60)
+        try:
+            today_et = datetime.now(ET).date().isoformat()
+            data = await asyncio.to_thread(get_box_score, today_et)
+            async with _bs_condition:
+                _bs_live["data"] = data
+                _bs_live["version"] += 1
+                _bs_condition.notify_all()
+        except Exception:
+            logger.exception("box score live poller error")
+
+
 async def lifespan(app: FastAPI):
+    global _bs_condition
+    _bs_condition = asyncio.Condition()
     from schema import init_db
     init_db()
+    asyncio.create_task(_box_score_live_poller())
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
     scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
@@ -2280,6 +2303,10 @@ def get_news():
 _box_score_cache: dict = {}        # date_str -> payload  (past dates)
 _today_cache: dict     = {}        # {"payload": ..., "ts": float}  (today only)
 _TODAY_TTL = 30                    # seconds
+
+# SSE live broadcast state — updated by _box_score_live_poller every 60s
+_bs_live: dict = {"data": None, "version": 0}
+_bs_condition: asyncio.Condition | None = None
 
 def _tank01_get(endpoint: str, params: dict):
     import urllib.request, urllib.parse, json as _json
@@ -7384,6 +7411,48 @@ def get_trending(
 
 
 app.include_router(trending_router)
+
+
+# ── Box-score SSE ─────────────────────────────────────────────────────────────
+# Separate router with no global auth dependency — EventSource cannot send
+# Authorization headers, so we accept the JWT as a query param instead.
+
+_sse_router = APIRouter(prefix="/api")
+
+@_sse_router.get("/box-score/stream")
+async def box_score_stream(token: str = Query(None)):
+    try:
+        jwt.decode(token or "", JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        raise HTTPException(status_code=401, detail="invalid or missing token")
+
+    async def generate():
+        # Send whatever is cached right now so the client isn't blank on connect
+        if _bs_live["data"]:
+            yield f"data: {_json_mod.dumps(_bs_live['data'])}\n\n"
+
+        seen      = _bs_live["version"]
+        last_ping = asyncio.get_event_loop().time()
+
+        while True:
+            await asyncio.sleep(5)
+            now = asyncio.get_event_loop().time()
+
+            if _bs_live["version"] != seen:
+                seen = _bs_live["version"]
+                yield f"data: {_json_mod.dumps(_bs_live['data'])}\n\n"
+                last_ping = now
+            elif now - last_ping >= 60:
+                yield ": ping\n\n"
+                last_ping = now
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+app.include_router(_sse_router)
 
 
 # Must come AFTER all API routes so /api/* is never caught here.
