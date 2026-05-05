@@ -4858,6 +4858,7 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
         return name_to_slug[m[0]] if m else None
 
     teams: set = set()
+    print(f"[my-nba-teams] provider={provider} team_key={team_key}", flush=True)
     try:
         if provider == "yahoo":
             token = _refresh_yahoo_token(conn, current_user)
@@ -4867,6 +4868,7 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
                                .get("roster", {})
                                .get("0", {})
                                .get("players", {}))
+            print(f"[my-nba-teams] Yahoo players_raw keys: {list(players_raw.keys())[:5]}", flush=True)
             for pk, pv in players_raw.items():
                 if pk == "count":
                     continue
@@ -4887,20 +4889,26 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
                     "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
                 ).fetchall()
             }
+            print(f"[my-nba-teams] ESPN id_to_slug entries: {len(espn_id_to_slug)}", flush=True)
             _season = _current_season_end_year()
             _url = (
                 f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_season}"
                 f"/segments/0/leagues/{fc['league_key']}?view=mRoster"
             )
+            print(f"[my-nba-teams] ESPN url={_url}", flush=True)
             _req = _urlreq.Request(_url, headers={
                 "Cookie": f"espn_s2={fc['access_token']}; SWID={fc['refresh_token']}",
             })
             with _urlreq.urlopen(_req, timeout=10) as _r:
                 _raw = _json2.loads(_r.read())
+            team_ids = [t.get("id") for t in _raw.get("teams", [])]
+            print(f"[my-nba-teams] ESPN teams in response: {team_ids}", flush=True)
             for _team in _raw.get("teams", []):
                 if str(_team.get("id", "")) != team_key:
                     continue
-                for _entry in _team.get("roster", {}).get("entries", []):
+                entries = _team.get("roster", {}).get("entries", [])
+                print(f"[my-nba-teams] ESPN my team entries: {len(entries)}", flush=True)
+                for _entry in entries:
                     _ppe  = _entry.get("playerPoolEntry", {})
                     _pid  = str(_ppe.get("playerId", "") or _entry.get("playerId", ""))
                     slug  = espn_id_to_slug.get(_pid)
@@ -4914,6 +4922,7 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
     finally:
         conn.close()
 
+    print(f"[my-nba-teams] returning teams={sorted(teams)}", flush=True)
     return {"teams": sorted(teams)}
 
 
