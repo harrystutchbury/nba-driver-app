@@ -6036,7 +6036,7 @@ def mod_get_comments(
         hidden_filter_blog   = "WHERE COALESCE(bc.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
 
         rows = conn.execute(f"""
-            SELECT c.id, c.body, c.created_at,
+            SELECT c.id, c.body, c.created_at AS created_at,
                    COALESCE(c.is_hidden, 0) AS is_hidden,
                    COALESCE(u.display_name, c.username) AS author,
                    c.username,
@@ -6047,7 +6047,7 @@ def mod_get_comments(
             LEFT JOIN users u ON u.username = c.username
             {hidden_filter_player}
             UNION ALL
-            SELECT bc.id, bc.body, bc.created_at,
+            SELECT bc.id, bc.body, bc.created_at AS created_at,
                    COALESCE(bc.is_hidden, 0) AS is_hidden,
                    COALESCE(u.display_name, bc.username) AS author,
                    bc.username,
@@ -6058,7 +6058,7 @@ def mod_get_comments(
             LEFT JOIN users u ON u.username = bc.username
             LEFT JOIN blog_posts bp ON bp.id = bc.post_id
             {hidden_filter_blog}
-            ORDER BY created_at DESC
+            ORDER BY 3 DESC
             LIMIT 200
         """).fetchall()
         conn.close()
