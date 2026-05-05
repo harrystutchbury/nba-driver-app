@@ -825,6 +825,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
                   Value <SortIcon col="z_total" />
                 </th>
+                {hasOwnership && <th className="own-col" />}
               </tr>
             </thead>
             <tbody>
@@ -837,7 +838,6 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                       <div className="rank-player-name rank-player-link" onClick={() => onSelectPlayer(p)}>
                         {p.name}
                         {p.injury && <InjuryBadge injury={p.injury} compact />}
-                        <OwnBadge slug={p.slug} ownership={ownership} />
                       </div>
                       <div className="rank-player-team">{p.team}</div>
                     </td>
@@ -862,6 +862,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                     <td className="num mono z-total-cell">
                       {fmtZ(getEffectiveZTotal(p))}
                     </td>
+                    {hasOwnership && <td className="own-col"><OwnBadge slug={p.slug} ownership={ownership} /></td>}
                   </tr>
                 )
               })}
@@ -1583,6 +1584,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                 <th className="num" onClick={() => handleSort('period_value')} style={{ cursor: 'pointer' }}>
                   Value <SortIcon col="period_value" />
                 </th>
+                {hasOwnership && <th className="own-col" />}
               </tr>
             </thead>
             <tbody>
@@ -1594,7 +1596,6 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                       {p.name}
                       {p.is_adjusted && <span className="adj-proj-badge" title="Projection adjusted">adj</span>}
                       {p.injury && <InjuryBadge injury={p.injury} compact />}
-                      <OwnBadge slug={p.slug} ownership={ownership} />
                     </div>
                     <div className="rank-player-team">{p.team}</div>
                   </td>
@@ -1627,6 +1628,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   <td className="num mono z-total-cell">
                     {(() => { const v = getEffectiveValue(p); return v != null ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
                   </td>
+                  {hasOwnership && <td className="own-col"><OwnBadge slug={p.slug} ownership={ownership} /></td>}
                 </tr>
               ))}
             </tbody>
