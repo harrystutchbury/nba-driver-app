@@ -793,19 +793,24 @@
 .nav-group:hover .nav-chevron { opacity: 1; }
 
 .nav-dropdown {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   left: 0;
   min-width: 160px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 4px;
+  padding: 8px 4px 4px;  /* top padding bridges gap from button */
+  margin-top: -4px;       /* pull up so hover area is contiguous */
   z-index: 200;
   box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  flex-direction: column;
-  gap: 1px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease, visibility 0s linear 0.18s;
 }
 
 .nav-dropdown-right {
@@ -813,7 +818,12 @@
   right: 0;
 }
 
-.nav-group:hover .nav-dropdown { display: flex; }
+.nav-group:hover .nav-dropdown {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.12s ease, visibility 0s linear 0s;
+}
 
 .nav-drop-item {
   background: none;
