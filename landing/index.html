@@ -1392,31 +1392,47 @@
 </footer>
 
 <script>
-  // ── Ticker data ──
-  const TICKER_PLAYERS = [
-    { name: 'Jaren Jackson Jr.', team: 'MEM', dir: 'up',   driver: 'BLK +34%' },
-    { name: 'Tyrese Haliburton',  team: 'IND', dir: 'down', driver: 'USG -12%' },
-    { name: 'Alperen Şengün',     team: 'HOU', dir: 'up',   driver: 'MIN +18%' },
-    { name: 'Chet Holmgren',      team: 'OKC', dir: 'up',   driver: 'Z-Score +1.4' },
-    { name: "De'Aaron Fox",       team: 'SAC', dir: 'down', driver: 'AST -0.8' },
-    { name: 'Scottie Barnes',     team: 'TOR', dir: 'up',   driver: 'REB +22%' },
-    { name: 'Anthony Davis',      team: 'LAL', dir: 'down', driver: 'MIN -15%' },
-    { name: 'Jalen Williams',     team: 'OKC', dir: 'up',   driver: 'PTS +19%' },
-    { name: 'Darius Garland',     team: 'CLE', dir: 'up',   driver: 'USG +9%' },
-    { name: 'Bam Adebayo',        team: 'MIA', dir: 'up',   driver: 'Z-Score +1.1' },
-  ]
+  // ── Ticker ──
+  const API = 'https://nba-driver-app.onrender.com'
+  const TICKER_STAT = { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK', tov:'TOV', fg3m:'3PM', fg_pct:'FG%', ft_pct:'FT%' }
 
-  function buildTicker() {
+  function tickerLabel(p) {
+    const d    = p.drivers?.[0]
+    const stat = d ? (TICKER_STAT[d.stat] || d.stat.toUpperCase()) : null
+    const dz   = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(2)}ΔZ` : ''
+    const delta = (d && d.delta != null) ? `${d.delta > 0 ? '+' : ''}${Number(d.delta).toFixed(1)} ${stat} · ` : ''
+    return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta}${dz}`
+  }
+
+  function renderTicker(players) {
     const track = document.getElementById('ticker')
-    const items = [...TICKER_PLAYERS, ...TICKER_PLAYERS] // duplicate for seamless loop
+    const items = [...players, ...players]
     track.innerHTML = items.map(p => `
       <div class="ticker-card">
         <span class="ticker-name">${p.name}</span>
         <span class="ticker-team">${p.team}</span>
         <span class="ticker-dir ${p.dir}">${p.dir === 'up' ? '↑' : '↓'}</span>
-        <span class="ticker-driver">${p.driver}</span>
+        <span class="ticker-driver">${tickerLabel(p)}</span>
       </div>
     `).join('')
+  }
+
+  function buildTicker() {
+    let trendUp = null, trendDn = null
+    function merge() {
+      const up = (trendUp?.players || []).map(p => ({ ...p, dir: 'up' }))
+      const dn = (trendDn?.players || []).map(p => ({ ...p, dir: 'down' }))
+      const out = []
+      for (let i = 0; i < Math.max(up.length, dn.length); i++) {
+        if (i < up.length) out.push(up[i])
+        if (i < dn.length) out.push(dn[i])
+      }
+      if (out.length) renderTicker(out)
+    }
+    fetch(`${API}/api/trending?window=14&direction=up&limit=10`)
+      .then(r => r.ok ? r.json() : null).then(d => { trendUp = d; merge() }).catch(() => {})
+    fetch(`${API}/api/trending?window=14&direction=down&limit=10`)
+      .then(r => r.ok ? r.json() : null).then(d => { trendDn = d; merge() }).catch(() => {})
   }
 
   // ── Mock UI category bars ──
