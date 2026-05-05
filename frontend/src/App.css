@@ -2295,7 +2295,106 @@
 .sched-diff-period { color: var(--muted); font-family: var(--sans); }
 .sched-diff-note { font-size: 11px; color: var(--muted); font-family: var(--sans); }
 
+/* ── Hamburger button (hidden on desktop) ─────────────────── */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 22px;
+}
+
+.hamburger-icon span {
+  display: block;
+  height: 2px;
+  background: var(--muted);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.hamburger-icon.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger-icon.open span:nth-child(2) { opacity: 0; }
+.hamburger-icon.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+.mobile-nav-footer { display: none; }
+
 /* ── Mobile responsive ────────────────────────────────────── */
+@media (max-width: 768px) {
+  .hamburger-btn { display: flex; }
+
+  .site-nav {
+    display: none;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 12px 16px 32px;
+    overflow-y: auto;
+    z-index: 150;
+  }
+
+  .site-nav.mobile-open { display: flex; }
+
+  /* Each nav item full-width on mobile */
+  .site-nav .nav-btn {
+    text-align: left;
+    padding: 12px 14px;
+    font-size: 15px;
+    border-radius: 8px;
+  }
+
+  /* Groups expand inline (no hover dropdown on mobile) */
+  .nav-group { flex-direction: column; align-items: stretch; }
+  .nav-group-btn { justify-content: space-between; }
+
+  .nav-dropdown {
+    display: flex !important;
+    position: static;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    padding: 0 0 0 16px;
+    background: transparent;
+    margin-bottom: 4px;
+  }
+
+  .nav-drop-item {
+    font-size: 14px;
+    padding: 9px 12px;
+    color: var(--muted);
+  }
+
+  /* Hide avatar group on mobile (account in footer instead) */
+  .nav-avatar-group { display: none; }
+
+  .mobile-nav-footer {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Hide search and theme toggle in header on mobile (search is in the menu) */
+  .header-search-wrap { display: none; }
+  .theme-toggle { display: none; }
+}
+
 @media (max-width: 640px) {
   .site-header { padding: 0 16px; }
   .site-brand { font-size: 15px; }

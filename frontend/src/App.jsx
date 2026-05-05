@@ -4804,6 +4804,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedPlayer, setSelected] = useState(null)
   const [stat, setStat]               = useState('reb')
   const [periodA, setPeriodA]         = useState({ start: '2025-10-22', end: '2026-02-13' })
@@ -5462,42 +5463,58 @@ function AppMain({ onLogout, onOpenAccount }) {
             <span className="site-logo-icon">🏀</span>
             <h1 className="site-brand">Roto Intel</h1>
           </div>
-          <nav className="site-nav">
-            <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>Home</button>
+          <button className="hamburger-btn" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Menu">
+            <span className={`hamburger-icon${mobileMenuOpen ? ' open' : ''}`}>
+              <span/><span/><span/>
+            </span>
+          </button>
+          <nav className={`site-nav${mobileMenuOpen ? ' mobile-open' : ''}`}>
+            {(() => {
+              const go = (p) => { setPage(p); setMobileMenuOpen(false) }
+              return (<>
+                <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
-            <div className="nav-group">
-              <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth'].includes(page) ? ' active' : ''}`}>
-                Players <span className="nav-chevron">▾</span>
-              </button>
-              <div className="nav-dropdown">
-                <button className="nav-drop-item" onClick={() => setPage('rankings')}>Rankings</button>
-                <button className="nav-drop-item" onClick={() => setPage('projections')}>Projections</button>
-                <button className="nav-drop-item" onClick={() => setPage('trending')}>Trending</button>
-                <button className="nav-drop-item" onClick={() => setPage('depth')}>Depth Charts</button>
-              </div>
-            </div>
+                <div className="nav-group">
+                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth'].includes(page) ? ' active' : ''}`}>
+                    Players <span className="nav-chevron">▾</span>
+                  </button>
+                  <div className="nav-dropdown">
+                    <button className="nav-drop-item" onClick={() => go('rankings')}>Rankings</button>
+                    <button className="nav-drop-item" onClick={() => go('projections')}>Projections</button>
+                    <button className="nav-drop-item" onClick={() => go('trending')}>Trending</button>
+                    <button className="nav-drop-item" onClick={() => go('depth')}>Depth Charts</button>
+                  </div>
+                </div>
 
-            <div className="nav-group">
-              <button className={`nav-btn nav-group-btn${['boxscores','injuries'].includes(page) ? ' active' : ''}`}>
-                Schedule <span className="nav-chevron">▾</span>
-              </button>
-              <div className="nav-dropdown">
-                <button className="nav-drop-item" onClick={() => setPage('boxscores')}>Box Scores</button>
-                <button className="nav-drop-item" onClick={() => setPage('injuries')}>Injuries &amp; News</button>
-              </div>
-            </div>
+                <div className="nav-group">
+                  <button className={`nav-btn nav-group-btn${['boxscores','injuries'].includes(page) ? ' active' : ''}`}>
+                    Schedule <span className="nav-chevron">▾</span>
+                  </button>
+                  <div className="nav-dropdown">
+                    <button className="nav-drop-item" onClick={() => go('boxscores')}>Box Scores</button>
+                    <button className="nav-drop-item" onClick={() => go('injuries')}>Injuries &amp; News</button>
+                  </div>
+                </div>
 
-            <div className="nav-group">
-              <button className={`nav-btn nav-group-btn${['fantasy','adjustments'].includes(page) ? ' active' : ''}`}>
-                Fantasy <span className="nav-chevron">▾</span>
-              </button>
-              <div className="nav-dropdown">
-                <button className="nav-drop-item" onClick={() => setPage('fantasy')}>Dashboard</button>
-                {isAdmin && <button className="nav-drop-item" onClick={() => setPage('adjustments')}>Adjustments</button>}
-              </div>
-            </div>
+                <div className="nav-group">
+                  <button className={`nav-btn nav-group-btn${['fantasy','adjustments'].includes(page) ? ' active' : ''}`}>
+                    Fantasy <span className="nav-chevron">▾</span>
+                  </button>
+                  <div className="nav-dropdown">
+                    <button className="nav-drop-item" onClick={() => go('fantasy')}>Dashboard</button>
+                    {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
+                  </div>
+                </div>
 
-            <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => setPage('blog')}>Blog</button>
+                <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => go('blog')}>Blog</button>
+
+                {/* Mobile-only: account links inside menu */}
+                <div className="mobile-nav-footer">
+                  <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Account</button>
+                  <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                </div>
+              </>)
+            })()}
           </nav>
 
           <div className="header-search-wrap" ref={searchRef}>
