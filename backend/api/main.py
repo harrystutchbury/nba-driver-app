@@ -3075,7 +3075,7 @@ def get_league(current_user: str = Depends(get_current_user)):
 
 @fantasy_router.get("/roster")
 def get_roster(current_user: str = Depends(get_current_user)):
-    """Return user's current roster, enriched with our stats."""
+    """Return user's current Yahoo roster in ESPN-compatible shape {players, team_name}."""
     conn = get_conn()
     fc = conn.execute(
         "SELECT team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
@@ -3095,36 +3095,718 @@ def get_roster(current_user: str = Depends(get_current_user)):
         conn.close()
         raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
 
+    team_name = ""
     players = []
     try:
-        roster = data["fantasy_content"]["team"][1]["roster"]["0"]["players"]
+        team_content = data["fantasy_content"]["team"]
+        team_info = team_content[0] if isinstance(team_content[0], list) else []
+        team_name = next((d["name"] for d in team_info if isinstance(d, dict) and "name" in d), "")
+        roster = team_content[1]["roster"]["0"]["players"]
         for pk in roster:
             if pk == "count": continue
             player_data = roster[pk]["player"][0]
             name = next((d["full_name"] for d in player_data if isinstance(d, dict) and "full_name" in d), "")
             positions = next((d["eligible_positions"] for d in player_data if isinstance(d, dict) and "eligible_positions" in d), [])
             pos_list = [p["position"] for p in positions if isinstance(p, dict) and "position" in p]
-            players.append({"name": name, "positions": pos_list})
+            pos_display = ", ".join(p for p in pos_list if p not in ("IL", "IL+", "BN")) or (pos_list[0] if pos_list else None)
+            players.append({"name": name, "positions": pos_list, "position": pos_display})
     except Exception:
         logger.exception("Failed to parse roster")
         raise HTTPException(status_code=502, detail="Failed to parse Yahoo roster")
 
-    # Fuzzy-match names to our slugs to enrich with stats
+    # Fuzzy-match names to our slugs
     from rapidfuzz import process as rfprocess
     all_players = conn.execute(
         "SELECT slug, full_name FROM players GROUP BY slug"
     ).fetchall()
     conn.close()
-    slug_names = {r["slug"]: r["full_name"] for r in all_players}
-    name_to_slug = {v: k for k, v in slug_names.items()}
+    name_to_slug = {r["full_name"]: r["slug"] for r in all_players}
 
     enriched = []
     for p in players:
         match = rfprocess.extractOne(p["name"], list(name_to_slug.keys()), score_cutoff=80)
         slug = name_to_slug[match[0]] if match else None
-        enriched.append({**p, "slug": slug})
+        enriched.append({
+            "name":         p["name"],
+            "br_slug":      slug,
+            "position":     p["position"],
+            "team":         None,
+            "injury_status": None,
+            "return_date":   None,
+        })
 
-    return enriched
+    return {"players": enriched, "team_name": team_name}
+
+
+# ── Yahoo stat category helpers ─────────────────────────────────────────────────
+
+_YAHOO_STAT_ID_META = {
+    5:  {"display": "FG%",  "db_key": "fg_pct", "is_neg": False},
+    8:  {"display": "FT%",  "db_key": "ft_pct", "is_neg": False},
+    10: {"display": "3PM",  "db_key": "fg3m",   "is_neg": False},
+    12: {"display": "PTS",  "db_key": "pts",     "is_neg": False},
+    15: {"display": "REB",  "db_key": "reb",     "is_neg": False},
+    16: {"display": "AST",  "db_key": "ast",     "is_neg": False},
+    17: {"display": "STL",  "db_key": "stl",     "is_neg": False},
+    18: {"display": "BLK",  "db_key": "blk",     "is_neg": False},
+    19: {"display": "TO",   "db_key": "tov",     "is_neg": True},
+}
+
+_YAHOO_DEFAULT_CATS = [
+    {"display": "PTS",  "db_key": "pts",    "stat_id": 12, "is_neg": False},
+    {"display": "REB",  "db_key": "reb",    "stat_id": 15, "is_neg": False},
+    {"display": "AST",  "db_key": "ast",    "stat_id": 16, "is_neg": False},
+    {"display": "STL",  "db_key": "stl",    "stat_id": 17, "is_neg": False},
+    {"display": "BLK",  "db_key": "blk",    "stat_id": 18, "is_neg": False},
+    {"display": "TO",   "db_key": "tov",    "stat_id": 19, "is_neg": True},
+    {"display": "3PM",  "db_key": "fg3m",   "stat_id": 10, "is_neg": False},
+    {"display": "FG%",  "db_key": "fg_pct", "stat_id": 5,  "is_neg": False},
+    {"display": "FT%",  "db_key": "ft_pct", "stat_id": 8,  "is_neg": False},
+]
+
+
+def _yahoo_get_stat_cats(token: str, league_key: str) -> list:
+    """Return list of {display, db_key, stat_id, is_neg} for this league's scoring categories."""
+    try:
+        data = _yahoo_api(token, f"league/{league_key}/settings")
+        league_arr = data["fantasy_content"]["league"]
+        settings_entry = next((item for item in league_arr if isinstance(item, dict) and "settings" in item), {})
+        settings = settings_entry.get("settings", {})
+        stats_raw = settings.get("stat_categories", {}).get("stats", {})
+        if isinstance(stats_raw, dict):
+            items_iter = stats_raw.values()
+        else:
+            items_iter = stats_raw
+        cats = []
+        for v in items_iter:
+            stat = v.get("stat", {}) if isinstance(v, dict) else {}
+            stat_id = stat.get("stat_id")
+            enabled = stat.get("enabled", 0)
+            try:
+                stat_id = int(stat_id) if stat_id is not None else None
+                enabled = int(enabled)
+            except (ValueError, TypeError):
+                continue
+            if enabled and stat_id in _YAHOO_STAT_ID_META:
+                info = _YAHOO_STAT_ID_META[stat_id].copy()
+                info["stat_id"] = stat_id
+                cats.append(info)
+        return cats if cats else _YAHOO_DEFAULT_CATS
+    except Exception:
+        logger.exception("Yahoo settings fetch failed, using default cats")
+        return _YAHOO_DEFAULT_CATS
+
+
+def _yahoo_parse_team_stats(team_list: list) -> dict:
+    """Extract {stat_id: value} from a Yahoo team list in a scoreboard response."""
+    stats_by_id = {}
+    for item in team_list:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("team_stats", {})
+        if not ts:
+            continue
+        stats_list = ts.get("stats", [])
+        if isinstance(stats_list, list):
+            for s_entry in stats_list:
+                if not isinstance(s_entry, dict):
+                    continue
+                s = s_entry.get("stat", {})
+                sid = s.get("stat_id")
+                val = s.get("value")
+                if sid is not None and val not in (None, "-", ""):
+                    try:
+                        stats_by_id[int(sid)] = float(val)
+                    except (ValueError, TypeError):
+                        pass
+    return stats_by_id
+
+
+@fantasy_router.get("/yahoo/matchup")
+def yahoo_matchup(current_user: str = Depends(get_current_user)):
+    """Return user's current Yahoo matchup — score and per-category breakdown."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+    league_key  = fc["league_key"]
+    my_team_key = fc["team_key"]
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        conn.close()
+        scoreboard_data = _yahoo_api(token, f"league/{league_key}/scoreboard")
+        cats_def = _yahoo_get_stat_cats(token, league_key)
+    except HTTPException:
+        conn.close()
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    try:
+        league_arr = scoreboard_data["fantasy_content"]["league"]
+        sb_entry   = next((item for item in league_arr if isinstance(item, dict) and "scoreboard" in item), {})
+        scoreboard = sb_entry.get("scoreboard", {})
+        week       = scoreboard.get("week")
+        matchups_wrapper = scoreboard.get("0", {}).get("matchups", {})
+
+        my_matchup_data = None
+        for mk, mv in matchups_wrapper.items():
+            if mk == "count":
+                continue
+            matchup    = mv.get("matchup", {})
+            teams_dict = matchup.get("teams", {})
+            parsed     = {}
+            for tk, tv in teams_dict.items():
+                if tk == "count":
+                    continue
+                team_list = tv.get("team", [])
+                team_info = team_list[0] if team_list else []
+                team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+                team_name    = next((d["name"]     for d in team_info if isinstance(d, dict) and "name" in d), "")
+                pts_obj  = next((x for x in team_list if isinstance(x, dict) and "team_points" in x), {})
+                pts_val  = float(pts_obj.get("team_points", {}).get("total", 0) or 0)
+                stats_by_id = _yahoo_parse_team_stats(team_list)
+                parsed[team_key_val] = {"name": team_name, "score": pts_val, "stats_by_id": stats_by_id}
+            if my_team_key in parsed:
+                my_matchup_data = {"teams": parsed, "week": week}
+                break
+
+        if not my_matchup_data:
+            return {"matchup": None, "message": "No active matchup found"}
+
+        my_data  = my_matchup_data["teams"].get(my_team_key, {})
+        opp_key  = next((k for k in my_matchup_data["teams"] if k != my_team_key), None)
+        opp_data = my_matchup_data["teams"].get(opp_key, {}) if opp_key else {}
+
+        # Category comparison
+        categories = []
+        for cat in cats_def:
+            sid    = cat["stat_id"]
+            is_neg = cat["is_neg"]
+            my_val  = my_data.get("stats_by_id", {}).get(sid)
+            opp_val = opp_data.get("stats_by_id", {}).get(sid)
+            if my_val is None and opp_val is None:
+                continue
+            my_val  = my_val  or 0.0
+            opp_val = opp_val or 0.0
+            winning = (my_val < opp_val) if is_neg else (my_val > opp_val)
+            tied    = abs(my_val - opp_val) < 1e-6
+            categories.append({
+                "stat": cat["display"], "my_val": round(my_val, 2), "opp_val": round(opp_val, 2),
+                "winning": winning and not tied, "tied": tied,
+            })
+
+        return {
+            "matchup": {
+                "my_team":       my_data.get("name", ""),
+                "opp_team":      opp_data.get("name", ""),
+                "my_score":      my_data.get("score", 0),
+                "opp_score":     opp_data.get("score", 0),
+                "scoring_type":  "H2H_CATEGORY",
+                "categories":    categories,
+                "matchup_period": week,
+            }
+        }
+    except Exception:
+        logger.exception("Failed to parse Yahoo matchup")
+        raise HTTPException(status_code=502, detail="Failed to parse Yahoo matchup")
+
+
+@fantasy_router.get("/yahoo/roster-analysis")
+def yahoo_roster_analysis(current_user: str = Depends(get_current_user)):
+    """
+    Return Yahoo roster analysis in the same shape as /espn/roster-analysis.
+    Uses our stats DB for projections; Yahoo API for team rosters.
+    """
+    import math as _math
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+    league_key  = fc["league_key"]
+    my_team_key = fc["team_key"]
+
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        cats_def = _yahoo_get_stat_cats(token, league_key)
+        all_rosters_data = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        standings_data   = _yahoo_api(token, f"league/{league_key}/standings")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    # ── Player stat averages ───────────────────────────────────────────────────
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    # Yahoo player_id → br_slug from map table
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='yahoo' AND br_slug IS NOT NULL"
+    ).fetchall()
+    yahoo_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    name_rows = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names = list(name_to_slug.keys())
+    conn.close()
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    # ── Win/loss from standings ────────────────────────────────────────────────
+    wins_losses = {}
+    try:
+        league_arr = standings_data["fantasy_content"]["league"]
+        standings_entry = next((x for x in league_arr if isinstance(x, dict) and "standings" in x), {})
+        teams_in_standings = standings_entry.get("standings", [{}])[0].get("teams", {})
+        for tk, tv in teams_in_standings.items():
+            if tk == "count": continue
+            team_list = tv.get("team", [])
+            info = team_list[0] if team_list else []
+            tkey = next((d["team_key"] for d in info if isinstance(d, dict) and "team_key" in d), None)
+            outcome = team_list[2].get("team_standings", {}).get("outcome_totals", {}) if len(team_list) > 2 else {}
+            if tkey:
+                wins_losses[tkey] = {"wins": int(outcome.get("wins", 0)), "losses": int(outcome.get("losses", 0))}
+    except Exception:
+        logger.exception("Failed to parse Yahoo standings for roster-analysis")
+
+    # ── Parse all teams' rosters ───────────────────────────────────────────────
+    def _stats_from_slugs(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg: continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts":    round(pts,  1), "reb":    round(reb,  1),
+            "ast":    round(ast,  1), "stl":    round(stl,  1),
+            "blk":    round(blk,  1), "tov":    round(tov,  1),
+            "fg3m":   round(fg3m, 1),
+            "fg_pct": round((fgm_sum / fga_sum * 100) if fga_sum else 0, 1),
+            "ft_pct": round((ftm_sum / fta_sum * 100) if fta_sum else 0, 1),
+        }
+
+    all_team_stats = {}
+    my_players = []
+
+    try:
+        league_arr = all_rosters_data["fantasy_content"]["league"]
+        teams_entry = next((x for x in league_arr if isinstance(x, dict) and "teams" in x), {})
+        teams_raw   = teams_entry.get("teams", {})
+        for tk, tv in teams_raw.items():
+            if tk == "count": continue
+            team_list    = tv.get("team", [{}, {}])
+            team_info    = team_list[0] if isinstance(team_list[0], list) else []
+            team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+            team_name    = next((d["name"]     for d in team_info if isinstance(d, dict) and "name" in d), "")
+
+            roster_obj   = team_list[1].get("roster", {}) if len(team_list) > 1 else {}
+            players_raw  = roster_obj.get("0", {}).get("players", {})
+
+            slugs        = []
+            team_players = []
+            for pk, pv in players_raw.items():
+                if pk == "count": continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list): continue
+                name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                pid  = next((d["player_id"] for d in p_list if isinstance(d, dict) and "player_id" in d), None)
+                if not name: continue
+                slug = (yahoo_id_to_slug.get(str(pid)) if pid else None) or _slug_by_name(name)
+                avg  = player_avgs.get(slug) if slug else None
+                pdata = {
+                    "espn_name": name,
+                    "br_slug":   slug,
+                    "stats": {k: round(avg[k] or 0, 1) for k in
+                              ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]} if avg else None,
+                }
+                team_players.append(pdata)
+                if slug: slugs.append(slug)
+
+            wl = wins_losses.get(team_key_val, {"wins": 0, "losses": 0})
+            all_team_stats[team_key_val] = {
+                "name":        team_name,
+                "team_id":     team_key_val,
+                "is_my_team":  team_key_val == my_team_key,
+                "stats":       _stats_from_slugs(slugs),
+                "slugs":       slugs,
+                "players":     team_players,
+                "wins":        wl["wins"],
+                "losses":      wl["losses"],
+                "standing":    None,
+            }
+            if team_key_val == my_team_key:
+                my_players = team_players
+    except Exception:
+        logger.exception("Failed to parse Yahoo all-rosters for roster-analysis")
+        raise HTTPException(status_code=502, detail="Failed to parse Yahoo rosters")
+
+    my_stats = all_team_stats.get(my_team_key, {}).get("stats", {})
+
+    # ── Z-scores per player ────────────────────────────────────────────────────
+    all_rostered_slugs = [s for d in all_team_stats.values() for s in d["slugs"]]
+    _z_keys = ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]
+    _lvs = {k: [] for k in _z_keys}
+    for _slug in all_rostered_slugs:
+        _avg = player_avgs.get(_slug)
+        if not _avg: continue
+        for k in _z_keys:
+            v = _avg.get(k)
+            if v is not None: _lvs[k].append(float(v))
+    _lz = {}
+    for k, vals in _lvs.items():
+        if len(vals) < 2: continue
+        _mean = sum(vals) / len(vals)
+        _std  = _math.sqrt(sum((v - _mean)**2 for v in vals) / len(vals))
+        _lz[k] = (_mean, max(_std, 0.001))
+
+    def _pz(slug):
+        avg = player_avgs.get(slug)
+        if not avg: return None
+        z = {}
+        for k, (mean, std) in _lz.items():
+            v = avg.get(k)
+            if v is None: continue
+            raw = (float(v) - mean) / std
+            z[k] = round(-raw if k == "tov" else raw, 2)
+        z["total"] = round(sum(z.values()), 2)
+        return z
+
+    for p in my_players:
+        if p.get("br_slug"):
+            p["z_scores"] = _pz(p["br_slug"])
+
+    # ── Category z-scores across my roster ────────────────────────────────────
+    tracked_cats = [c["display"] for c in cats_def]
+    neg_cats     = [c["display"] for c in cats_def if c["is_neg"]]
+    stat_name_map = {c["display"]: c["db_key"] for c in cats_def}
+
+    my_cat_z = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key: continue
+        my_cat_z[cat] = round(sum(
+            p.get("z_scores", {}).get(key, 0) for p in my_players if p.get("z_scores")
+        ), 2)
+
+    # ── Per-team category z-scores ─────────────────────────────────────────────
+    _tz_keys = ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]
+    _tz_vals = {k: [d["stats"][k] for d in all_team_stats.values() if d["stats"].get(k) is not None] for k in _tz_keys}
+    _tz = {}
+    for k, vals in _tz_vals.items():
+        if len(vals) < 2: continue
+        _m = sum(vals) / len(vals)
+        _s = _math.sqrt(sum((v - _m)**2 for v in vals) / len(vals))
+        _tz[k] = (_m, max(_s, 0.001))
+
+    for d in all_team_stats.values():
+        team_cat_z = {}
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key or key not in _tz: continue
+            v = d["stats"].get(key)
+            if v is None: continue
+            m, s = _tz[key]
+            raw = (v - m) / s
+            team_cat_z[cat] = round(-raw if key == "tov" else raw, 2)
+        d["cat_z"] = team_cat_z
+
+    cat_ranks = {}
+    NEG_CATS = set(neg_cats)
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key: continue
+        neg      = cat in NEG_CATS
+        all_vals = [d["stats"].get(key, 0) for d in all_team_stats.values()]
+        my_val   = my_stats.get(key, 0)
+        rank     = sum(1 for v in all_vals if (v < my_val if neg else v > my_val)) + 1
+        cat_ranks[cat] = {"rank": rank, "total": len(all_team_stats), "key": key}
+
+    return {
+        "my_roster":     my_players,
+        "my_stats":      my_stats,
+        "my_cat_z":      my_cat_z,
+        "teams":         list(all_team_stats.values()),
+        "cat_ranks":     cat_ranks,
+        "tracked_cats":  tracked_cats,
+        "neg_cats":      neg_cats,
+        "stat_name_map": stat_name_map,
+    }
+
+
+@fantasy_router.get("/yahoo/projected-standings")
+def yahoo_projected_standings(current_user: str = Depends(get_current_user)):
+    """
+    Project final Yahoo standings by simulating remaining matchups.
+    Same response shape as /espn/projected-standings.
+    """
+    import math as _math
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+    league_key  = fc["league_key"]
+    my_team_key = fc["team_key"]
+
+    try:
+        token = _refresh_yahoo_token(conn, current_user)
+        cats_def       = _yahoo_get_stat_cats(token, league_key)
+        standings_data = _yahoo_api(token, f"league/{league_key}/standings")
+        rosters_data   = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        # Fetch remaining schedule weeks from scoreboard (current + future)
+        scoreboard_data = _yahoo_api(token, f"league/{league_key}/scoreboard")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='yahoo' AND br_slug IS NOT NULL"
+    ).fetchall()
+    yahoo_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+    name_rows = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names = list(name_to_slug.keys())
+    conn.close()
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    tracked_cats  = [c["display"] for c in cats_def]
+    neg_cats      = [c["display"] for c in cats_def if c["is_neg"]]
+    stat_name_map = {c["display"]: c["db_key"] for c in cats_def}
+    NEG_CATS      = set(neg_cats)
+
+    def _team_stats(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg: continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts":    pts,  "reb":    reb,  "ast":    ast,  "stl":    stl,
+            "blk":    blk,  "tov":    tov,  "fg3m":   fg3m,
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0,
+        }
+
+    # ── Parse teams + current standings ───────────────────────────────────────
+    teams = {}  # team_key → {name, wins, losses, slugs, stats}
+    try:
+        league_arr = standings_data["fantasy_content"]["league"]
+        st_entry   = next((x for x in league_arr if isinstance(x, dict) and "standings" in x), {})
+        st_teams   = st_entry.get("standings", [{}])[0].get("teams", {})
+        for tk, tv in st_teams.items():
+            if tk == "count": continue
+            team_list = tv.get("team", [])
+            info = team_list[0] if team_list else []
+            tkey  = next((d["team_key"] for d in info if isinstance(d, dict) and "team_key" in d), "")
+            tname = next((d["name"]     for d in info if isinstance(d, dict) and "name" in d), "")
+            outcome = team_list[2].get("team_standings", {}).get("outcome_totals", {}) if len(team_list) > 2 else {}
+            teams[tkey] = {
+                "team_id":     tkey,
+                "name":        tname,
+                "is_my_team":  tkey == my_team_key,
+                "actual_wins": int(outcome.get("wins", 0)),
+                "actual_losses": int(outcome.get("losses", 0)),
+                "actual_ties": int(outcome.get("ties", 0)),
+                "slugs": [],
+            }
+    except Exception:
+        logger.exception("Failed to parse Yahoo standings for projected-standings")
+        raise HTTPException(status_code=502, detail="Failed to parse standings")
+
+    # ── Parse all rosters ──────────────────────────────────────────────────────
+    try:
+        league_arr   = rosters_data["fantasy_content"]["league"]
+        teams_entry  = next((x for x in league_arr if isinstance(x, dict) and "teams" in x), {})
+        teams_raw    = teams_entry.get("teams", {})
+        for tk, tv in teams_raw.items():
+            if tk == "count": continue
+            team_list    = tv.get("team", [{}, {}])
+            team_info    = team_list[0] if isinstance(team_list[0], list) else []
+            team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+            roster_obj   = team_list[1].get("roster", {}) if len(team_list) > 1 else {}
+            players_raw  = roster_obj.get("0", {}).get("players", {})
+            slugs = []
+            for pk, pv in players_raw.items():
+                if pk == "count": continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list): continue
+                name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                pid  = next((d["player_id"] for d in p_list if isinstance(d, dict) and "player_id" in d), None)
+                if not name: continue
+                slug = (yahoo_id_to_slug.get(str(pid)) if pid else None) or _slug_by_name(name)
+                if slug: slugs.append(slug)
+            if team_key_val in teams:
+                teams[team_key_val]["slugs"] = slugs
+    except Exception:
+        logger.exception("Failed to parse Yahoo rosters for projected-standings")
+
+    for t in teams.values():
+        t["stats"] = _team_stats(t["slugs"])
+
+    # ── Figure out remaining matchups from scoreboard ──────────────────────────
+    # Get current week; assume standard 22-week season (adjust if needed)
+    current_week = 1
+    total_weeks  = 22
+    try:
+        sb_league = scoreboard_data["fantasy_content"]["league"]
+        sb_entry  = next((x for x in sb_league if isinstance(x, dict) and "scoreboard" in x), {})
+        current_week = int(sb_entry.get("scoreboard", {}).get("week", 1))
+        league_info = next((x for x in sb_league if isinstance(x, dict) and "end_week" in x), {})
+        total_weeks = int(league_info.get("end_week", 22))
+    except Exception:
+        pass
+    remaining_weeks = max(0, total_weeks - current_week)
+
+    # ── Simulate remaining H2H matchups (round-robin, remaining_weeks rounds) ──
+    team_keys   = list(teams.keys())
+    n           = len(team_keys)
+    proj_wins   = {k: 0 for k in team_keys}
+    proj_losses = {k: 0 for k in team_keys}
+    proj_ties   = {k: 0 for k in team_keys}
+
+    def _cat_winner(s1, s2):
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key: continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            if abs(v1 - v2) < 1e-6: continue
+            neg = cat in NEG_CATS
+            if neg:
+                if v1 < v2: w1 += 1
+                else:        w2 += 1
+            else:
+                if v1 > v2: w1 += 1
+                else:        w2 += 1
+        return w1, w2
+
+    if n > 1 and remaining_weeks > 0:
+        # Round-robin simulation
+        pairs = [(team_keys[i], team_keys[j]) for i in range(n) for j in range(i+1, n)]
+        # Repeat pairs to fill remaining weeks (each team plays ~1 per week)
+        matchups_per_week = n // 2
+        for week_i in range(remaining_weeks):
+            week_pairs = pairs[((week_i * matchups_per_week) % len(pairs)):
+                               ((week_i * matchups_per_week) % len(pairs)) + matchups_per_week]
+            for (k1, k2) in week_pairs:
+                s1, s2 = teams[k1]["stats"], teams[k2]["stats"]
+                w1, w2 = _cat_winner(s1, s2)
+                if w1 > w2:
+                    proj_wins[k1] += 1; proj_losses[k2] += 1
+                elif w2 > w1:
+                    proj_wins[k2] += 1; proj_losses[k1] += 1
+                else:
+                    proj_ties[k1] += 1; proj_ties[k2] += 1
+
+    total_remaining = sum(proj_wins.values())
+
+    # ── Build projected standings ──────────────────────────────────────────────
+    projected_standings = []
+    for tkey, td in teams.items():
+        total_w = td["actual_wins"]   + proj_wins.get(tkey, 0)
+        total_l = td["actual_losses"] + proj_losses.get(tkey, 0)
+        total_t = td["actual_ties"]   + proj_ties.get(tkey, 0)
+        played  = total_w + total_l + total_t
+        proj_win_pct = (total_w + 0.5 * total_t) / played if played else 0
+        projected_standings.append({
+            "team_id":        tkey,
+            "name":           td["name"],
+            "is_my_team":     td["is_my_team"],
+            "actual_wins":    td["actual_wins"],
+            "actual_losses":  td["actual_losses"],
+            "actual_ties":    td["actual_ties"],
+            "proj_wins":      proj_wins.get(tkey, 0),
+            "proj_losses":    proj_losses.get(tkey, 0),
+            "proj_ties":      proj_ties.get(tkey, 0),
+            "proj_win_pct":   round(proj_win_pct, 4),
+            "team_stats":     {k: round(v, 1) for k, v in td["stats"].items()},
+        })
+    projected_standings.sort(key=lambda t: t["proj_win_pct"], reverse=True)
+
+    return {
+        "projected_standings": projected_standings,
+        "remaining_matchups":  remaining_weeks,
+        "scoring_type":        "H2H_CATEGORY",
+        "tracked_cats":        tracked_cats,
+    }
 
 
 @fantasy_router.delete("/disconnect")

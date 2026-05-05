@@ -2910,25 +2910,34 @@ function EspnTeamPicker({ onPicked, onDisconnect }) {
 
 // ── Manager Dashboard ──────────────────────────────────────────────────────────
 
-function ManagerDashboard({ onSelectPlayer }) {
+function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
   const [league,  setLeague]  = useState(null)
   const [roster,  setRoster]  = useState(null)
   const [matchup, setMatchup] = useState(undefined)
   const [loading, setLoading] = useState(true)
   const [msg,     setMsg]     = useState(null)
 
+  const isYahoo = provider === 'yahoo'
+
   useEffect(() => {
     setLoading(true)
     Promise.all([
-      apiFetch('/api/fantasy/espn/league').then(r => r.ok ? r.json() : null),
-      apiFetch('/api/fantasy/espn/roster').then(r => r.ok ? r.json() : null),
-      apiFetch('/api/fantasy/espn/matchup').then(r => r.ok ? r.json() : null),
+      apiFetch(isYahoo ? '/api/fantasy/league'         : '/api/fantasy/espn/league').then(r => r.ok ? r.json() : null),
+      apiFetch(isYahoo ? '/api/fantasy/roster'         : '/api/fantasy/espn/roster').then(r => r.ok ? r.json() : null),
+      apiFetch(isYahoo ? '/api/fantasy/yahoo/matchup'  : '/api/fantasy/espn/matchup').then(r => r.ok ? r.json() : null),
     ]).then(([l, r, m]) => {
+      // Normalise Yahoo league shape → same as ESPN (standings array + is_my_team field)
+      if (isYahoo && l && l.teams && !l.standings) {
+        l = {
+          standings: l.teams.map(t => ({ ...t, is_my_team: t.is_mine })),
+          league_name: l.league_name || '',
+        }
+      }
       setLeague(l); setRoster(r)
       setMatchup(m?.matchup ?? null)
     }).catch(() => setMsg('Failed to load fantasy data'))
     .finally(() => setLoading(false))
-  }, [])
+  }, [provider])
 
   if (loading) return <div className="dash-empty">Loading…</div>
   if (msg) return <div className="login-error" style={{margin:24}}>{msg}</div>
@@ -3075,13 +3084,13 @@ function ManagerDashboard({ onSelectPlayer }) {
 
 // ── Projected Standings stub ───────────────────────────────────────────────────
 
-function ProjectedStandings() {
+function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings' }) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [msg,     setMsg]     = useState(null)
 
   useEffect(() => {
-    apiFetch('/api/fantasy/espn/projected-standings')
+    apiFetch(endpoint)
       .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || 'Failed')))
       .then(d => setData(d))
       .catch(e => setMsg(typeof e === 'string' ? e : 'Failed to load projections'))
@@ -4908,14 +4917,24 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
 
   useEffect(() => { loadStatus() }, [])
 
-  // Fetch ESPN roster data once (shared between Roster Analysis + Trade Analysis tabs)
+  // Fetch roster-analysis once (shared between Roster Analysis + Trade Analysis tabs)
+  // Supports both ESPN and Yahoo — load after status is known
   useEffect(() => {
-    if (!status?.espn?.team_key) return
-    apiFetch('/api/fantasy/espn/roster-analysis')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => setRosterData(d))
-      .catch(() => setRosterErr('Failed to load roster — is ESPN connected?'))
-  }, [status?.espn?.team_key])
+    if (!status) return
+    const espn  = status.espn  || {}
+    const yahoo = status.yahoo || {}
+    if (espn.connected && espn.team_key) {
+      apiFetch('/api/fantasy/espn/roster-analysis')
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => setRosterData(d))
+        .catch(() => setRosterErr('Failed to load roster — is ESPN connected?'))
+    } else if (yahoo.connected && yahoo.league_key) {
+      apiFetch('/api/fantasy/yahoo/roster-analysis')
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => setRosterData(d))
+        .catch(() => setRosterErr('Failed to load Yahoo roster data'))
+    }
+  }, [status?.espn?.team_key, status?.yahoo?.league_key])
 
   if (!status) return <div className="dash-empty">Loading…</div>
 
@@ -4957,8 +4976,16 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       <div>
         <div className="fantasy-tabs">
           <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
+          <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
+          <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         </div>
-        {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
+        {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} provider="yahoo" />}
+        {tab === 'standings' && <ProjectedStandings endpoint="/api/fantasy/yahoo/projected-standings" />}
+        {tab === 'roster' && (rosterErr
+          ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+          : !rosterData ? <div className="dash-empty">Loading…</div>
+          : <RosterAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
+        )}
       </div>
     )
   }
