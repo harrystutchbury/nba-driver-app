@@ -638,6 +638,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [sortAsc,  setSortAsc]  = useState(false)
   const [viewMode, setViewMode] = useState('pg')  // 'pg' | 'totals'
   const [puntedCats, setPuntedCats] = useState(new Set())
+  const [faOnly, setFaOnly] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -718,11 +719,14 @@ function RankingsPage({ onSelectPlayer, ownership }) {
     return p[key] ?? -Infinity
   }
 
-  const sorted = players ? [...players].sort((a, b) => {
-    const av = getSortVal(a, sortKey)
-    const bv = getSortVal(b, sortKey)
-    return sortAsc ? av - bv : bv - av
-  }) : []
+  const hasOwnership = Object.keys(ownership).length > 0
+  const sorted = players ? [...players]
+    .filter(p => !faOnly || !ownership[p.slug])
+    .sort((a, b) => {
+      const av = getSortVal(a, sortKey)
+      const bv = getSortVal(b, sortKey)
+      return sortAsc ? av - bv : bv - av
+    }) : []
 
   const fmt = (val, pct) => val == null ? '—' : pct ? `${val}%` : val.toFixed(1)
   const fmtZ = (z) => z == null ? '' : (z >= 0 ? '+' : '') + z.toFixed(2)
@@ -760,6 +764,16 @@ function RankingsPage({ onSelectPlayer, ownership }) {
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
           </div>
         </div>
+        {hasOwnership && (
+          <div className="rank-filter-group">
+            <span className="ctrl-label">Availability</span>
+            <div className="rank-pills">
+              <button className={`rank-pill${faOnly ? ' active' : ''}`} onClick={() => setFaOnly(f => !f)}>
+                Free agents only
+              </button>
+            </div>
+          </div>
+        )}
         <div className="rank-filter-group">
           <span className="ctrl-label">Punt</span>
           <div className="rank-pills">
@@ -1365,6 +1379,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [viewMode, setViewMode]     = useState('pg')
   const [showRanges, setShowRanges] = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
+  const [faOnly, setFaOnly] = useState(false)
 
   useEffect(() => {
     if (!start || !end || start > end) return
@@ -1393,8 +1408,12 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     return p.fixedEnd ? end === p.fixedEnd : end === addDays(p.days)
   })?.label
 
+  const hasOwnership = Object.keys(ownership).length > 0
   const filtered = players
-    ? players.filter(p => position === 'all' || p.position === position)
+    ? players.filter(p =>
+        (position === 'all' || p.position === position) &&
+        (!faOnly || !ownership[p.slug])
+      )
     : []
 
   // Totals helpers
@@ -1494,6 +1513,16 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
             <button className={`rank-pill${showRanges ? ' active' : ''}`} onClick={() => setShowRanges(r => !r)}>Ranges</button>
           </div>
         </div>
+        {hasOwnership && (
+          <div className="rank-filter-group">
+            <span className="ctrl-label">Availability</span>
+            <div className="rank-pills">
+              <button className={`rank-pill${faOnly ? ' active' : ''}`} onClick={() => setFaOnly(f => !f)}>
+                Free agents only
+              </button>
+            </div>
+          </div>
+        )}
         <div className="rank-filter-group">
           <span className="ctrl-label">Punt</span>
           <div className="rank-pills">
@@ -1945,11 +1974,12 @@ const STAT_LABELS = {
   tov: 'TOV', fg3m: '3PM', fg_pct: 'FG%', ft_pct: 'FT%',
 }
 
-function TrendingPage({ onSelectPlayer }) {
+function TrendingPage({ onSelectPlayer, ownership }) {
   const [direction, setDirection] = useState('up')
   const [window,    setWindow]    = useState(7)
   const [data,      setData]      = useState(null)
   const [loading,   setLoading]   = useState(true)
+  const [faOnly,    setFaOnly]    = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -1959,7 +1989,8 @@ function TrendingPage({ onSelectPlayer }) {
       .catch(() => setLoading(false))
   }, [window, direction])
 
-  const players = data?.players || []
+  const hasOwnership = Object.keys(ownership || {}).length > 0
+  const players = (data?.players || []).filter(p => !faOnly || !ownership?.[p.slug])
 
   return (
     <div className="trend-page">
@@ -1987,6 +2018,13 @@ function TrendingPage({ onSelectPlayer }) {
             </button>
           ))}
         </div>
+        {hasOwnership && (
+          <div className="trend-toggle-group">
+            <button className={`trend-toggle${faOnly ? ' active' : ''}`} onClick={() => setFaOnly(f => !f)}>
+              Free agents only
+            </button>
+          </div>
+        )}
       </div>
 
       {loading && <div className="trend-loading">Loading…</div>}
@@ -5579,7 +5617,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
       {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
 
