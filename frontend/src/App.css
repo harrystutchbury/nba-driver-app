@@ -1387,6 +1387,7 @@
 /* ── Preset buttons ──────────────────────────────────────── */
 .preset-group { flex-direction: column; align-items: flex-start; }
 .preset-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.driver-results { margin-top: 24px; }
 .preset-btn {
   padding: 4px 10px;
   font-family: 'DM Mono', monospace;
