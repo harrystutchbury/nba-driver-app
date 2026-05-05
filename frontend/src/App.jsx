@@ -4622,14 +4622,10 @@ function WeeklySchedulePage() {
       })
       .catch(() => setMetaLoading(false))
 
-    // Best-effort: try ESPN then Yahoo to get my roster's NBA teams
-    apiFetch('/api/fantasy/espn/schedule-grid')
+    // Best-effort: get my roster's NBA teams from lightweight endpoint
+    apiFetch('/api/fantasy/my-nba-teams')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.my_nba_teams?.length) setMyTeams(d.my_nba_teams) })
-      .catch(() => {})
-    apiFetch('/api/fantasy/yahoo/schedule-grid')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.my_nba_teams?.length) setMyTeams(d.my_nba_teams) })
+      .then(d => { if (d?.teams?.length) setMyTeams(d.teams) })
       .catch(() => {})
   }, [])
 

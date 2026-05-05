@@ -4816,7 +4816,59 @@ def get_schedule_weeks(current_user: str = Depends(get_current_user)):
     for r in game_rows:
         all_teams.add(r["team"])
 
-    return {"weeks": weeks, "all_teams": sorted(all_teams), "pts_allowed_map": pts_allowed_map, "my_nba_teams": sorted(set(my_nba_teams))}
+    return {"weeks": weeks, "all_teams": sorted(all_teams), "pts_allowed_map": pts_allowed_map}
+
+
+@fantasy_router.get("/my-nba-teams")
+def get_my_nba_teams(current_user: str = Depends(get_current_user)):
+    """Return NBA teams of the user's fantasy roster players — DB only, no external API call."""
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT provider, team_key FROM fantasy_connections WHERE username=? AND team_key IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
+        [current_user]
+    ).fetchone()
+    if not fc:
+        conn.close()
+        return {"teams": []}
+
+    provider = fc["provider"]
+    team_key = str(fc["team_key"])
+
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    # Current NBA team per player slug
+    slug_to_team = {r["player_slug"]: r["team"] for r in conn.execute("""
+        SELECT g.player_slug, g.team FROM game_logs g
+        INNER JOIN (SELECT player_slug, MAX(game_date) AS last_date FROM game_logs WHERE season=? GROUP BY player_slug) lm
+        ON g.player_slug = lm.player_slug AND g.game_date = lm.last_date
+        WHERE g.season=? GROUP BY g.player_slug
+    """, [season, season]).fetchall()}
+
+    # Player map for this provider
+    provider_map = {r["provider_id"]: r["br_slug"] for r in conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider=? AND br_slug IS NOT NULL",
+        [provider]
+    ).fetchall()}
+
+    # Fantasy roster stored in fantasy_rosters table if it exists, otherwise return []
+    try:
+        roster_rows = conn.execute(
+            "SELECT player_id FROM fantasy_rosters WHERE username=? AND provider=? AND team_key=?",
+            [current_user, provider, team_key]
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return {"teams": []}
+
+    conn.close()
+    teams = set()
+    for r in roster_rows:
+        slug = provider_map.get(str(r["player_id"]))
+        if slug and slug in slug_to_team:
+            teams.add(slug_to_team[slug])
+
+    return {"teams": sorted(teams)}
 
 
 @fantasy_router.get("/week-detail")
