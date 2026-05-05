@@ -274,7 +274,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 # Allow the React dev server to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://roto-intel-landing.onrender.com"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )

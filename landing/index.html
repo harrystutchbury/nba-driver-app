@@ -591,19 +591,13 @@
     }
 
     .social-badge-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
+      width: 36px;
+      height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
     }
-
-    .badge-espn  { background: #CC0000; color: #fff; font-size: 10px; letter-spacing: -0.5px; }
-    .badge-yahoo { background: #6001d2; color: #fff; font-size: 9px; }
-    .badge-nba   { background: #1d428a; color: #fff; font-size: 8px; letter-spacing: -0.3px; }
+    .social-badge-icon img { width: 100%; height: 100%; object-fit: contain; }
 
     /* ── FEATURES ── */
     .features-grid {
@@ -1198,17 +1192,23 @@
     <p class="social-text">Built for serious fantasy players.<br>Connecting ESPN and Yahoo leagues.</p>
     <div class="social-divider"></div>
     <div class="social-badge">
-      <div class="social-badge-icon badge-espn">ESPN</div>
+      <div class="social-badge-icon">
+        <img src="https://logo.clearbit.com/espn.com" alt="ESPN" style="border-radius:6px;" />
+      </div>
       <span>ESPN</span>
     </div>
     <div class="social-badge">
-      <div class="social-badge-icon badge-yahoo">Y!</div>
+      <div class="social-badge-icon">
+        <img src="https://logo.clearbit.com/sports.yahoo.com" alt="Yahoo" style="border-radius:6px;" />
+      </div>
       <span>Yahoo</span>
     </div>
     <div class="social-divider"></div>
     <p class="social-text">Powered by real-time<br>NBA data.</p>
     <div class="social-badge">
-      <div class="social-badge-icon badge-nba">NBA</div>
+      <div class="social-badge-icon">
+        <img src="https://logo.clearbit.com/nba.com" alt="NBA" style="border-radius:6px;" />
+      </div>
       <span>NBA Data</span>
     </div>
   </div>
