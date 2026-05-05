@@ -5726,7 +5726,7 @@ function AppMain({ onLogout, onOpenAccount }) {
               </button>
               <div className="nav-dropdown nav-dropdown-right">
                 <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
-                {isAdmin && <button className="nav-drop-item" onClick={() => go('moderation')}>Moderation</button>}
+                {isAdmin && <button className="nav-drop-item" onClick={() => setPage('moderation')}>Moderation</button>}
                 <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
               </div>
             </div>
