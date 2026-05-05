@@ -5998,7 +5998,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                         },
                         scales: {
                           x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
-                          y: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, callback: v => `${v}%` }, title: { display: true, text: yTitle, color: '#888', font: { family: "'DM Mono', monospace", size: 9 } } },
+                          y: { display: false },
                         },
                       })
                       return (
