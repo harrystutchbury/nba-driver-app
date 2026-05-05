@@ -6017,6 +6017,19 @@ def mod_get_comments(
         conn.close()
         raise HTTPException(status_code=403, detail="Admin only")
 
+    # Ensure migration has run on this DB
+    for _tbl in ("comments", "blog_comments"):
+        try:
+            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        except Exception:
+            pass
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS blocked_words (word TEXT PRIMARY KEY, added_at TEXT DEFAULT (datetime('now')))")
+        conn.commit()
+    except Exception:
+        pass
+
     hidden_filter_player = "WHERE c.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
     hidden_filter_blog   = "WHERE bc.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
 
