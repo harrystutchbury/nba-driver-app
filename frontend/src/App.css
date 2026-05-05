@@ -4198,13 +4198,14 @@ td.bs-pos {
 .own-mine   { background: rgba(0,230,118,0.18); color: var(--skill); }
 .own-taken  { background: rgba(255,184,77,0.15); color: var(--opponent); }
 
-/* ── Ownership column ──────────────────────────────────────────────────────── */
-.own-col {
-  width: 72px;
-  text-align: right;
-  white-space: nowrap;
+/* ── Ownership badge alignment in name column ──────────────────────────────── */
+.name-col-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
-.own-col .own-badge { margin-left: 0; }
+.name-col-inner .own-badge { margin-left: 0; flex-shrink: 0; }
 
 /* ── Schedule Grid ─────────────────────────────────────────────────────────── */
 .sg-wrap { padding: 16px; }
