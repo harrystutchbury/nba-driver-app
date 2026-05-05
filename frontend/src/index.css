@@ -7,17 +7,17 @@
 
 :root, [data-theme="dark"] {
   color-scheme: dark;
-  --bg:       #171b27;
-  --surface:  #1e2235;
-  --border:   #2a2f42;
-  --text:     #e8e8e8;
-  --muted:    #5a6080;
-  --accent:   #e8e8e8;
+  --bg:       #0a0e1a;
+  --surface:  #141824;
+  --border:   #1e2740;
+  --text:     #ffffff;
+  --muted:    #8892a4;
+  --accent:   #00e676;
   --pos:      #ffd060;
-  --neg:      #ff6b6b;
+  --neg:      #ff4d6a;
   --role:     #7c8cff;
-  --skill:    #4dffb4;
-  --skill-bg: rgba(77,255,180,0.12);
+  --skill:    #00e676;
+  --skill-bg: rgba(0,230,118,0.12);
   --opponent: #ffb84d;
   --team:     #ff7cf5;
 }

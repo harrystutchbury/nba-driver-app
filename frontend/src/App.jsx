@@ -421,7 +421,7 @@ function heatColor(val, min, max, reverse) {
   if (val === null || val === undefined || max === min) return {}
   const t = (val - min) / (max - min)
   const intensity = reverse ? 1 - t : t
-  return { backgroundColor: `rgba(77,255,180,${(intensity * 0.55).toFixed(2)})` }
+  return { backgroundColor: `rgba(0,230,118,${(intensity * 0.55).toFixed(2)})` }
 }
 
 function rollingAverage(games, key, window) {
@@ -471,7 +471,7 @@ const STAT_LABELS_SHORT = {
 
 const CATEGORY_COLORS = {
   role:     '#7c8cff',
-  skill:    '#4dffb4',
+  skill:    '#00e676',
   opponent: '#ffb84d',
   team:     '#ff7cf5',
 }
@@ -4670,7 +4670,7 @@ function WeeklySchedulePage() {
     const val = pts_allowed_map?.[opp]
     if (val == null || maxEase === minEase) return undefined
     const t = (val - minEase) / (maxEase - minEase)
-    if (t >= 0.67) return `rgba(77,255,180,${0.08 + (t - 0.67) * 0.45})`
+    if (t >= 0.67) return `rgba(0,230,118,${0.08 + (t - 0.67) * 0.45})`
     if (t <= 0.33) return `rgba(255,107,107,${0.08 + (0.33 - t) * 0.45})`
     return undefined
   }
@@ -4797,7 +4797,7 @@ function ScheduleGrid({ provider = 'espn' }) {
     if (val == null || maxEase === minEase) return ''
     const t = (val - minEase) / (maxEase - minEase)  // 0=hard, 1=easy
     // hard→red, mid→neutral, easy→green
-    if (t >= 0.67) return `rgba(77,255,180,${0.08 + (t - 0.67) * 0.45})`  // green
+    if (t >= 0.67) return `rgba(0,230,118,${0.08 + (t - 0.67) * 0.45})`  // green
     if (t <= 0.33) return `rgba(255,107,107,${0.08 + (0.33 - t) * 0.45})`  // red
     return ''  // middle third: no colour
   }
@@ -5453,10 +5453,10 @@ function AppMain({ onLogout, onOpenAccount }) {
       {
         label: 'Baseline',
         data: buildProjLine('baseline'),
-        borderColor: '#4dffb4',
+        borderColor: '#00e676',
         pointBackgroundColor: (ctx) => {
           const idx = ctx.dataIndex - nHist + 1
-          return idx === projYear ? '#4dffb4' : 'rgba(77,255,180,0.4)'
+          return idx === projYear ? '#00e676' : 'rgba(0,230,118,0.4)'
         },
         pointRadius: (ctx) => {
           const idx = ctx.dataIndex - nHist + 1
@@ -5707,7 +5707,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     if (z === null || z === undefined) return ''
     const v = key === 'tov' ? -z : z
     const dark = isDark()
-    if (v >= 1.5)  return dark ? '#4dffb4' : '#0a7a36'
+    if (v >= 1.5)  return dark ? '#00e676' : '#0a7a36'
     if (v >= 0.5)  return dark ? '#9affda' : '#2d8c5a'
     if (v <= -1.5) return '#ff6b6b'
     if (v <= -0.5) return '#ff9e9e'
@@ -5730,7 +5730,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     if (!data) return null
     const dark = isDark()
     const rankColor = data.rank && data.rank_n
-      ? data.rank / data.rank_n <= 0.1  ? (dark ? '#4dffb4' : '#0a7a36')
+      ? data.rank / data.rank_n <= 0.1  ? (dark ? '#00e676' : '#0a7a36')
       : data.rank / data.rank_n <= 0.25 ? (dark ? '#9affda' : '#2d8c5a')
       : data.rank / data.rank_n >= 0.9  ? '#ff6b6b'
       : data.rank / data.rank_n >= 0.75 ? '#ff9e9e'
@@ -5754,7 +5754,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   function ProjectionRow({ label, data, note, scenario }) {
     if (!data) return null
     const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Baseline'
-    const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#4dffb4' : '#0a7a36'
+    const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#00e676' : '#0a7a36'
     return (
       <tr className="stats-row-projection">
         <td className="stats-period-cell">
@@ -6005,7 +6005,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
               </div>
               {cmpExpanded && (() => {
-                const CMP_COLORS = [isDark() ? '#4dffb4' : '#0a7a36', '#ff9e64', '#64b5ff', '#c084fc']
+                const CMP_COLORS = [isDark() ? '#00e676' : '#0a7a36', '#ff9e64', '#64b5ff', '#c084fc']
                 const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
                 const canAdd = cmpPlayers.length < 3
 
@@ -6232,7 +6232,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           const f = result.schedule_difficulty.period_a
                           const pct = ((f - 1) * 100).toFixed(0)
                           const label = `${pct >= 0 ? '+' : ''}${pct}%`
-                          return <span className="metric-sched" style={{ color: f >= 1 ? '#4dffb4' : '#ff6b6b' }}>Sched {label}</span>
+                          return <span className="metric-sched" style={{ color: f >= 1 ? '#00e676' : '#ff6b6b' }}>Sched {label}</span>
                         })()}
                       </div>
                       <div className="metric-card">
@@ -6269,7 +6269,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           const f = result.schedule_difficulty.period_b
                           const pct = ((f - 1) * 100).toFixed(0)
                           const label = `${pct >= 0 ? '+' : ''}${pct}%`
-                          return <span className="metric-sched" style={{ color: f >= 1 ? '#4dffb4' : '#ff6b6b' }}>Sched {label}</span>
+                          return <span className="metric-sched" style={{ color: f >= 1 ? '#00e676' : '#ff6b6b' }}>Sched {label}</span>
                         })()}
                       </div>
                     </div>
@@ -6359,7 +6359,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                       })
                       const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
                       const BASE_COLOR = '#3a4470'
-                      const COMP_COLOR = '#4dffb4'
+                      const COMP_COLOR = '#00e676'
                       const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
                       const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
                       const selChartData = {
@@ -6457,7 +6457,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                   const sosAvg = sosFactors.reduce((a, b) => a + b, 0) / sosFactors.length
                   const sosPct = Math.min(Math.max((sosAvg - 0.85) / 0.3, 0), 1)
                   const sosLabel = sosAvg > 1.05 ? 'Easy slate' : sosAvg < 0.95 ? 'Hard slate' : 'Neutral difficulty'
-                  const sosColor = sosAvg > 1.05 ? '#4dffb4' : sosAvg < 0.95 ? '#ff6b6b' : '#aaa'
+                  const sosColor = sosAvg > 1.05 ? '#00e676' : sosAvg < 0.95 ? '#ff6b6b' : '#aaa'
                   const periodLabel = { season: 'Season', l30: 'Last 30', l14: 'Last 14' }[schedProj.period] || 'Season'
                   const todayStr = new Date().toISOString().slice(0, 10)
 
@@ -6466,8 +6466,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                   const midVals  = schedProj.games.map(g => g.projected[schedStat])
                   const lowVals  = schedProj.games.map(g => g.projected_low?.[schedStat] ?? g.projected[schedStat])
                   const highVals = schedProj.games.map(g => g.projected_high?.[schedStat] ?? g.projected[schedStat])
-                  const coneColor = 'rgba(77,255,180,0.12)'
-                  const lineColor = '#4dffb4'
+                  const coneColor = 'rgba(0,230,118,0.12)'
+                  const lineColor = '#00e676'
 
                   const chartData = {
                     labels: chartLabels,
@@ -6520,8 +6520,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                       },
                     },
                     scales: {
-                      x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' } },
-                      y: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2235' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
+                      x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' } },
+                      y: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
                     },
                   }
 
@@ -7183,7 +7183,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
               const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
               const BASE_COLOR = '#3a4470'
-              const COMP_COLOR = '#4dffb4'
+              const COMP_COLOR = '#00e676'
               const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
               const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
               const selChartData = {
