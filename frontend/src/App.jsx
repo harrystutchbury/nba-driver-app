@@ -4738,6 +4738,30 @@ function WeeklySchedulePage() {
 }
 
 
+// ── SeasonSchedulePage ─────────────────────────────────────────────────────────
+
+function SeasonSchedulePage() {
+  const [provider, setProvider] = useState(null)
+
+  useEffect(() => {
+    apiFetch('/api/fantasy/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.espn?.team_key)        setProvider('espn')
+        else if (d?.yahoo?.team_key)  setProvider('yahoo')
+        else                          setProvider('none')
+      })
+      .catch(() => setProvider('none'))
+  }, [])
+
+  if (provider === null) return <div className="dash-empty">Loading…</div>
+  if (provider === 'none') return (
+    <div className="dash-empty">Connect a fantasy league to see the season schedule grid.</div>
+  )
+  return <ScheduleGrid provider={provider} />
+}
+
+
 // ── ScheduleGrid ───────────────────────────────────────────────────────────────
 
 function ScheduleGrid({ provider = 'espn' }) {
@@ -4919,10 +4943,8 @@ function FantasyPage({ onSelectPlayer }) {
       <div>
         <div className="fantasy-tabs">
           <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
-          <button className={`fantasy-tab${tab === 'schedule'  ? ' active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
         </div>
         {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
-        {tab === 'schedule'  && <ScheduleGrid provider="yahoo" />}
       </div>
     )
   }
@@ -4936,7 +4958,6 @@ function FantasyPage({ onSelectPlayer }) {
         <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
         <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
         <button className={`fantasy-tab${tab === 'matchup'   ? ' active' : ''}`} onClick={() => setTab('matchup')}>Matchup</button>
-        <button className={`fantasy-tab${tab === 'schedule'  ? ' active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
       </div>
       {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
       {tab === 'standings' && <ProjectedStandings />}
@@ -4951,7 +4972,6 @@ function FantasyPage({ onSelectPlayer }) {
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
-      {tab === 'schedule' && <ScheduleGrid provider="espn" />}
     </div>
   )
 }
@@ -5789,10 +5809,11 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </div>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['boxscores','injuries','weekly-schedule'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['boxscores','injuries','weekly-schedule','season-schedule'].includes(page) ? ' active' : ''}`}>
                     Schedule <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
+                    <button className="nav-drop-item" onClick={() => go('season-schedule')}>Season Schedule</button>
                     <button className="nav-drop-item" onClick={() => go('weekly-schedule')}>Weekly Schedule</button>
                     <button className="nav-drop-item" onClick={() => go('boxscores')}>Box Scores</button>
                     <button className="nav-drop-item" onClick={() => go('injuries')}>Injuries &amp; News</button>
@@ -5892,6 +5913,7 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'moderation' && <ModerationPage />}
 
       {page === 'weekly-schedule' && <WeeklySchedulePage />}
+      {page === 'season-schedule' && <SeasonSchedulePage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}
