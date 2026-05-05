@@ -4821,52 +4821,98 @@ def get_schedule_weeks(current_user: str = Depends(get_current_user)):
 
 @fantasy_router.get("/my-nba-teams")
 def get_my_nba_teams(current_user: str = Depends(get_current_user)):
-    """Return NBA teams of the user's fantasy roster players — DB only, no external API call."""
+    """Return NBA teams of user's fantasy roster — lightweight: Yahoo uses timeout=15 API call,
+    ESPN uses a single urlopen(timeout=10) mRoster call (avoids slow _espn_league())."""
     conn = get_conn()
     fc = conn.execute(
-        "SELECT provider, team_key FROM fantasy_connections WHERE username=? AND team_key IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
+        "SELECT provider, team_key, league_key, access_token, refresh_token, expires_at "
+        "FROM fantasy_connections WHERE username=? AND team_key IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
         [current_user]
     ).fetchone()
     if not fc:
         conn.close()
         return {"teams": []}
 
-    provider = fc["provider"]
-    team_key = str(fc["team_key"])
+    provider  = fc["provider"]
+    team_key  = str(fc["team_key"])
 
     season_year = _current_season_end_year()
     season = f"{season_year - 1}-{str(season_year)[2:]}"
 
-    # Current NBA team per player slug
     slug_to_team = {r["player_slug"]: r["team"] for r in conn.execute("""
         SELECT g.player_slug, g.team FROM game_logs g
-        INNER JOIN (SELECT player_slug, MAX(game_date) AS last_date FROM game_logs WHERE season=? GROUP BY player_slug) lm
-        ON g.player_slug = lm.player_slug AND g.game_date = lm.last_date
+        INNER JOIN (
+            SELECT player_slug, MAX(game_date) AS last_date
+            FROM game_logs WHERE season=? GROUP BY player_slug
+        ) lm ON g.player_slug = lm.player_slug AND g.game_date = lm.last_date
         WHERE g.season=? GROUP BY g.player_slug
     """, [season, season]).fetchall()}
 
-    # Player map for this provider
-    provider_map = {r["provider_id"]: r["br_slug"] for r in conn.execute(
-        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider=? AND br_slug IS NOT NULL",
-        [provider]
-    ).fetchall()}
+    from rapidfuzz import process as rfprocess
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
 
-    # Fantasy roster stored in fantasy_rosters table if it exists, otherwise return []
+    def _resolve(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    teams: set = set()
     try:
-        roster_rows = conn.execute(
-            "SELECT player_id FROM fantasy_rosters WHERE username=? AND provider=? AND team_key=?",
-            [current_user, provider, team_key]
-        ).fetchall()
-    except Exception:
-        conn.close()
-        return {"teams": []}
+        if provider == "yahoo":
+            token = _refresh_yahoo_token(conn, current_user)
+            data  = _yahoo_api(token, f"team/{team_key}/roster/players")
+            players_raw = (data.get("fantasy_content", {})
+                               .get("team", [{}, {}])[1]
+                               .get("roster", {})
+                               .get("0", {})
+                               .get("players", {}))
+            for pk, pv in players_raw.items():
+                if pk == "count":
+                    continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list):
+                    continue
+                pname = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                if pname:
+                    slug = _resolve(pname)
+                    if slug and slug in slug_to_team:
+                        teams.add(slug_to_team[slug])
 
-    conn.close()
-    teams = set()
-    for r in roster_rows:
-        slug = provider_map.get(str(r["player_id"]))
-        if slug and slug in slug_to_team:
-            teams.add(slug_to_team[slug])
+        elif provider == "espn":
+            import urllib.request as _urlreq, json as _json2
+            espn_id_to_slug = {
+                r["provider_id"]: r["br_slug"]
+                for r in conn.execute(
+                    "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+                ).fetchall()
+            }
+            _season = _current_season_end_year()
+            _url = (
+                f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_season}"
+                f"/segments/0/leagues/{fc['league_key']}?view=mRoster"
+            )
+            _req = _urlreq.Request(_url, headers={
+                "Cookie": f"espn_s2={fc['access_token']}; SWID={fc['refresh_token']}",
+            })
+            with _urlreq.urlopen(_req, timeout=10) as _r:
+                _raw = _json2.loads(_r.read())
+            for _team in _raw.get("teams", []):
+                if str(_team.get("id", "")) != team_key:
+                    continue
+                for _entry in _team.get("roster", {}).get("entries", []):
+                    _ppe  = _entry.get("playerPoolEntry", {})
+                    _pid  = str(_ppe.get("playerId", "") or _entry.get("playerId", ""))
+                    slug  = espn_id_to_slug.get(_pid)
+                    if not slug:
+                        _pname = _ppe.get("player", {}).get("fullName", "")
+                        slug   = _resolve(_pname) if _pname else None
+                    if slug and slug in slug_to_team:
+                        teams.add(slug_to_team[slug])
+    except Exception:
+        logger.exception("my-nba-teams: API error")
+    finally:
+        conn.close()
 
     return {"teams": sorted(teams)}
 

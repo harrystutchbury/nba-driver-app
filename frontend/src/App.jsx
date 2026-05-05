@@ -4673,13 +4673,11 @@ function WeeklySchedulePage() {
   return (
     <div className="wsg-page">
       <div className="wsg-controls">
-        <label className="wsg-label">Week</label>
         <select className="wsg-select" value={selectedIdx ?? 0} onChange={e => setSelectedIdx(Number(e.target.value))}>
           {weeks.map((w, i) => (
             <option key={i} value={i}>{w.label}</option>
           ))}
         </select>
-        {week && <span className="wsg-week-range">{week.start} → {week.end}</span>}
       </div>
 
       <div className="wsg-legend">
