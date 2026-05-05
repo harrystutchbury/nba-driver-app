@@ -5458,24 +5458,48 @@ function AppMain({ onLogout, onOpenAccount }) {
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="site-header">
         <div className="site-header-inner">
-          <div className="site-logo">
+          <div className="site-logo" onClick={() => setPage('dashboard')} style={{ cursor: 'pointer' }}>
             <span className="site-logo-icon">🏀</span>
-            <div>
-              <h1>Fantasy Basketball Analyzer</h1>
-            </div>
+            <h1 className="site-brand">Roto Intel</h1>
           </div>
           <nav className="site-nav">
             <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>Home</button>
-            <button className={`nav-btn${page === 'rankings' ? ' active' : ''}`} onClick={() => setPage('rankings')}>Rankings</button>
-            <button className={`nav-btn${page === 'boxscores' ? ' active' : ''}`} onClick={() => setPage('boxscores')}>Box Scores</button>
-            <button className={`nav-btn${page === 'projections' ? ' active' : ''}`} onClick={() => setPage('projections')}>Projections</button>
-            <button className={`nav-btn${page === 'injuries' ? ' active' : ''}`} onClick={() => setPage('injuries')}>Injuries &amp; News</button>
-            <button className={`nav-btn${page === 'depth' ? ' active' : ''}`} onClick={() => setPage('depth')}>Depth Charts</button>
-            <button className={`nav-btn${page === 'fantasy' ? ' active' : ''}`} onClick={() => setPage('fantasy')}>Fantasy</button>
-            <button className={`nav-btn${page === 'trending' ? ' active' : ''}`} onClick={() => setPage('trending')}>Trending</button>
+
+            <div className="nav-group">
+              <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth'].includes(page) ? ' active' : ''}`}>
+                Players <span className="nav-chevron">▾</span>
+              </button>
+              <div className="nav-dropdown">
+                <button className="nav-drop-item" onClick={() => setPage('rankings')}>Rankings</button>
+                <button className="nav-drop-item" onClick={() => setPage('projections')}>Projections</button>
+                <button className="nav-drop-item" onClick={() => setPage('trending')}>Trending</button>
+                <button className="nav-drop-item" onClick={() => setPage('depth')}>Depth Charts</button>
+              </div>
+            </div>
+
+            <div className="nav-group">
+              <button className={`nav-btn nav-group-btn${['boxscores','injuries'].includes(page) ? ' active' : ''}`}>
+                Schedule <span className="nav-chevron">▾</span>
+              </button>
+              <div className="nav-dropdown">
+                <button className="nav-drop-item" onClick={() => setPage('boxscores')}>Box Scores</button>
+                <button className="nav-drop-item" onClick={() => setPage('injuries')}>Injuries &amp; News</button>
+              </div>
+            </div>
+
+            <div className="nav-group">
+              <button className={`nav-btn nav-group-btn${['fantasy','adjustments'].includes(page) ? ' active' : ''}`}>
+                Fantasy <span className="nav-chevron">▾</span>
+              </button>
+              <div className="nav-dropdown">
+                <button className="nav-drop-item" onClick={() => setPage('fantasy')}>Dashboard</button>
+                {isAdmin && <button className="nav-drop-item" onClick={() => setPage('adjustments')}>Adjustments</button>}
+              </div>
+            </div>
+
             <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => setPage('blog')}>Blog</button>
-            {isAdmin && <button className={`nav-btn${page === 'adjustments' ? ' active' : ''}`} onClick={() => setPage('adjustments')}>Adjustments</button>}
           </nav>
+
           <div className="header-search-wrap" ref={searchRef}>
             <input
               className="header-search-input"
@@ -5497,12 +5521,23 @@ function AppMain({ onLogout, onOpenAccount }) {
               </ul>
             )}
           </div>
+
           <div className="nav-account">
             <button className="theme-toggle" onClick={() => setDark(d => !d)} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
               {dark ? '☀︎' : '☾'}
             </button>
-            <button className="acct-btn" onClick={onOpenAccount}>Account</button>
-            <button className="logout-btn" onClick={onLogout}>Sign out</button>
+            <div className="nav-group nav-avatar-group">
+              <button className="nav-avatar-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+              </button>
+              <div className="nav-dropdown nav-dropdown-right">
+                <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
+                <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
