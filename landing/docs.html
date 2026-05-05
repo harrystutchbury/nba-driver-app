@@ -1,0 +1,1683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How Roto Intel Works — Documentation</title>
+  <meta name="description" content="Complete guide to every feature in Roto Intel — rankings, projections, driver analysis, matchup tools and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0a0e1a;
+      --surface:     #141824;
+      --surface-2:   #1a2030;
+      --surface-3:   #1e2438;
+      --accent:      #00e676;
+      --accent-dim:  rgba(0,230,118,0.08);
+      --accent-mid:  rgba(0,230,118,0.18);
+      --text:        #ffffff;
+      --muted:       #8892a4;
+      --dim:         #3a4460;
+      --border:      #1e2740;
+      --border-2:    #252f48;
+      --red:         #ff4d6a;
+      --amber:       #ffb020;
+      --amber-dim:   rgba(255,176,32,0.10);
+      --nav-h:       60px;
+      --subnav-h:    52px;
+      --display:     'Syne', sans-serif;
+      --body:        'Space Grotesk', sans-serif;
+      --mono:        'DM Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 16px;
+      line-height: 1.65;
+      padding-top: calc(var(--nav-h) + var(--subnav-h));
+    }
+
+    /* ── MAIN NAV ─────────────────────────────────────────── */
+    .main-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--nav-h);
+      background: rgba(10,14,26,0.97);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 200;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--display);
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-logo span { font-size: 1.4rem; }
+
+    .nav-logo em {
+      color: var(--accent);
+      font-style: normal;
+    }
+
+    .nav-app-btn {
+      background: var(--accent);
+      color: #0a0e1a;
+      font-family: var(--body);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .nav-app-btn:hover { opacity: 0.85; }
+
+    /* ── SECTION NAV (sticky) ─────────────────────────────── */
+    .section-nav {
+      position: fixed;
+      top: var(--nav-h);
+      left: 0;
+      right: 0;
+      height: var(--subnav-h);
+      background: rgba(10,14,26,0.97);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      z-index: 190;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+    }
+
+    .section-nav-inner {
+      display: flex;
+      gap: 8px;
+      padding: 0 20px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      white-space: nowrap;
+      align-items: center;
+      height: 100%;
+    }
+
+    .section-nav-inner::-webkit-scrollbar { display: none; }
+
+    .sec-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: var(--body);
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      text-decoration: none;
+      transition: all 0.15s;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .sec-pill:hover {
+      color: var(--text);
+      border-color: var(--border-2);
+    }
+
+    .sec-pill.active {
+      background: var(--accent);
+      color: #0a0e1a;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── PAGE HEADER ──────────────────────────────────────── */
+    .page-header {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 72px 24px 56px;
+      text-align: center;
+    }
+
+    .page-header h1 {
+      font-family: var(--display);
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+
+    .page-header h1 em {
+      color: var(--accent);
+      font-style: normal;
+    }
+
+    .page-header p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto;
+    }
+
+    /* ── SECTIONS ─────────────────────────────────────────── */
+    .doc-section {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 64px 24px;
+      border-bottom: 1px solid var(--border);
+      scroll-margin-top: calc(var(--nav-h) + var(--subnav-h) + 20px);
+    }
+
+    .doc-section:last-of-type { border-bottom: none; }
+
+    .sec-header { margin-bottom: 36px; }
+
+    .sec-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .sec-title {
+      font-family: var(--display);
+      font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .sec-desc {
+      font-size: 1rem;
+      color: var(--accent);
+      opacity: 0.8;
+      font-weight: 500;
+    }
+
+    /* ── SUBSECTIONS ──────────────────────────────────────── */
+    .subsection { margin-bottom: 32px; }
+
+    .sub-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .subsection p {
+      color: #c4cdd8;
+      font-size: 0.97rem;
+      line-height: 1.75;
+    }
+
+    /* How to read — keyed list */
+    .read-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .read-list li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 0.95rem;
+      color: #c4cdd8;
+      line-height: 1.65;
+    }
+
+    .read-list li::before {
+      content: '—';
+      color: var(--dim);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* Pro tips list */
+    .tips-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tips-list li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 0.95rem;
+      color: #c4cdd8;
+      line-height: 1.65;
+    }
+
+    .tips-list li::before {
+      content: '●';
+      color: var(--accent);
+      flex-shrink: 0;
+      font-size: 0.55rem;
+      margin-top: 6px;
+    }
+
+    /* ── STEPS ────────────────────────────────────────────── */
+    .steps-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      position: relative;
+      padding-bottom: 24px;
+    }
+
+    .step-item:last-child { padding-bottom: 0; }
+
+    .step-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 36px;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 1px solid rgba(0,230,118,0.3);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-body {
+      padding-top: 5px;
+      flex: 1;
+    }
+
+    .step-body p {
+      color: #c4cdd8;
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    /* ── NOTE / TROUBLESHOOT CARDS ────────────────────────── */
+    .note-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 20px 20px 20px 22px;
+      margin-bottom: 16px;
+    }
+
+    .trouble-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--amber);
+      border-radius: 8px;
+      padding: 20px 20px 20px 22px;
+      margin-bottom: 16px;
+    }
+
+    .note-card-title, .trouble-card-title {
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .note-card-title { color: var(--accent); }
+    .trouble-card-title { color: var(--amber); }
+
+    .note-list, .trouble-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .note-list li, .trouble-list li {
+      font-size: 0.93rem;
+      color: #c4cdd8;
+      line-height: 1.65;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .note-list li::before {
+      content: '✓';
+      color: var(--accent);
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      margin-top: 2px;
+    }
+
+    .trouble-list li::before {
+      content: '!';
+      color: var(--amber);
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+
+    /* ── SCREENSHOT PLACEHOLDER ───────────────────────────── */
+    .screenshot-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 36px;
+    }
+
+    .sc-bar {
+      background: var(--surface-3);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sc-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .sc-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--dim);
+    }
+
+    .sc-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+
+    .sc-body {
+      padding: 28px 24px 24px;
+      min-height: 200px;
+      position: relative;
+    }
+
+    .sc-placeholder-text {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--dim);
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .sc-mock-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .sc-mock-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: var(--surface-2);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .sc-mock-rank {
+      color: var(--dim);
+      width: 20px;
+      flex-shrink: 0;
+    }
+
+    .sc-mock-name {
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .sc-mock-green { color: var(--accent); font-weight: 500; }
+    .sc-mock-red   { color: var(--red);    font-weight: 500; }
+    .sc-mock-num   { color: #c4cdd8; }
+    .sc-mock-badge {
+      font-size: 0.65rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: var(--body);
+    }
+    .sc-badge-mine   { background: rgba(0,230,118,0.12); color: var(--accent); }
+    .sc-badge-taken  { background: rgba(255,77,106,0.12); color: var(--red); }
+    .sc-badge-fa     { background: rgba(136,146,164,0.12); color: var(--muted); }
+
+    .sc-annotations {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      margin-top: 4px;
+    }
+
+    .sc-ann {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .sc-ann-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #0a0e1a;
+      font-size: 0.65rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Inline annotation in mock table */
+    .ann-marker {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #0a0e1a;
+      font-size: 0.6rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
+    /* ── Z-SCORE SCALE ────────────────────────────────────── */
+    .zscore-scale {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .zs-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    .zs-val {
+      width: 90px;
+      flex-shrink: 0;
+      font-weight: 500;
+    }
+
+    .zs-bar {
+      height: 6px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .zs-label { color: var(--muted); font-family: var(--body); font-size: 0.85rem; }
+
+    /* ── FAQ ──────────────────────────────────────────────── */
+    .faq-section {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 64px 24px 80px;
+      scroll-margin-top: calc(var(--nav-h) + var(--subnav-h) + 20px);
+    }
+
+    .faq-header { margin-bottom: 36px; }
+
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .faq-question {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 4px;
+      cursor: pointer;
+      user-select: none;
+      gap: 16px;
+    }
+
+    .faq-q-text {
+      font-size: 0.97rem;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .faq-chevron {
+      color: var(--accent);
+      font-size: 1rem;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+
+    .faq-item.open .faq-chevron { transform: rotate(180deg); }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .faq-answer-inner {
+      padding: 0 4px 20px;
+      color: var(--muted);
+      font-size: 0.93rem;
+      line-height: 1.75;
+    }
+
+    /* ── BACK TO TOP ──────────────────────────────────────── */
+    #back-to-top {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #0a0e1a;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px rgba(0,230,118,0.3);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 999;
+    }
+
+    #back-to-top.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #back-to-top:hover { opacity: 0.85; }
+
+    /* ── DIVIDER ──────────────────────────────────────────── */
+    .section-divider {
+      width: 40px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px;
+      margin: 0 auto 48px;
+      opacity: 0.4;
+    }
+
+    /* ── RESPONSIVE ───────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .main-nav { padding: 0 16px; }
+      .page-header { padding: 48px 16px 40px; }
+      .doc-section { padding: 48px 16px; }
+      .faq-section { padding: 48px 16px 64px; }
+      #back-to-top { bottom: 16px; right: 16px; }
+      .sc-mock-row { font-size: 0.7rem; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── MAIN NAV ─────────────────────────────────────────────── -->
+<nav class="main-nav">
+  <a class="nav-logo" href="index.html">
+    <span>🏀</span> Roto<em>Intel</em>
+  </a>
+  <a class="nav-app-btn" href="/">Back to App</a>
+</nav>
+
+<!-- ── SECTION NAV ──────────────────────────────────────────── -->
+<div class="section-nav">
+  <div class="section-nav-inner" id="section-nav-inner">
+    <a class="sec-pill" href="#getting-started">Getting Started</a>
+    <a class="sec-pill" href="#espn">Connecting ESPN</a>
+    <a class="sec-pill" href="#yahoo">Connecting Yahoo</a>
+    <a class="sec-pill" href="#z-scores">Z-Scores</a>
+    <a class="sec-pill" href="#rankings">Rankings</a>
+    <a class="sec-pill" href="#projections">Projections</a>
+    <a class="sec-pill" href="#driver-analysis">Driver Analysis</a>
+    <a class="sec-pill" href="#trending">Trending</a>
+    <a class="sec-pill" href="#matchup">Matchup</a>
+    <a class="sec-pill" href="#trade-analysis">Trade Analysis</a>
+    <a class="sec-pill" href="#schedule">Schedule</a>
+    <a class="sec-pill" href="#fantasy">Fantasy</a>
+    <a class="sec-pill" href="#box-scores">Box Scores</a>
+  </div>
+</div>
+
+<!-- ── PAGE HEADER ──────────────────────────────────────────── -->
+<header class="page-header">
+  <h1>How <em>Roto Intel</em> Works</h1>
+  <p>Everything you need to know to get the most out of your league analysis. Click any section to jump straight there.</p>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 1 — GETTING STARTED
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="getting-started">
+  <div class="sec-header">
+    <div class="sec-label">01 — Getting Started</div>
+    <h2 class="sec-title">Getting Started</h2>
+    <p class="sec-desc">Connect your league and get your edge in under two minutes.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Getting Started walks you through connecting your ESPN or Yahoo league to Roto Intel. Once connected, your roster, matchups, league settings and opponent data are all pulled in automatically — powering every tool on the platform.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>Connect your league from the Fantasy section — you'll need to authorise via ESPN or Yahoo OAuth. This is a one-time step.</li>
+      <li>Once connected, your Dashboard shows your current roster with ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) visible across the entire platform.</li>
+      <li>Your league's scoring settings are automatically detected and applied to all rankings and projections.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>If you run multiple leagues across ESPN and Yahoo, connect all of them — Roto Intel handles multiple leagues simultaneously.</li>
+      <li>Check your position eligibility settings after connecting — the platform pulls your exact league eligibility rules.</li>
+      <li>Bookmark the Dashboard as your daily entry point — it surfaces your most relevant data immediately.</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-card">
+    <div class="sc-bar">
+      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
+      <span class="sc-label">Dashboard — after connection</span>
+    </div>
+    <div class="sc-body">
+      <div class="sc-mock-rows">
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">1</span>
+          <span class="sc-mock-name">Nikola Jokić</span>
+          <span class="sc-mock-green">+4.12</span>
+          <span class="sc-mock-num">26.1</span>
+          <span class="sc-mock-num">12.8</span>
+          <span class="sc-mock-num">9.4</span>
+          <span class="sc-mock-badge sc-badge-mine">Mine <span class="ann-marker">1</span></span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">2</span>
+          <span class="sc-mock-name">Shai Gilgeous-Alexander</span>
+          <span class="sc-mock-green">+3.88</span>
+          <span class="sc-mock-num">31.2</span>
+          <span class="sc-mock-num">5.1</span>
+          <span class="sc-mock-num">6.3</span>
+          <span class="sc-mock-badge sc-badge-taken">Taken</span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">3</span>
+          <span class="sc-mock-name">Giannis Antetokounmpo</span>
+          <span class="sc-mock-green">+3.54</span>
+          <span class="sc-mock-num">29.8</span>
+          <span class="sc-mock-num">11.4</span>
+          <span class="sc-mock-num">5.7</span>
+          <span class="sc-mock-badge sc-badge-taken">Taken</span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">14</span>
+          <span class="sc-mock-name">Desmond Bane</span>
+          <span class="sc-mock-green">+1.22</span>
+          <span class="sc-mock-num">21.4</span>
+          <span class="sc-mock-num">4.2</span>
+          <span class="sc-mock-num">3.8</span>
+          <span class="sc-mock-badge sc-badge-fa">Free Agent <span class="ann-marker">2</span></span>
+        </div>
+      </div>
+      <div class="sc-annotations">
+        <div class="sc-ann"><span class="sc-ann-num">1</span><span>Ownership badge — <strong>Mine</strong> appears wherever you have a player on your roster</span></div>
+        <div class="sc-ann"><span class="sc-ann-num">2</span><span>Free Agent badge — available to pick up in your league, surfaced in context wherever you see rankings</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 2 — CONNECTING ESPN
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="espn">
+  <div class="sec-header">
+    <div class="sec-label">02 — ESPN</div>
+    <h2 class="sec-title">Connecting Your ESPN League</h2>
+    <p class="sec-desc">Step-by-step guide to linking your ESPN Fantasy Basketball league to Roto Intel.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Connecting your ESPN league gives Roto Intel access to your roster, matchup schedule, league settings, scoring format and opponent rosters. This powers the ownership badges, matchup projections, trade analysis and projected standings tools. The connection is read-only — Roto Intel cannot make changes to your league without your explicit instruction.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Step-by-step</div>
+    <ol class="steps-list">
+      <li class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-body"><p>Navigate to the <strong>Fantasy</strong> section in the top nav and click <strong>Connect League</strong>.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-body"><p>Select <strong>ESPN</strong> as your platform.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-body"><p>You'll be redirected to ESPN's login page. Enter your ESPN account credentials — the same ones you use to access your fantasy league.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">4</div>
+        <div class="step-body"><p>ESPN will ask you to authorise Roto Intel to access your fantasy data. Click <strong>Allow</strong>. This grants read access to your league information only.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">5</div>
+        <div class="step-body"><p>You'll be redirected back to Roto Intel. Select your league from the dropdown if you have multiple ESPN leagues.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">6</div>
+        <div class="step-body"><p>Roto Intel will sync your roster, matchup schedule and league settings. This takes 10–15 seconds.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">7</div>
+        <div class="step-body"><p>Once synced, ownership badges will appear across the platform and your Dashboard will populate with your team data.</p></div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Important notes</div>
+    <div class="note-card">
+      <div class="note-card-title">Notes</div>
+      <ul class="note-list">
+        <li>ESPN uses OAuth 2.0 for authentication — your ESPN password is never stored by or visible to Roto Intel.</li>
+        <li>If your ESPN league is private, the OAuth process handles access automatically — no additional steps required.</li>
+        <li>ESPN's expected return date for injured players is ingested automatically and applied to your projections.</li>
+        <li>If you manage multiple ESPN leagues, you can connect all of them and switch between them from the Dashboard.</li>
+        <li>Re-authorisation may be required at the start of each season when ESPN resets OAuth tokens.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Troubleshooting</div>
+    <div class="trouble-card">
+      <div class="trouble-card-title">Troubleshooting</div>
+      <ul class="trouble-list">
+        <li>League not appearing after connection? Make sure you're logged into the correct ESPN account that manages the league.</li>
+        <li>Ownership badges not showing? Try disconnecting and reconnecting your league from the Fantasy settings page.</li>
+        <li>Stats not updating? Check that your ESPN league is set to the current active season.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 3 — CONNECTING YAHOO
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="yahoo">
+  <div class="sec-header">
+    <div class="sec-label">03 — Yahoo</div>
+    <h2 class="sec-title">Connecting Your Yahoo League</h2>
+    <p class="sec-desc">Step-by-step guide to linking your Yahoo Fantasy Basketball league to Roto Intel.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Connecting your Yahoo league gives Roto Intel access to your roster, matchup data, league settings and opponent information. Yahoo's API provides particularly rich data including detailed position eligibility, which powers accurate lineup optimisation and matchup projections. As with ESPN, the connection is read-only by default.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Step-by-step</div>
+    <ol class="steps-list">
+      <li class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-body"><p>Navigate to the <strong>Fantasy</strong> section in the top nav and click <strong>Connect League</strong>.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-body"><p>Select <strong>Yahoo</strong> as your platform.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-body"><p>You'll be redirected to Yahoo's login page. Enter your Yahoo account credentials.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">4</div>
+        <div class="step-body"><p>Yahoo will display an authorisation screen listing the data Roto Intel is requesting access to — this includes your fantasy league data, roster information and matchup schedule. Click <strong>Agree</strong>.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">5</div>
+        <div class="step-body"><p>You'll be redirected back to Roto Intel. If you have multiple Yahoo leagues, select the one you want to connect from the dropdown.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">6</div>
+        <div class="step-body"><p>Roto Intel will sync your league data. Yahoo sync typically completes in under 15 seconds.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">7</div>
+        <div class="step-body"><p>Your Dashboard will populate with your Yahoo roster and ownership badges will appear across the platform.</p></div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Important notes</div>
+    <div class="note-card">
+      <div class="note-card-title">Notes</div>
+      <ul class="note-list">
+        <li>Yahoo uses OAuth 2.0 — your Yahoo password is never stored by Roto Intel.</li>
+        <li>Yahoo provides more granular position eligibility data than ESPN — this is automatically applied to lineup optimisation and matchup projections.</li>
+        <li>Yahoo tokens expire after a set period. If your data stops updating, simply reconnect your league from the Fantasy settings page — it takes under 30 seconds.</li>
+        <li>Yahoo leagues with custom scoring settings are fully supported — your league's specific category weights are applied automatically.</li>
+        <li>Both public and private Yahoo leagues are supported.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Troubleshooting</div>
+    <div class="trouble-card">
+      <div class="trouble-card-title">Troubleshooting</div>
+      <ul class="trouble-list">
+        <li>Token expired error? Go to Fantasy settings and click <strong>Reconnect Yahoo League</strong> to refresh your authorisation.</li>
+        <li>Wrong league appearing? Disconnect and reconnect, making sure to select the correct league from the dropdown.</li>
+        <li>Custom scoring categories not appearing correctly? Contact support — some non-standard Yahoo scoring configurations require manual mapping.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 4 — Z-SCORES
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="z-scores">
+  <div class="sec-header">
+    <div class="sec-label">04 — Z-Scores</div>
+    <h2 class="sec-title">Understanding Z-Scores</h2>
+    <p class="sec-desc">The statistical foundation behind every ranking and projection on the platform.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Z-scores are how Roto Intel measures how good a player's stats are relative to the entire player pool. Rather than saying "LeBron averages 7 assists" — which tells you nothing without context — a z-score tells you how many standard deviations above or below average that figure is. A z-score of +2.0 means elite. A z-score of −1.0 means below average. Zero is exactly average.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <div class="zscore-scale">
+      <div class="zs-row">
+        <span class="zs-val" style="color:#00e676">+2.0 and above</span>
+        <div class="zs-bar" style="width:120px;background:linear-gradient(90deg,rgba(0,230,118,0.4),rgba(0,230,118,0.9))"></div>
+        <span class="zs-label">Elite — top tier fantasy contributor</span>
+      </div>
+      <div class="zs-row">
+        <span class="zs-val" style="color:#4dff99">+0.5 to +2.0</span>
+        <div class="zs-bar" style="width:80px;background:rgba(0,230,118,0.5)"></div>
+        <span class="zs-label">Above average — meaningful positive contributor</span>
+      </div>
+      <div class="zs-row">
+        <span class="zs-val" style="color:#8892a4">−0.5 to +0.5</span>
+        <div class="zs-bar" style="width:40px;background:var(--dim)"></div>
+        <span class="zs-label">Average — roughly replacement level</span>
+      </div>
+      <div class="zs-row">
+        <span class="zs-val" style="color:#ff8099">−0.5 to −2.0</span>
+        <div class="zs-bar" style="width:80px;background:rgba(255,77,106,0.5)"></div>
+        <span class="zs-label">Below average — drag on your roster</span>
+      </div>
+      <div class="zs-row">
+        <span class="zs-val" style="color:#ff4d6a">Below −2.0</span>
+        <div class="zs-bar" style="width:120px;background:linear-gradient(90deg,rgba(255,77,106,0.4),rgba(255,77,106,0.9))"></div>
+        <span class="zs-label">Significant liability — actively hurts you</span>
+      </div>
+    </div>
+    <p style="margin-top:18px;font-size:0.9rem;color:var(--muted)">The <strong style="color:var(--text)">composite z-score</strong> sums all nine category z-scores into a single value representing overall fantasy value.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Z-scores are most useful for comparison — use them to evaluate trade offers and waiver wire decisions rather than in isolation.</li>
+      <li>A player with a very negative z-score in one category (like FT%) can still be highly valuable if they dominate other categories.</li>
+      <li>Z-scores are calculated relative to the current player pool — they shift slightly as players get injured or role changes occur across the league.</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-card">
+    <div class="sc-bar">
+      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
+      <span class="sc-label">Rankings — category z-score breakdown</span>
+    </div>
+    <div class="sc-body">
+      <div class="sc-mock-rows">
+        <div class="sc-mock-row" style="background:var(--surface-3);font-size:0.68rem;color:var(--muted)">
+          <span style="width:20px"></span>
+          <span style="flex:1">Player</span>
+          <span style="color:var(--accent)">Value <span class="ann-marker">1</span></span>
+          <span>PTS</span><span>REB</span><span>AST</span><span>STL</span><span>BLK</span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">1</span>
+          <span class="sc-mock-name">N. Jokić</span>
+          <span class="sc-mock-green">+4.12 <span class="ann-marker">2</span></span>
+          <span class="sc-mock-green">+2.1</span>
+          <span class="sc-mock-green">+3.8</span>
+          <span class="sc-mock-green">+2.9</span>
+          <span class="sc-mock-num">+0.4</span>
+          <span class="sc-mock-num">+0.8</span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">5</span>
+          <span class="sc-mock-name">R. Gobert</span>
+          <span class="sc-mock-green">+2.31</span>
+          <span class="sc-mock-red">-1.2</span>
+          <span class="sc-mock-green">+3.1</span>
+          <span class="sc-mock-num">-0.3</span>
+          <span class="sc-mock-num">+0.2</span>
+          <span class="sc-mock-green">+3.4 <span class="ann-marker">3</span></span>
+        </div>
+      </div>
+      <div class="sc-annotations">
+        <div class="sc-ann"><span class="sc-ann-num">1</span><span>Composite z-score column — single number representing overall fantasy value across all 9 categories</span></div>
+        <div class="sc-ann"><span class="sc-ann-num">2</span><span>Green z-scores indicate above-average performance in that category relative to all NBA players</span></div>
+        <div class="sc-ann"><span class="sc-ann-num">3</span><span>A high z-score in one category (BLK +3.4) can offset weakness elsewhere — punting strategy made visible</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 5 — RANKINGS
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="rankings">
+  <div class="sec-header">
+    <div class="sec-label">05 — Rankings</div>
+    <h2 class="sec-title">Rankings</h2>
+    <p class="sec-desc">The definitive view of every player's fantasy value right now.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Rankings page ranks every NBA player by their composite z-score across all nine fantasy categories. Filter by position, time period (Full Season, Last 30, Last 14) and toggle between per game and totals views. Use it to find undervalued players, evaluate trade targets and identify streamers.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>The <strong>Value</strong> column is the composite z-score — your single best measure of overall fantasy worth.</li>
+      <li>Each category shows the raw average alongside its individual z-score in smaller text — green means above average, red means below.</li>
+      <li>The period selector changes which window the z-scores are calculated from — Last 14 Days surfaces recent form, Full Season smooths out variance.</li>
+      <li>The punt category toggle removes selected categories from the z-score calculation — use this if your team strategy involves punting FT% or turnovers.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Switch to Last 14 Days on Monday when setting your lineup — it surfaces who is hot right now rather than season-long averages.</li>
+      <li>Use the free agent filter combined with your punt category settings to find the best available pickup for your specific team needs.</li>
+      <li>Sort by individual categories to find streamers — e.g. sort by STL z-score filtered to free agents to find a steals streamer for the week.</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-card">
+    <div class="sc-bar">
+      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
+      <span class="sc-label">Rankings — Last 14 Days, Free Agents only</span>
+    </div>
+    <div class="sc-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="background:var(--accent);color:#0a0e1a;font-size:0.72rem;font-weight:600;padding:5px 12px;border-radius:6px">Last 14 Days <span class="ann-marker">1</span></span>
+        <span style="background:var(--surface-2);color:var(--muted);font-size:0.72rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border)">Full Season</span>
+        <span style="background:var(--surface-2);color:var(--muted);font-size:0.72rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border)">Last 30</span>
+        <span style="background:var(--surface-2);color:var(--accent);font-size:0.72rem;padding:5px 12px;border-radius:6px;border:1px solid rgba(0,230,118,0.3)">FA Only <span class="ann-marker">2</span></span>
+      </div>
+      <div class="sc-mock-rows">
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">1</span>
+          <span class="sc-mock-name">A. Nembhard</span>
+          <span class="sc-mock-green">+2.84</span>
+          <span class="sc-mock-num">18.4</span>
+          <span class="sc-mock-green">+1.2</span>
+          <span class="sc-mock-green">+2.8</span>
+          <span class="sc-mock-badge sc-badge-fa">Free Agent</span>
+        </div>
+        <div class="sc-mock-row">
+          <span class="sc-mock-rank">2</span>
+          <span class="sc-mock-name">B. Hield</span>
+          <span class="sc-mock-green">+2.11</span>
+          <span class="sc-mock-num">14.2</span>
+          <span class="sc-mock-num">+0.4</span>
+          <span class="sc-mock-green">+1.9</span>
+          <span class="sc-mock-badge sc-badge-fa">Free Agent</span>
+        </div>
+      </div>
+      <div class="sc-annotations">
+        <div class="sc-ann"><span class="sc-ann-num">1</span><span>Period toggle — switch between Full Season, Last 30, Last 14 to surface recent form or season-long value</span></div>
+        <div class="sc-ann"><span class="sc-ann-num">2</span><span>FA Only filter — narrows the list to players available in your league, making waiver decisions instant</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 6 — PROJECTIONS
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="projections">
+  <div class="sec-header">
+    <div class="sec-label">06 — Projections</div>
+    <h2 class="sec-title">Projections</h2>
+    <p class="sec-desc">Forward-looking stat estimates for every player across any time horizon.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Projections page shows estimated stats for every player over a customisable future period. Unlike season averages which look backward, projections account for current role, minutes trends, upcoming schedule difficulty and injury status. Use it to evaluate rest-of-season value, identify players whose role is changing and make smarter waiver wire decisions.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>The projection figure is the central estimate — our best single guess at what a player will produce.</li>
+      <li>The confidence band shows the realistic range of outcomes. A tight band means a consistent player. A wide band means high variance.</li>
+      <li>Green projected figures indicate the player is projected above their season average. Red indicates a projected decline.</li>
+      <li>The minutes slider on the player page lets you adjust projected minutes to model role changes — all downstream stats update automatically.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Filter by free agents and sort by projected value over the next 14 days to find the best waiver wire pickups before your opponents do.</li>
+      <li>Use the confidence band to distinguish between a safe floor play and a boom/bust option.</li>
+      <li>When a player returns from injury, manually adjust their minutes projection to model a gradual return to full workload.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 7 — DRIVER ANALYSIS
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="driver-analysis">
+  <div class="sec-header">
+    <div class="sec-label">07 — Driver Analysis</div>
+    <h2 class="sec-title">Driver Analysis</h2>
+    <p class="sec-desc">Understand exactly why a player's stats have changed — not just that they have.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Driver Analysis is Roto Intel's most distinctive feature. When a player's stats shift between two periods, it decomposes the change into its root causes: genuine skill rate change, role and usage change, pace of play, and schedule difficulty. It answers the question every serious fantasy player asks — <em>is this real or noise?</em></p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li><strong>Baseline</strong> — the player's starting stat level in the comparison period.</li>
+      <li><strong>Rate Change</strong> — change in the underlying skill rate. A negative rate change means genuine performance decline — this is the most important driver.</li>
+      <li><strong>Role</strong> — change attributable to minutes or usage. A positive role contribution means more opportunity, not necessarily better performance.</li>
+      <li><strong>Pace</strong> — external factor from team pace of play changes. Usually small.</li>
+      <li><strong>Comparison</strong> — the final projected stat after all drivers are applied.</li>
+      <li>Green bars are positive contributors, red bars are negative.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>A player whose stats have dropped but whose rate change is flat or positive is a <strong>buy</strong> — the decline is opportunity-driven and may reverse.</li>
+      <li>A player with a big positive rate change is genuinely performing better — trust the projections more.</li>
+      <li>Use the preset buttons (Pre/Post All-Star, First Half vs Second Half) for quick analysis without setting custom date ranges.</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-card">
+    <div class="sc-bar">
+      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
+      <span class="sc-label">Driver Analysis — Points decomposition</span>
+    </div>
+    <div class="sc-body">
+      <div style="margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);width:100px">Baseline</span>
+          <div style="flex:1;background:var(--surface-2);border-radius:4px;height:28px;display:flex;align-items:center;padding:0 10px">
+            <span style="font-family:var(--mono);font-size:0.82rem;color:var(--text)">24.8 pts</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);width:100px">Rate Change <span class="ann-marker">1</span></span>
+          <div style="flex:1;background:var(--surface-2);border-radius:4px;height:28px;position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:60%;background:rgba(0,230,118,0.2);border-right:2px solid var(--accent)"></div>
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:0.82rem;color:var(--accent)">+2.1</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);width:100px">Role <span class="ann-marker">2</span></span>
+          <div style="flex:1;background:var(--surface-2);border-radius:4px;height:28px;position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:25%;background:rgba(255,77,106,0.2);border-right:2px solid var(--red)"></div>
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:0.82rem;color:var(--red)">-0.8</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);width:100px">Pace</span>
+          <div style="flex:1;background:var(--surface-2);border-radius:4px;height:28px;position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:8%;background:rgba(255,77,106,0.2);border-right:2px solid var(--red)"></div>
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:0.82rem;color:var(--red)">-0.2</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);width:100px">Projection</span>
+          <div style="flex:1;background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.2);border-radius:4px;height:28px;display:flex;align-items:center;padding:0 10px">
+            <span style="font-family:var(--mono);font-size:0.82rem;color:var(--accent);font-weight:500">25.9 pts</span>
+          </div>
+        </div>
+      </div>
+      <div class="sc-annotations">
+        <div class="sc-ann"><span class="sc-ann-num">1</span><span><strong>Rate Change +2.1</strong> — the player is genuinely scoring more efficiently. This is the most signal-rich driver.</span></div>
+        <div class="sc-ann"><span class="sc-ann-num">2</span><span><strong>Role −0.8</strong> — minutes have dipped slightly. The rate improvement more than offsets the opportunity loss.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 8 — TRENDING
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="trending">
+  <div class="sec-header">
+    <div class="sec-label">08 — Trending</div>
+    <h2 class="sec-title">Trending Players</h2>
+    <p class="sec-desc">Who's rising and falling across every category right now.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>Trending player cards surface players whose stats are meaningfully moving relative to their season baseline. Each card shows the primary driver of the trend, the magnitude of change, and schedule ease for the coming week. Use it daily to catch role changes early and find waiver wire value before your opponents.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>The headline figure shows the primary stat change driving the trend.</li>
+      <li>The <strong>driver tag</strong> (rate change, role, pace) tells you why the trend is happening — a role-driven trend is less reliable than a rate change-driven one.</li>
+      <li>Schedule ease indicator shows how favourable the player's upcoming schedule is.</li>
+      <li>Minutes and usage change are surfaced prominently — these are the leading indicators of fantasy value change.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Check trending cards on waiver wire day — role changes in the last 3–5 games often haven't been priced in by your opponents yet.</li>
+      <li>Cross-reference trending up players with the free agent filter — the most actionable cards are trending up players still available in your league.</li>
+      <li>Be cautious of rate-change driven trending down cards — these represent genuine performance decline and are more persistent than pace or role-driven drops.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 9 — MATCHUP
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="matchup">
+  <div class="sec-header">
+    <div class="sec-label">09 — Matchup</div>
+    <h2 class="sec-title">Matchup Projection</h2>
+    <p class="sec-desc">Your weekly matchup, projected category by category with win probabilities.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Matchup Projection tool shows how your roster is projected to perform against your opponent this week across all nine categories. Rather than just projecting totals, it runs thousands of simulations to give you a win probability for each category — accounting for variance, games remaining, and player availability.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>Each category shows a win probability percentage. Above 60% is a likely win. Below 40% is a likely loss. 40–60% is a coin flip.</li>
+      <li>High-variance categories like STL and BLK will have wider probability bands than consistent categories like PTS and REB.</li>
+      <li>The what-if engine lets you swap players in and out — add a free agent to your roster and all nine category probabilities update instantly.</li>
+      <li>If you're mid-matchup, the tool ingests stats already accumulated and projects only the remaining games.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Focus your waiver wire moves on categories where your win probability is between 35–55% — these are winnable with the right addition.</li>
+      <li>Use the what-if engine before making any pickup — confirm the player actually improves your net matchup outcome.</li>
+      <li>Check back mid-week — the mid-matchup state update gives you a live read on whether you need to make emergency moves.</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-card">
+    <div class="sc-bar">
+      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
+      <span class="sc-label">Matchup Projection — Week 18</span>
+    </div>
+    <div class="sc-body">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">PTS</div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--accent)">71%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Likely W</div>
+        </div>
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">REB</div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--accent)">64%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Likely W</div>
+        </div>
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">STL <span class="ann-marker">1</span></div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--amber)">48%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Coin flip</div>
+        </div>
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">AST</div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--red)">34%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Likely L</div>
+        </div>
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">FT%</div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--accent)">68%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Likely W</div>
+        </div>
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);margin-bottom:4px">3PM</div>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--amber)">52%</div>
+          <div style="font-family:var(--mono);font-size:0.62rem;color:var(--dim)">Coin flip</div>
+        </div>
+      </div>
+      <div class="sc-annotations">
+        <div class="sc-ann"><span class="sc-ann-num">1</span><span>48% STL win probability — a coin flip category, exactly where a targeted waiver add can swing the matchup</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 10 — TRADE ANALYSIS
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="trade-analysis">
+  <div class="sec-header">
+    <div class="sec-label">10 — Trade Analysis</div>
+    <h2 class="sec-title">Trade Analysis</h2>
+    <p class="sec-desc">Know exactly what you're getting and giving up in any trade.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Trade Analysis tool evaluates any proposed trade by calculating the net z-score change to your roster across all nine categories. See how the trade affects your category rankings against every opponent in your league, and whether it improves your projected standings position.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>The category table shows your z-score for each stat before and after the trade — green means improvement, red means decline.</li>
+      <li>The VS Each Opponent view shows your projected category win/loss record against every team post-trade.</li>
+      <li>Net value change is the composite z-score delta — positive means the trade improves your overall roster.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Filter the analysis by your punt categories — a trade that hurts your FT% is irrelevant if you're punting FT%.</li>
+      <li>Use the VS Each Opponent view to find trades that improve your record against your playoff opponents specifically.</li>
+      <li>Run the analysis both ways — check what the trade looks like from your trade partner's perspective.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 11 — SCHEDULE
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="schedule">
+  <div class="sec-header">
+    <div class="sec-label">11 — Schedule</div>
+    <h2 class="sec-title">Schedule Grid</h2>
+    <p class="sec-desc">Every team's schedule at a glance, with ease ratings and fantasy week breakdown.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Schedule Grid shows every NBA team's upcoming games across the fantasy season. Colour coding indicates opponent ease based on points allowed. Use it to plan streaming decisions, time waiver wire pickups and identify which teams have the most favourable fantasy playoff schedules.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>Green cells indicate games against opponents who allow above-average stats — easier matchups for fantasy.</li>
+      <li>Red cells indicate games against strong defensive opponents.</li>
+      <li>The games played count per week is shown for each team — prioritise teams with 4+ game weeks.</li>
+      <li>The Weekly Schedule view breaks down each week day-by-day — teams as rows, Monday through Sunday as columns, with home/away indicator.</li>
+      <li>Fantasy playoff weeks are highlighted separately so you can plan ahead.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Target players with 4+ game weeks during your fantasy playoffs — games played is the highest-leverage schedule variable.</li>
+      <li>Use the weekly view to identify back-to-back games and plan around rest risks.</li>
+      <li>Cross-reference the schedule grid with trending cards — a trending up player with three easy matchups is your priority add.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 12 — FANTASY DASHBOARD
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="fantasy">
+  <div class="sec-header">
+    <div class="sec-label">12 — Fantasy</div>
+    <h2 class="sec-title">Fantasy Dashboard</h2>
+    <p class="sec-desc">Your league, your roster and your matchup in one place.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Fantasy Dashboard is your personalised command centre once your ESPN or Yahoo league is connected. It surfaces your current roster with live ownership badges, your active matchup projection, your league standings, and recommended actions based on your specific team needs.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>Ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) appear across the entire platform once your league is connected.</li>
+      <li>The active matchup widget shows your current week's win probabilities at a glance.</li>
+      <li>Active vs Out status is pulled directly from your ESPN or Yahoo league in real time.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Set the Dashboard as your daily bookmark — it's the fastest entry point into your team-specific data.</li>
+      <li>Connect multiple leagues if you play in more than one — the platform handles all of them simultaneously.</li>
+      <li>The projected standings widget updates as you make roster changes, giving you a real-time read on your season trajectory.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 13 — BOX SCORES
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="box-scores">
+  <div class="sec-header">
+    <div class="sec-label">13 — Box Scores</div>
+    <h2 class="sec-title">Box Scores</h2>
+    <p class="sec-desc">Live in-game stats updated in real time throughout the NBA day.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>The Box Scores page shows live stats for every game happening tonight, updating in real time. Track your players' performance against their projected lines and stay across injury news as it happens during games.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>Stats update automatically during live games — no need to refresh the page.</li>
+      <li>Player positions are shown alongside names for quick reference.</li>
+      <li>The page defaults to US Eastern time — all game times shown in ET.</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Pro tips</div>
+    <ul class="tips-list">
+      <li>Keep the Box Scores tab open on game nights — it updates automatically so you always have the latest.</li>
+      <li>Monitor minutes closely in the first few games after an injury — role changes show up in box scores before they show up in season averages.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     FAQ
+═════════════════════════════════════════════════════════════ -->
+<section class="faq-section" id="faq">
+  <div class="faq-header">
+    <div class="sec-label">FAQ</div>
+    <h2 class="sec-title">Frequently Asked Questions</h2>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">How do I connect my ESPN or Yahoo league?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">See the <a href="#espn" style="color:var(--accent)">Connecting Your ESPN League</a> and <a href="#yahoo" style="color:var(--accent)">Connecting Your Yahoo League</a> sections above for full step-by-step instructions. The process takes under two minutes for both platforms.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">Does Roto Intel work for both ESPN and Yahoo leagues?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">Yes — both platforms are fully supported. If you play in leagues on both platforms you can connect all of them simultaneously.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">What scoring formats are supported?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">Roto Intel currently supports 9-category head-to-head and rotisserie formats on both ESPN and Yahoo.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">How often is data updated?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">Player stats and injury news update in real time during games. Projections and rankings recalculate nightly. Box scores update automatically during live games via a persistent connection to the server.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">What does a z-score actually mean?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">See the <a href="#z-scores" style="color:var(--accent)">Understanding Z-Scores</a> section above — we've written a full explainer there.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">Is my league data private?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">Yes. Your league data is only used to personalise your Roto Intel experience and is never shared with other users or third parties.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">What's included in the free tier?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">The free tier includes player rankings, projections, Driver Analysis, trending player cards, and box scores. League sync, matchup projection, trade analysis and the schedule grid require a Pro or Elite subscription.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">Do I need to reconnect my league each season?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">ESPN OAuth tokens reset at the start of each season and will require reauthorisation. Yahoo tokens expire periodically and may need refreshing mid-season. Both take under 30 seconds to reconnect.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">Can I connect a private league?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">Yes — both ESPN and Yahoo private leagues are fully supported through the OAuth authentication process.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-question">
+      <span class="faq-q-text">What happens if I change my ESPN or Yahoo password?</span>
+      <span class="faq-chevron">▾</span>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-answer-inner">You'll need to reconnect your league from the Fantasy settings page after a password change. The OAuth token will have been invalidated.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── BACK TO TOP ─────────────────────────────────────────── -->
+<button id="back-to-top" title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+  /* ── Section nav: IntersectionObserver ─────────────────── */
+  const pills    = document.querySelectorAll('.sec-pill');
+  const sections = document.querySelectorAll('section[id]');
+  const navInner = document.getElementById('section-nav-inner');
+
+  function activatePill(id) {
+    pills.forEach(p => {
+      const isActive = p.getAttribute('href') === '#' + id;
+      p.classList.toggle('active', isActive);
+      if (isActive) {
+        p.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    });
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) activatePill(entry.target.id);
+    });
+  }, {
+    rootMargin: '-10% 0px -80% 0px',
+    threshold: 0
+  });
+
+  sections.forEach(s => observer.observe(s));
+
+  /* ── Smooth scroll on pill click ───────────────────────── */
+  pills.forEach(pill => {
+    pill.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(pill.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  /* ── FAQ accordion ─────────────────────────────────────── */
+  document.querySelectorAll('.faq-question').forEach(q => {
+    q.addEventListener('click', () => {
+      const item   = q.closest('.faq-item');
+      const answer = item.querySelector('.faq-answer');
+      const isOpen = item.classList.contains('open');
+
+      document.querySelectorAll('.faq-item.open').forEach(i => {
+        i.classList.remove('open');
+        i.querySelector('.faq-answer').style.maxHeight = '0';
+      });
+
+      if (!isOpen) {
+        item.classList.add('open');
+        answer.style.maxHeight = answer.scrollHeight + 'px';
+      }
+    });
+  });
+
+  /* ── Back to top visibility ────────────────────────────── */
+  const btt = document.getElementById('back-to-top');
+  window.addEventListener('scroll', () => {
+    btt.classList.toggle('visible', window.scrollY > 400);
+  }, { passive: true });
+</script>
+</body>
+</html>
