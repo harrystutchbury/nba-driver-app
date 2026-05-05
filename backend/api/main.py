@@ -6012,55 +6012,64 @@ def mod_get_comments(
     tab: str = Query("all"),
     current_user: str = Depends(get_current_user),
 ):
+    import traceback
     conn = get_conn()
-    if not _is_admin(current_user, conn):
-        conn.close()
-        raise HTTPException(status_code=403, detail="Admin only")
+    try:
+        if not _is_admin(current_user, conn):
+            conn.close()
+            raise HTTPException(status_code=403, detail="Admin only")
 
-    # Ensure columns exist (DROP NOT NULL constraint for older SQLite compat)
-    for _tbl in ("comments", "blog_comments"):
+        # Ensure columns exist
+        for _tbl in ("comments", "blog_comments"):
+            try:
+                conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER DEFAULT 0")
+                conn.commit()
+            except Exception:
+                pass  # column already exists
         try:
-            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER DEFAULT 0")
+            conn.execute("CREATE TABLE IF NOT EXISTS blocked_words (word TEXT PRIMARY KEY, added_at TEXT DEFAULT (datetime('now')))")
             conn.commit()
         except Exception:
-            pass  # column already exists
-    try:
-        conn.execute("CREATE TABLE IF NOT EXISTS blocked_words (word TEXT PRIMARY KEY, added_at TEXT DEFAULT (datetime('now')))")
-        conn.commit()
-    except Exception:
-        pass
+            pass
 
-    hidden_filter_player = "WHERE COALESCE(c.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
-    hidden_filter_blog   = "WHERE COALESCE(bc.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
+        hidden_filter_player = "WHERE COALESCE(c.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
+        hidden_filter_blog   = "WHERE COALESCE(bc.is_hidden,0) = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
 
-    rows = conn.execute(f"""
-        SELECT c.id, c.body, c.created_at,
-               COALESCE(c.is_hidden, 0) AS is_hidden,
-               COALESCE(u.display_name, c.username) AS author,
-               c.username,
-               c.player_slug AS context_slug,
-               NULL AS post_title,
-               'player' AS comment_type
-        FROM comments c
-        LEFT JOIN users u ON u.username = c.username
-        {hidden_filter_player}
-        UNION ALL
-        SELECT bc.id, bc.body, bc.created_at,
-               COALESCE(bc.is_hidden, 0) AS is_hidden,
-               COALESCE(u.display_name, bc.username) AS author,
-               bc.username,
-               NULL AS context_slug,
-               bp.title AS post_title,
-               'blog' AS comment_type
-        FROM blog_comments bc
-        LEFT JOIN users u ON u.username = bc.username
-        LEFT JOIN blog_posts bp ON bp.id = bc.post_id
-        {hidden_filter_blog}
-        ORDER BY created_at DESC
-        LIMIT 200
-    """).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+        rows = conn.execute(f"""
+            SELECT c.id, c.body, c.created_at,
+                   COALESCE(c.is_hidden, 0) AS is_hidden,
+                   COALESCE(u.display_name, c.username) AS author,
+                   c.username,
+                   c.player_slug AS context_slug,
+                   NULL AS post_title,
+                   'player' AS comment_type
+            FROM comments c
+            LEFT JOIN users u ON u.username = c.username
+            {hidden_filter_player}
+            UNION ALL
+            SELECT bc.id, bc.body, bc.created_at,
+                   COALESCE(bc.is_hidden, 0) AS is_hidden,
+                   COALESCE(u.display_name, bc.username) AS author,
+                   bc.username,
+                   NULL AS context_slug,
+                   bp.title AS post_title,
+                   'blog' AS comment_type
+            FROM blog_comments bc
+            LEFT JOIN users u ON u.username = bc.username
+            LEFT JOIN blog_posts bp ON bp.id = bc.post_id
+            {hidden_filter_blog}
+            ORDER BY created_at DESC
+            LIMIT 200
+        """).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        tb = traceback.format_exc()
+        print(f"[moderation] ERROR: {e}\n{tb}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/admin/moderation/comments/{comment_id}/hide")
