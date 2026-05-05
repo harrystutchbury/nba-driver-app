@@ -18,3 +18,13 @@ services:
         value: /data/models
       - key: JWT_SECRET
         generateValue: true
+
+  - type: web
+    name: roto-intel-landing
+    runtime: static
+    rootDir: landing
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache

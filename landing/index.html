@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roto Intel — Fantasy Basketball Analytics</title>
+  <meta name="description" content="Real-time matchup projections, variance-adjusted win probabilities, and instant roster analysis for serious fantasy basketball players.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0a0e1a;
+      --surface:    #141824;
+      --surface-2:  #1a2030;
+      --surface-3:  #1e2438;
+      --accent:     #00e676;
+      --accent-dim: rgba(0,230,118,0.08);
+      --accent-glow: rgba(0,230,118,0.15);
+      --text:       #ffffff;
+      --muted:      #8892a4;
+      --dim:        #3a4460;
+      --border:     #1e2740;
+      --border-2:   #252f48;
+      --red:        #ff4d6a;
+      --display:    'Syne', sans-serif;
+      --body:       'Space Grotesk', sans-serif;
+      --mono:       'DM Mono', monospace;
+      --radius:     10px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: rgba(10,14,26,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 40px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 40px;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .nav-logo-icon { font-size: 24px; line-height: 1; }
+    .nav-logo-text {
+      font-family: var(--display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex: 1;
+    }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 20px;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s, transform 0.15s;
+      flex-shrink: 0;
+    }
+    .nav-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      margin-left: auto;
+    }
+    .hamburger span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--muted);
+      border-radius: 2px;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .mobile-menu {
+      display: none;
+      position: fixed;
+      top: 64px; left: 0; right: 0; bottom: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      flex-direction: column;
+      padding: 32px 40px;
+      gap: 24px;
+      z-index: 99;
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      color: var(--text);
+      text-decoration: none;
+      font-size: 20px;
+      font-family: var(--display);
+      font-weight: 600;
+    }
+    .mobile-menu .nav-cta { width: fit-content; font-size: 15px; padding: 12px 28px; }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 40px 80px;
+      overflow: hidden;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,230,118,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,230,118,0.04) 1px, transparent 1px);
+      background-size: 56px 56px;
+      animation: grid-drift 24s linear infinite;
+    }
+
+    .hero-vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 20%, var(--bg) 100%);
+    }
+
+    @keyframes grid-drift {
+      from { transform: translateY(0); }
+      to   { transform: translateY(56px); }
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 820px;
+    }
+
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .hero-headline {
+      font-family: var(--display);
+      font-size: clamp(42px, 7vw, 84px);
+      font-weight: 800;
+      line-height: 1.0;
+      letter-spacing: -2px;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+
+    .hero-headline em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 19px);
+      font-weight: 400;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 620px;
+      margin: 0 auto 40px;
+    }
+
+    .hero-ctas {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 56px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 14px 28px;
+      font-family: var(--body);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 24px rgba(0,230,118,0.25);
+    }
+    .btn-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 32px rgba(0,230,118,0.35);
+    }
+
+    .btn-ghost {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.15s;
+    }
+    .btn-ghost:hover { color: var(--text); }
+
+    /* ── TICKER ── */
+    .ticker-section {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 56px;
+    }
+
+    .ticker-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--dim);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+
+    .ticker-wrap {
+      position: relative;
+      overflow: hidden;
+    }
+    .ticker-wrap::before,
+    .ticker-wrap::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 80px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .ticker-wrap::before { left: 0; background: linear-gradient(to right, var(--bg), transparent); }
+    .ticker-wrap::after  { right: 0; background: linear-gradient(to left,  var(--bg), transparent); }
+
+    .ticker-track {
+      display: flex;
+      gap: 10px;
+      animation: ticker-scroll 32s linear infinite;
+      width: max-content;
+    }
+    .ticker-wrap:hover .ticker-track { animation-play-state: paused; }
+
+    @keyframes ticker-scroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    .ticker-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .ticker-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .ticker-team {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .ticker-dir {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .ticker-dir.up   { color: var(--accent); }
+    .ticker-dir.down { color: var(--red); }
+    .ticker-driver {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      padding: 2px 8px;
+      background: var(--surface-2);
+      border-radius: 4px;
+    }
+
+    /* ── MOCK UI ── */
+    .mock-ui {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 900px;
+      background: var(--surface);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.04);
+    }
+
+    .mock-bar {
+      background: var(--surface-3);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mock-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .mock-dot:nth-child(1) { background: #ff5f57; }
+    .mock-dot:nth-child(2) { background: #febc2e; }
+    .mock-dot:nth-child(3) { background: #28c840; }
+    .mock-url {
+      flex: 1;
+      background: var(--bg);
+      border-radius: 5px;
+      padding: 4px 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--dim);
+      margin: 0 16px;
+    }
+
+    .mock-body {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+    }
+
+    .mock-left {
+      border-right: 1px solid var(--border);
+      padding: 20px;
+    }
+
+    .mock-section-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      color: var(--dim);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .mock-matchup-title {
+      font-family: var(--display);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .mock-matchup-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .mock-proj-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,230,118,0.1);
+      border: 1px solid rgba(0,230,118,0.2);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+
+    .mock-roster {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .mock-player {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--surface-2);
+      border-radius: 6px;
+    }
+    .mock-player-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .mock-player-stat { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+    .mock-right { padding: 20px; }
+
+    .mock-cats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mock-cat {
+      display: grid;
+      grid-template-columns: 40px 1fr 38px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mock-cat-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .mock-cat-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .mock-cat-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 1s ease;
+    }
+
+    .fill-win  { background: var(--accent); }
+    .fill-edge { background: #f59e0b; }
+    .fill-loss { background: var(--red); }
+
+    .mock-cat-pct {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-align: right;
+    }
+    .pct-win  { color: var(--accent); }
+    .pct-edge { color: #f59e0b; }
+    .pct-loss { color: var(--red); }
+
+    .mock-summary {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .mock-summary-card {
+      flex: 1;
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .mock-summary-label { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px; }
+    .mock-summary-val { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--text); }
+    .mock-summary-val span { font-size: 12px; color: var(--accent); }
+
+    /* ── SECTION COMMONS ── */
+    section { padding: 100px 40px; }
+
+    .section-inner { max-width: 1160px; margin: 0 auto; }
+
+    .section-eyebrow {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .section-sub {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.65;
+    }
+
+    /* ── SOCIAL PROOF ── */
+    .social-strip {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 40px;
+    }
+
+    .social-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+      flex-wrap: wrap;
+    }
+
+    .social-text {
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .social-divider {
+      width: 1px;
+      height: 32px;
+      background: var(--border);
+    }
+
+    .social-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .social-badge-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .badge-espn  { background: #CC0000; color: #fff; font-size: 10px; letter-spacing: -0.5px; }
+    .badge-yahoo { background: #6001d2; color: #fff; font-size: 9px; }
+    .badge-nba   { background: #1d428a; color: #fff; font-size: 8px; letter-spacing: -0.3px; }
+
+    /* ── FEATURES ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 64px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    .feature-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.2s, box-shadow 0.2s;
+    }
+    .feature-card:hover {
+      border-color: rgba(0,230,118,0.3);
+      box-shadow: 0 0 32px rgba(0,230,118,0.06);
+      transform: translateY(-3px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(0,230,118,0.15);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+
+    .feature-title {
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+
+    .feature-body {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-section { background: var(--surface); }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      margin-top: 64px;
+      position: relative;
+    }
+
+    .steps-grid::before {
+      content: '';
+      position: absolute;
+      top: 28px;
+      left: calc(16.67% + 28px);
+      right: calc(16.67% + 28px);
+      height: 1px;
+      background: linear-gradient(to right, var(--accent), var(--border), var(--accent));
+      opacity: 0.3;
+    }
+
+    .step {
+      padding: 0 32px;
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    .step.visible {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .step:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+
+    .step-num {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,230,118,0.3);
+      background: var(--accent-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+
+    .step-title {
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .step-body {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* ── FOUNDING BANNER ── */
+    .founding-banner {
+      background: var(--accent);
+      padding: 40px;
+    }
+
+    .founding-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .founding-text {
+      font-family: var(--display);
+      font-size: clamp(18px, 2.5vw, 26px);
+      font-weight: 700;
+      color: #000;
+      line-height: 1.3;
+    }
+
+    .founding-text strong { font-weight: 800; }
+
+    .btn-dark {
+      background: #000;
+      color: var(--accent);
+      border: none;
+      border-radius: 6px;
+      padding: 14px 28px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s, transform 0.15s;
+      white-space: nowrap;
+    }
+    .btn-dark:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    /* ── PRICING ── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 64px;
+      align-items: start;
+    }
+
+    .pricing-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      position: relative;
+      transition: transform 0.2s, box-shadow 0.2s;
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    .pricing-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .pricing-card:hover { transform: translateY(-4px); }
+
+    .pricing-card.pro {
+      border-color: rgba(0,230,118,0.4);
+      box-shadow: 0 0 40px rgba(0,230,118,0.08), 0 0 0 1px rgba(0,230,118,0.1);
+    }
+    .pricing-card.pro:hover {
+      box-shadow: 0 8px 48px rgba(0,230,118,0.14), 0 0 0 1px rgba(0,230,118,0.15);
+    }
+
+    .pricing-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: #000;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+
+    .pricing-tier {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .pricing-price {
+      font-family: var(--display);
+      font-size: 48px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .pricing-price sup {
+      font-size: 20px;
+      font-weight: 600;
+      vertical-align: super;
+    }
+    .pricing-price span {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .pricing-tagline {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .pricing-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+    .pricing-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .pricing-features li::before {
+      content: '✓';
+      color: var(--accent);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .pricing-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 16px 0;
+    }
+
+    .btn-pricing {
+      width: 100%;
+      padding: 13px;
+      border-radius: 6px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+      border: none;
+    }
+    .btn-pricing:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .btn-pricing-outline {
+      background: transparent;
+      border: 1px solid var(--border-2);
+      color: var(--muted);
+    }
+    .btn-pricing-outline:hover { border-color: var(--text); color: var(--text); }
+
+    .btn-pricing-accent {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 4px 20px rgba(0,230,118,0.25);
+    }
+
+    /* ── BETA SIGNUP ── */
+    .signup-section {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .signup-inner { max-width: 600px; margin: 0 auto; }
+
+    .signup-form {
+      margin-top: 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+    }
+
+    .form-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .form-input {
+      background: var(--bg);
+      border: 1px solid var(--border-2);
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: var(--body);
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .form-input::placeholder { color: var(--dim); }
+
+    .platform-toggle {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border-2);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .platform-btn {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .platform-btn.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    .platform-btn:not(:last-child) {
+      border-right: 1px solid var(--border-2);
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 16px;
+      font-family: var(--body);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(0,230,118,0.2);
+    }
+    .btn-submit:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(0,230,118,0.3);
+    }
+
+    .signup-fine {
+      font-size: 12px;
+      color: var(--dim);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      padding: 40px;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .footer-links a {
+      color: var(--dim);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color 0.15s;
+    }
+    .footer-links a:hover { color: var(--muted); }
+
+    .footer-copy {
+      font-size: 12px;
+      color: var(--dim);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 960px) {
+      .features-grid  { grid-template-columns: 1fr; max-width: 560px; margin-left: auto; margin-right: auto; }
+      .steps-grid     { grid-template-columns: 1fr; }
+      .steps-grid::before { display: none; }
+      .step:not(:last-child) { border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 40px; margin-bottom: 40px; }
+      .step { padding: 0; }
+      .pricing-grid   { grid-template-columns: 1fr; max-width: 420px; margin-left: auto; margin-right: auto; }
+      .mock-body { grid-template-columns: 1fr; }
+      .mock-left { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    @media (max-width: 768px) {
+      nav { padding: 0 20px; gap: 16px; }
+      .nav-links, nav > .nav-cta { display: none; }
+      .hamburger { display: flex; }
+      section { padding: 72px 24px; }
+      .hero  { padding: 100px 24px 60px; }
+      .social-strip { padding: 24px; }
+      .founding-banner { padding: 32px 24px; }
+      footer { padding: 32px 24px; }
+      .form-row { grid-template-columns: 1fr; }
+      .founding-inner { justify-content: center; text-align: center; }
+      .social-divider { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .hero-ctas { flex-direction: column; }
+      .pricing-card { padding: 28px 20px; }
+    }
+
+    /* ── UTIL ── */
+    .text-accent { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <a href="#" class="nav-logo">
+    <span class="nav-logo-icon">🏀</span>
+    <span class="nav-logo-text">Roto Intel</span>
+  </a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How It Works</a>
+    <a href="#pricing">Pricing</a>
+  </div>
+  <a href="#beta" class="nav-cta">Apply for Beta</a>
+  <button class="hamburger" id="hamburger" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="mobile-menu" id="mobile-menu">
+  <a href="#features"    onclick="closeMobile()">Features</a>
+  <a href="#how-it-works" onclick="closeMobile()">How It Works</a>
+  <a href="#pricing"     onclick="closeMobile()">Pricing</a>
+  <a href="#beta" class="nav-cta" onclick="closeMobile()">Apply for Beta</a>
+</div>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-vignette"></div>
+
+  <div class="hero-content">
+    <p class="hero-eyebrow">Fantasy Basketball Analytics · 2026–27 Season</p>
+    <h1 class="hero-headline">Win your fantasy<br>league. <em>Finally.</em></h1>
+    <p class="hero-sub">Roto Intel connects to your ESPN or Yahoo league and gives you real-time matchup projections, variance-adjusted win probabilities, and instant roster analysis. Built for serious players who want a genuine edge.</p>
+    <div class="hero-ctas">
+      <a href="#beta" class="btn-primary">Apply for Beta Access →</a>
+      <a href="#how-it-works" class="btn-ghost">See how it works ↓</a>
+    </div>
+
+    <!-- TICKER -->
+    <div class="ticker-section">
+      <p class="ticker-label">Trending Now</p>
+      <div class="ticker-wrap">
+        <div class="ticker-track" id="ticker">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MOCK UI -->
+    <div class="mock-ui">
+      <div class="mock-bar">
+        <div class="mock-dot"></div>
+        <div class="mock-dot"></div>
+        <div class="mock-dot"></div>
+        <div class="mock-url">app.rotointel.com/matchup/week-18</div>
+      </div>
+      <div class="mock-body">
+        <div class="mock-left">
+          <p class="mock-section-label">Matchup · Week 18</p>
+          <p class="mock-matchup-title">Your Team</p>
+          <p class="mock-matchup-sub">vs. Hooper's Dream</p>
+          <div class="mock-proj-badge">⬆ Projected 6–3 Win</div>
+          <div class="mock-roster">
+            <div class="mock-player">
+              <span class="mock-player-name">N. Jokić</span>
+              <span class="mock-player-stat">PTS 38.2</span>
+            </div>
+            <div class="mock-player">
+              <span class="mock-player-name">J. Tatum</span>
+              <span class="mock-player-stat">AST 7.1</span>
+            </div>
+            <div class="mock-player">
+              <span class="mock-player-name">J.J. Jr.</span>
+              <span class="mock-player-stat">BLK 3.4</span>
+            </div>
+            <div class="mock-player">
+              <span class="mock-player-name">T. Haliburton</span>
+              <span class="mock-player-stat">AST 9.8</span>
+            </div>
+            <div class="mock-player">
+              <span class="mock-player-name">A. Şengün</span>
+              <span class="mock-player-stat">REB 11.2</span>
+            </div>
+          </div>
+        </div>
+        <div class="mock-right">
+          <p class="mock-section-label">Category win probability</p>
+          <div class="mock-summary">
+            <div class="mock-summary-card">
+              <div class="mock-summary-label">Proj Score</div>
+              <div class="mock-summary-val">6–3 <span>W</span></div>
+            </div>
+            <div class="mock-summary-card">
+              <div class="mock-summary-label">Win Prob</div>
+              <div class="mock-summary-val">74<span>%</span></div>
+            </div>
+            <div class="mock-summary-card">
+              <div class="mock-summary-label">Schedule Ease</div>
+              <div class="mock-summary-val">+<span>12%</span></div>
+            </div>
+          </div>
+          <div class="mock-cats" id="mock-cats">
+            <!-- filled by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF -->
+<div class="social-strip">
+  <div class="social-inner">
+    <p class="social-text">Built for serious fantasy players.<br>Connecting ESPN and Yahoo leagues.</p>
+    <div class="social-divider"></div>
+    <div class="social-badge">
+      <div class="social-badge-icon badge-espn">ESPN</div>
+      <span>ESPN</span>
+    </div>
+    <div class="social-badge">
+      <div class="social-badge-icon badge-yahoo">Y!</div>
+      <span>Yahoo</span>
+    </div>
+    <div class="social-divider"></div>
+    <p class="social-text">Powered by real-time<br>NBA data.</p>
+    <div class="social-badge">
+      <div class="social-badge-icon badge-nba">NBA</div>
+      <span>NBA Data</span>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="section-inner">
+    <p class="section-eyebrow">Features</p>
+    <h2 class="section-title">Everything you need<br>to dominate your league.</h2>
+    <p class="section-sub">Three tools that work together to give you an edge from draft day to championship week.</p>
+    <div class="features-grid">
+      <div class="feature-card" data-animate>
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">Know exactly where you stand.</h3>
+        <p class="feature-body">See your projected win probability for every category — not just averages, but Monte Carlo simulations that account for stat variance, schedule, and opponent. Swap players in and out and watch your win probabilities update in real time.</p>
+      </div>
+      <div class="feature-card" data-animate>
+        <div class="feature-icon">🔬</div>
+        <h3 class="feature-title">Understand why a stat is moving.</h3>
+        <p class="feature-body">Our Driver Analysis tool decomposes any stat change into its root causes — skill rate, usage, pace, and schedule difficulty. Stop guessing whether a hot streak is real. Know.</p>
+      </div>
+      <div class="feature-card" data-animate>
+        <div class="feature-icon">📈</div>
+        <h3 class="feature-title">Never miss a move.</h3>
+        <p class="feature-body">Our trending player cards surface who's rising and falling across every category, with schedule ease baked in. The waiver wire edge you've been looking for, delivered daily.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works" class="how-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">How It Works</p>
+    <h2 class="section-title">Three steps to<br>the edge.</h2>
+    <div class="steps-grid">
+      <div class="step" data-animate>
+        <div class="step-num">1</div>
+        <h3 class="step-title">Connect your league</h3>
+        <p class="step-body">Link your ESPN or Yahoo account in seconds. We pull your roster, matchups, and scoring settings automatically. No manual configuration.</p>
+      </div>
+      <div class="step" data-animate>
+        <div class="step-num">2</div>
+        <h3 class="step-title">Get your edge</h3>
+        <p class="step-body">Instantly see your matchup win probabilities, roster strengths, and the best available free agents ranked by your specific scoring settings.</p>
+      </div>
+      <div class="step" data-animate>
+        <div class="step-num">3</div>
+        <h3 class="step-title">Win more categories</h3>
+        <p class="step-body">Make smarter decisions on starts, trades, and pickups. Let the data do the work — and show up to matchup day knowing exactly where you stand.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOUNDING BANNER -->
+<div class="founding-banner">
+  <div class="founding-inner">
+    <p class="founding-text">
+      <strong>Beta offer:</strong> Lock in Pro access for $9/month for life<br>
+      — available to the first 50 members only.
+    </p>
+    <a href="#beta" class="btn-dark">Claim your spot →</a>
+  </div>
+</div>
+
+<!-- PRICING -->
+<section id="pricing">
+  <div class="section-inner">
+    <p class="section-eyebrow">Pricing</p>
+    <h2 class="section-title">Simple, honest pricing.</h2>
+    <p class="section-sub">Start free. Upgrade when you want the edge that matters.</p>
+    <div class="pricing-grid">
+
+      <div class="pricing-card" data-animate>
+        <p class="pricing-tier">Free</p>
+        <div class="pricing-price"><sup>$</sup>0</div>
+        <p class="pricing-tagline">Get started</p>
+        <ul class="pricing-features">
+          <li>Player rankings and projections</li>
+          <li>Driver Analysis</li>
+          <li>Trending player cards</li>
+          <li>Box scores and injury news</li>
+        </ul>
+        <button class="btn-pricing btn-pricing-outline">Sign up free</button>
+      </div>
+
+      <div class="pricing-card pro" data-animate>
+        <div class="pricing-badge">Most popular</div>
+        <p class="pricing-tier">Pro</p>
+        <div class="pricing-price"><sup>$</sup>15<span>/mo</span></div>
+        <p class="pricing-tagline">Get the edge</p>
+        <ul class="pricing-features">
+          <li>Everything in Free</li>
+          <div class="pricing-divider"></div>
+          <li>ESPN and Yahoo league sync</li>
+          <li>Matchup projection with variance modelling</li>
+          <li>Real-time roster what-if engine</li>
+          <li>Schedule grid with ease ratings</li>
+          <li>Projected standings</li>
+        </ul>
+        <button class="btn-pricing btn-pricing-accent">Start Pro</button>
+      </div>
+
+      <div class="pricing-card" data-animate>
+        <p class="pricing-tier">Elite</p>
+        <div class="pricing-price"><sup>$</sup>25<span>/mo</span></div>
+        <p class="pricing-tagline">Go all in</p>
+        <ul class="pricing-features">
+          <li>Everything in Pro</li>
+          <div class="pricing-divider"></div>
+          <li>Automatic lineup setting</li>
+          <li>Trade analyser</li>
+          <li>Admin projection overrides</li>
+          <li>Priority support</li>
+        </ul>
+        <button class="btn-pricing btn-pricing-outline">Start Elite</button>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- BETA SIGNUP -->
+<section id="beta" class="signup-section">
+  <div class="section-inner">
+    <div class="signup-inner">
+      <p class="section-eyebrow">Beta Access</p>
+      <h2 class="section-title">Join the beta.<br>Shape the product.</h2>
+      <p class="section-sub" style="margin: 0 auto;">We're looking for 20 serious fantasy players to test Roto Intel before launch. Free Pro access for the season in exchange for detailed feedback.</p>
+
+      <form class="signup-form" id="signup-form" onsubmit="handleSubmit(event)">
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">First Name</label>
+            <input class="form-input" type="text" placeholder="Giannis" required>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" placeholder="you@example.com" required>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label">League Platform</label>
+          <div class="platform-toggle">
+            <button type="button" class="platform-btn active" id="btn-espn" onclick="selectPlatform('ESPN')">ESPN</button>
+            <button type="button" class="platform-btn" id="btn-yahoo" onclick="selectPlatform('Yahoo')">Yahoo</button>
+            <button type="button" class="platform-btn" id="btn-both" onclick="selectPlatform('Both')">Both</button>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label">Tell us about your league setup</label>
+          <input class="form-input" type="text" placeholder="e.g. 12-team H2H 9-cat, $100 buy-in, 3rd year in the league">
+        </div>
+
+        <button type="submit" class="btn-submit">Apply for Beta Access</button>
+      </form>
+
+      <p class="signup-fine">First 20 applicants who complete our feedback form receive free Pro access for the 2026–27 season.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <a href="#" class="nav-logo" style="text-decoration:none">
+      <span class="nav-logo-icon" style="font-size:20px">🏀</span>
+      <span class="nav-logo-text" style="font-size:15px">Roto Intel</span>
+    </a>
+    <div class="footer-links">
+      <a href="#">Privacy Policy</a>
+      <a href="#">Terms of Service</a>
+      <a href="#">Contact</a>
+    </div>
+    <p class="footer-copy">© 2026 Roto Intel</p>
+  </div>
+</footer>
+
+<script>
+  // ── Ticker data ──
+  const TICKER_PLAYERS = [
+    { name: 'Jaren Jackson Jr.', team: 'MEM', dir: 'up',   driver: 'BLK +34%' },
+    { name: 'Tyrese Haliburton',  team: 'IND', dir: 'down', driver: 'USG -12%' },
+    { name: 'Alperen Şengün',     team: 'HOU', dir: 'up',   driver: 'MIN +18%' },
+    { name: 'Chet Holmgren',      team: 'OKC', dir: 'up',   driver: 'Z-Score +1.4' },
+    { name: "De'Aaron Fox",       team: 'SAC', dir: 'down', driver: 'AST -0.8' },
+    { name: 'Scottie Barnes',     team: 'TOR', dir: 'up',   driver: 'REB +22%' },
+    { name: 'Anthony Davis',      team: 'LAL', dir: 'down', driver: 'MIN -15%' },
+    { name: 'Jalen Williams',     team: 'OKC', dir: 'up',   driver: 'PTS +19%' },
+    { name: 'Darius Garland',     team: 'CLE', dir: 'up',   driver: 'USG +9%' },
+    { name: 'Bam Adebayo',        team: 'MIA', dir: 'up',   driver: 'Z-Score +1.1' },
+  ]
+
+  function buildTicker() {
+    const track = document.getElementById('ticker')
+    const items = [...TICKER_PLAYERS, ...TICKER_PLAYERS] // duplicate for seamless loop
+    track.innerHTML = items.map(p => `
+      <div class="ticker-card">
+        <span class="ticker-name">${p.name}</span>
+        <span class="ticker-team">${p.team}</span>
+        <span class="ticker-dir ${p.dir}">${p.dir === 'up' ? '↑' : '↓'}</span>
+        <span class="ticker-driver">${p.driver}</span>
+      </div>
+    `).join('')
+  }
+
+  // ── Mock UI category bars ──
+  const CATS = [
+    { label: 'STL', pct: 68 },
+    { label: 'REB', pct: 72 },
+    { label: 'PTS', pct: 45 },
+    { label: 'AST', pct: 61 },
+    { label: 'BLK', pct: 78 },
+    { label: 'FG%', pct: 53 },
+    { label: 'FT%', pct: 44 },
+    { label: '3PM', pct: 58 },
+    { label: 'TOV', pct: 62 },
+  ]
+
+  function catClass(pct) {
+    if (pct >= 58) return 'win'
+    if (pct >= 45) return 'edge'
+    return 'loss'
+  }
+
+  function buildMockCats() {
+    const el = document.getElementById('mock-cats')
+    el.innerHTML = CATS.map(c => {
+      const cls = catClass(c.pct)
+      return `
+        <div class="mock-cat">
+          <span class="mock-cat-label">${c.label}</span>
+          <div class="mock-cat-bar">
+            <div class="mock-cat-fill fill-${cls}" style="width:${c.pct}%"></div>
+          </div>
+          <span class="mock-cat-pct pct-${cls}">${c.pct}%</span>
+        </div>
+      `
+    }).join('')
+  }
+
+  // ── Hamburger ──
+  const hamburger = document.getElementById('hamburger')
+  const mobileMenu = document.getElementById('mobile-menu')
+
+  hamburger.addEventListener('click', () => {
+    hamburger.classList.toggle('open')
+    mobileMenu.classList.toggle('open')
+  })
+
+  function closeMobile() {
+    hamburger.classList.remove('open')
+    mobileMenu.classList.remove('open')
+  }
+
+  // ── Nav scroll shadow ──
+  window.addEventListener('scroll', () => {
+    document.getElementById('nav').style.boxShadow =
+      window.scrollY > 10 ? '0 4px 24px rgba(0,0,0,0.4)' : 'none'
+  })
+
+  // ── Scroll fade-in ──
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 80)
+        observer.unobserve(entry.target)
+      }
+    })
+  }, { threshold: 0.15 })
+
+  document.querySelectorAll('[data-animate]').forEach(el => observer.observe(el))
+
+  // ── Platform toggle ──
+  let selectedPlatform = 'ESPN'
+  function selectPlatform(p) {
+    selectedPlatform = p
+    document.getElementById('btn-espn').classList.toggle('active', p === 'ESPN')
+    document.getElementById('btn-yahoo').classList.toggle('active', p === 'Yahoo')
+    document.getElementById('btn-both').classList.toggle('active', p === 'Both')
+  }
+
+  // ── Form submit ──
+  function handleSubmit(e) {
+    e.preventDefault()
+    const data = {
+      platform: selectedPlatform,
+      fields: [...e.target.querySelectorAll('input')].map(i => i.value),
+    }
+    console.log('[Roto Intel Beta] Application submitted:', data)
+    const btn = e.target.querySelector('.btn-submit')
+    btn.textContent = '✓ Application received!'
+    btn.style.background = '#1a4a2e'
+    btn.style.color = 'var(--accent)'
+    btn.disabled = true
+  }
+
+  // ── Init ──
+  buildTicker()
+  buildMockCats()
+</script>
+</body>
+</html>
