@@ -4829,6 +4829,142 @@ function FantasyPage({ onSelectPlayer }) {
 }
 
 
+function ModerationPage() {
+  const [tab, setTab] = useState('all')
+  const [comments, setComments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [blockedWords, setBlockedWords] = useState([])
+  const [newWord, setNewWord] = useState('')
+
+  const loadComments = (t) => {
+    setLoading(true)
+    apiFetch(`/api/admin/moderation/comments?tab=${t}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setComments(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  const loadWords = () => {
+    apiFetch('/api/admin/blocked-words')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setBlockedWords(d))
+  }
+
+  useEffect(() => { loadComments('all'); loadWords() }, [])
+
+  const switchTab = (t) => { setTab(t); loadComments(t) }
+
+  const toggleHide = (c) => {
+    const endpoint = c.comment_type === 'blog'
+      ? `/api/admin/moderation/blog-comments/${c.id}/hide`
+      : `/api/admin/moderation/comments/${c.id}/hide`
+    apiFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hidden: !c.is_hidden }) })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.ok) setComments(prev => prev.map(x => x.id === c.id && x.comment_type === c.comment_type ? { ...x, is_hidden: d.hidden ? 1 : 0 } : x))
+      })
+  }
+
+  const addWord = () => {
+    const w = newWord.trim().toLowerCase()
+    if (!w) return
+    apiFetch('/api/admin/blocked-words', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: w }) })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.ok) { setNewWord(''); loadWords() } })
+  }
+
+  const removeWord = (w) => {
+    apiFetch(`/api/admin/blocked-words/${encodeURIComponent(w)}`, { method: 'DELETE' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.ok) loadWords() })
+  }
+
+  const TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'player', label: 'Player' },
+    { key: 'blog', label: 'Blog' },
+    { key: 'hidden', label: 'Hidden' },
+  ]
+
+  return (
+    <div className="mod-page">
+      <h2 className="mod-title">Comment Moderation</h2>
+
+      <div className="mod-tabs">
+        {TABS.map(t => (
+          <button key={t.key} className={`mod-tab${tab === t.key ? ' active' : ''}`} onClick={() => switchTab(t.key)}>{t.label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="mod-loading">Loading…</p>
+      ) : comments.length === 0 ? (
+        <p className="mod-empty">No comments.</p>
+      ) : (
+        <div className="mod-table-wrap">
+          <table className="mod-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Author</th>
+                <th>Comment</th>
+                <th>Context</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {comments.map((c) => (
+                <tr key={`${c.comment_type}-${c.id}`} className={c.is_hidden ? 'mod-row-hidden' : ''}>
+                  <td><span className={`mod-type-badge mod-type-${c.comment_type}`}>{c.comment_type}</span></td>
+                  <td className="mod-author">{c.author}</td>
+                  <td className="mod-body">{c.body}</td>
+                  <td className="mod-context">{c.context_slug || c.post_title || '—'}</td>
+                  <td className="mod-date">{c.created_at?.slice(0, 16).replace('T', ' ')}</td>
+                  <td>{c.is_hidden ? <span className="mod-status-hidden">Hidden</span> : <span className="mod-status-visible">Visible</span>}</td>
+                  <td>
+                    <button className={`mod-action-btn${c.is_hidden ? ' unhide' : ' hide'}`} onClick={() => toggleHide(c)}>
+                      {c.is_hidden ? 'Unhide' : 'Hide'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mod-words-section">
+        <h3 className="mod-words-title">Blocked words</h3>
+        <p className="mod-words-desc">Comments containing these words are automatically hidden.</p>
+        <div className="mod-words-add">
+          <input
+            className="mod-words-input"
+            type="text"
+            placeholder="Add word…"
+            value={newWord}
+            onChange={e => setNewWord(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addWord()}
+          />
+          <button className="mod-words-add-btn" onClick={addWord}>Add</button>
+        </div>
+        <div className="mod-words-list">
+          {blockedWords.length === 0 ? (
+            <span className="mod-words-empty">No blocked words yet.</span>
+          ) : blockedWords.map(w => (
+            <span key={w.word} className="mod-word-chip">
+              {w.word}
+              <button className="mod-word-remove" onClick={() => removeWord(w.word)}>×</button>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function AppMain({ onLogout, onOpenAccount }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
@@ -5590,6 +5726,7 @@ function AppMain({ onLogout, onOpenAccount }) {
               </button>
               <div className="nav-dropdown nav-dropdown-right">
                 <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
+                {isAdmin && <button className="nav-drop-item" onClick={() => go('moderation')}>Moderation</button>}
                 <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
               </div>
             </div>
@@ -5622,6 +5759,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
 
       {page === 'adjustments' && <AdjustmentsPage />}
+
+      {page === 'moderation' && <ModerationPage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

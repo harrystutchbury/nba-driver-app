@@ -5998,6 +5998,128 @@ app.include_router(admin_router)
 app.include_router(fantasy_router)
 app.include_router(auth_router)
 
+# ── Moderation ────────────────────────────────────────────────────────────────
+
+def _check_blocked(text: str, conn) -> bool:
+    """Return True if text contains any blocked word (case-insensitive)."""
+    words = [r[0] for r in conn.execute("SELECT word FROM blocked_words").fetchall()]
+    low = text.lower()
+    return any(w.lower() in low for w in words)
+
+
+@router.get("/admin/moderation/comments")
+def mod_get_comments(
+    tab: str = Query("all"),
+    current_user: str = Depends(get_current_user),
+):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    hidden_filter_player = "WHERE c.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "blog" else "")
+    hidden_filter_blog   = "WHERE bc.is_hidden = 1" if tab == "hidden" else ("WHERE 1=0" if tab == "player" else "")
+
+    rows = conn.execute(f"""
+        SELECT c.id, c.body, c.created_at, c.is_hidden,
+               COALESCE(u.display_name, c.username) AS author,
+               c.username,
+               c.player_slug AS context_slug,
+               NULL AS post_title,
+               'player' AS comment_type
+        FROM comments c
+        LEFT JOIN users u ON u.username = c.username
+        {hidden_filter_player}
+        UNION ALL
+        SELECT bc.id, bc.body, bc.created_at, bc.is_hidden,
+               COALESCE(u.display_name, bc.username) AS author,
+               bc.username,
+               NULL AS context_slug,
+               bp.title AS post_title,
+               'blog' AS comment_type
+        FROM blog_comments bc
+        LEFT JOIN users u ON u.username = bc.username
+        LEFT JOIN blog_posts bp ON bp.id = bc.post_id
+        {hidden_filter_blog}
+        ORDER BY created_at DESC
+        LIMIT 200
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/admin/moderation/comments/{comment_id}/hide")
+def mod_hide_comment(
+    comment_id: int,
+    body: dict = Body(...),
+    current_user: str = Depends(get_current_user),
+):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    hidden = 1 if body.get("hidden", True) else 0
+    conn.execute("UPDATE comments SET is_hidden=? WHERE id=?", [hidden, comment_id])
+    conn.commit()
+    conn.close()
+    return {"ok": True, "hidden": bool(hidden)}
+
+
+@router.post("/admin/moderation/blog-comments/{comment_id}/hide")
+def mod_hide_blog_comment(
+    comment_id: int,
+    body: dict = Body(...),
+    current_user: str = Depends(get_current_user),
+):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    hidden = 1 if body.get("hidden", True) else 0
+    conn.execute("UPDATE blog_comments SET is_hidden=? WHERE id=?", [hidden, comment_id])
+    conn.commit()
+    conn.close()
+    return {"ok": True, "hidden": bool(hidden)}
+
+
+@router.get("/admin/blocked-words")
+def mod_get_blocked_words(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    rows = conn.execute("SELECT word, added_at FROM blocked_words ORDER BY word").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/admin/blocked-words")
+def mod_add_blocked_word(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    word = (body.get("word") or "").strip().lower()
+    if not word:
+        raise HTTPException(status_code=400, detail="word required")
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    conn.execute("INSERT OR IGNORE INTO blocked_words (word) VALUES (?)", [word])
+    conn.commit()
+    conn.close()
+    return {"ok": True, "word": word}
+
+
+@router.delete("/admin/blocked-words/{word}")
+def mod_delete_blocked_word(word: str, current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    conn.execute("DELETE FROM blocked_words WHERE word=?", [word.lower()])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 # -----------------------------------------------------------------------
 # Comments (on the protected router so auth is required)
 # -----------------------------------------------------------------------
@@ -6015,6 +6137,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
                NULL AS post_slug, NULL AS post_title, 'player' AS comment_type
         FROM comments c
         LEFT JOIN users u ON u.username = c.username
+        WHERE c.is_hidden = 0
         UNION ALL
         SELECT bc.id, NULL AS player_slug, bc.body, bc.created_at AS created_at,
                COALESCE(u.display_name, bc.username) AS author,
@@ -6023,7 +6146,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
         FROM blog_comments bc
         JOIN blog_posts bp ON bp.id = bc.post_id
         LEFT JOIN users u ON u.username = bc.username
-        WHERE bp.is_published = 1
+        WHERE bp.is_published = 1 AND bc.is_hidden = 0
         ORDER BY 4 DESC
         LIMIT ?
     """, [limit]).fetchall()
@@ -6043,7 +6166,7 @@ def get_comments(player: str = Query(...), current_user: str = Depends(get_curre
         FROM comments c
         LEFT JOIN users u ON u.username = c.username
         LEFT JOIN comment_votes v ON v.comment_id = c.id
-        WHERE c.player_slug = ?
+        WHERE c.player_slug = ? AND c.is_hidden = 0
         GROUP BY c.id
         ORDER BY c.created_at DESC
     """, [current_user, player]).fetchall()
@@ -6058,9 +6181,10 @@ def post_comment(body: dict = Body(...), current_user: str = Depends(get_current
     if not player_slug or not text:
         raise HTTPException(status_code=400, detail="player_slug and body required")
     conn = get_conn()
+    is_hidden = 1 if _check_blocked(text, conn) else 0
     cur = conn.execute(
-        "INSERT INTO comments (player_slug, username, body) VALUES (?,?,?)",
-        [player_slug, current_user, text],
+        "INSERT INTO comments (player_slug, username, body, is_hidden) VALUES (?,?,?,?)",
+        [player_slug, current_user, text, is_hidden],
     )
     comment_id = cur.lastrowid
     row = conn.execute("""
@@ -6230,7 +6354,7 @@ def get_blog_post(slug: str, current_user: Optional[str] = Depends(get_optional_
         FROM blog_comments bc
         LEFT JOIN users u ON u.username = bc.username
         LEFT JOIN blog_comment_votes v ON v.comment_id = bc.id
-        WHERE bc.post_id = ?
+        WHERE bc.post_id = ? AND bc.is_hidden = 0
         GROUP BY bc.id
         ORDER BY bc.created_at DESC
     """, [current_user or "", row["id"]]).fetchall()
@@ -6320,9 +6444,10 @@ def post_blog_comment(post_id: int, body: dict = Body(...), current_user: str = 
     if not post:
         conn.close()
         raise HTTPException(status_code=404, detail="Post not found")
+    is_hidden = 1 if _check_blocked(text, conn) else 0
     cur = conn.execute(
-        "INSERT INTO blog_comments (post_id, username, body) VALUES (?,?,?)",
-        [post_id, current_user, text],
+        "INSERT INTO blog_comments (post_id, username, body, is_hidden) VALUES (?,?,?,?)",
+        [post_id, current_user, text, is_hidden],
     )
     cid = cur.lastrowid
     row = conn.execute("""

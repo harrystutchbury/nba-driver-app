@@ -356,6 +356,21 @@ def init_db():
     except Exception:
         pass  # already exists
 
+    # Moderation: hidden flag on comments
+    for _tbl in ("comments", "blog_comments"):
+        try:
+            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # already exists
+
+    # Blocked words for auto-moderation
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blocked_words (
+            word TEXT PRIMARY KEY,
+            added_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")
