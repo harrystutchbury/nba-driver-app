@@ -4892,9 +4892,9 @@ function ScheduleGrid({ provider = 'espn' }) {
 
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
-function FantasyPage({ onSelectPlayer }) {
+function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [status,      setStatus]      = useState(null)
-  const [tab,         setTab]         = useState('dashboard')
+  const [tab,         setTab]         = useState(initialTab)
   const [rosterData,  setRosterData]  = useState(null)
   const [rosterErr,   setRosterErr]   = useState(null)
 
@@ -5134,6 +5134,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     localStorage.setItem('theme', dark ? 'dark' : 'light')
   }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
+  const [fantasyTab, setFantasyTab]   = useState('dashboard')
   const [blogInitSlug, setBlogInitSlug] = useState(null)
   const [isAdmin, setIsAdmin]           = useState(false)
   const [query, setQuery]             = useState('')
@@ -5838,7 +5839,11 @@ function AppMain({ onLogout, onOpenAccount }) {
                     Fantasy <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
-                    <button className="nav-drop-item" onClick={() => go('fantasy')}>Dashboard</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('dashboard');  go('fantasy') }}>Dashboard</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('standings');  go('fantasy') }}>Projected Standings</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('roster');     go('fantasy') }}>Roster Analysis</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('trade');      go('fantasy') }}>Trade Analysis</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('matchup');    go('fantasy') }}>Matchup</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
                   </div>
                 </div>
@@ -5915,7 +5920,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />}
 
       {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
