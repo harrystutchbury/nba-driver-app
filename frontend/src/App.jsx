@@ -6318,11 +6318,13 @@ function AppMain({ onLogout, onOpenAccount }) {
                 zScoreFor('ft_pct', proj.ft_pct, projFgaPg, projFtaPg)
               ) : baseZTotal
 
-              const deltaZTotal = projZTotal - baseZTotal
+              // When sliders are at default, trust the backend z-scores to avoid rounding drift
+              const effectiveZTotal = changed ? projZTotal : baseZTotal
+              const deltaZTotal = effectiveZTotal - baseZTotal
               const baseRank  = base.rank ?? null
-              const projRank  = dist.length > 0
-                ? dist.filter(z => z > projZTotal).length + 1
-                : null
+              const projRank  = changed && dist.length > 0
+                ? dist.filter(z => z > effectiveZTotal).length + 1
+                : baseRank
 
               const USAGE_ROWS = [
                 { key: 'pts',    label: 'PTS',  tag: 'USG', pct: false },
@@ -6435,7 +6437,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <tr className="usage-tr-total">
                             <td className="usage-td-stat">Z-Total</td>
                             <td className="usage-td-num muted">{baseZTotal.toFixed(2)}</td>
-                            <td className="usage-td-num">{projZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num">{effectiveZTotal.toFixed(2)}</td>
                             <td className="usage-td-num usage-delta">
                               {changed
                                 ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}`
