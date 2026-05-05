@@ -4375,13 +4375,14 @@ function MatchupProjection({ onSelectPlayer }) {
               {d.categories.map(c => {
                 const wp  = c.win_prob
                 const cls = wp >= 0.55 ? 'mp-cat-winning' : wp <= 0.45 ? 'mp-cat-losing' : 'mp-cat-toss'
+                const r   = v => v != null ? Math.round(v) : '—'
                 return (
                   <tr key={c.stat} className={cls}>
                     <td className="mp-cat-name">{c.stat}</td>
-                    <td className="mp-cat-proj mp-cat-my">{c.my_proj}</td>
-                    <td className="mp-cat-range mp-cat-my">{c.my_lo}–{c.my_hi}</td>
-                    <td className="mp-cat-proj mp-cat-opp">{c.opp_proj}</td>
-                    <td className="mp-cat-range mp-cat-opp">{c.opp_lo}–{c.opp_hi}</td>
+                    <td className="mp-cat-proj mp-cat-my">{r(c.my_proj)}</td>
+                    <td className="mp-cat-range mp-cat-my">{r(c.my_lo)}–{r(c.my_hi)}</td>
+                    <td className="mp-cat-proj mp-cat-opp">{r(c.opp_proj)}</td>
+                    <td className="mp-cat-range mp-cat-opp">{r(c.opp_lo)}–{r(c.opp_hi)}</td>
                     <td><WinProbBadge wp={wp} /></td>
                   </tr>
                 )
@@ -4500,15 +4501,15 @@ function MatchupProjection({ onSelectPlayer }) {
               <tbody>
                 {simData.categories.map((c, i) => {
                   const before = data.categories[i]
-                  const delta  = +(c.my_proj - (before?.my_proj || 0)).toFixed(1)
+                  const delta  = Math.round(c.my_proj) - Math.round(before?.my_proj || 0)
                   const neg    = c.neg
                   const better = neg ? delta < 0 : delta > 0
                   const worse  = neg ? delta > 0 : delta < 0
                   return (
                     <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
                       <td className="mp-cat-name">{c.stat}</td>
-                      <td className="mp-cat-my">{before?.my_proj}</td>
-                      <td className="mp-cat-my">{c.my_proj}</td>
+                      <td className="mp-cat-my">{Math.round(before?.my_proj ?? 0)}</td>
+                      <td className="mp-cat-my">{Math.round(c.my_proj)}</td>
                       <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}</td>
                       <td><WinProbBadge wp={c.win_prob} /></td>
                     </tr>
