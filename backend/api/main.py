@@ -4816,7 +4816,7 @@ def get_schedule_weeks(current_user: str = Depends(get_current_user)):
     for r in game_rows:
         all_teams.add(r["team"])
 
-    return {"weeks": weeks, "all_teams": sorted(all_teams), "pts_allowed_map": pts_allowed_map}
+    return {"weeks": weeks, "all_teams": sorted(all_teams), "pts_allowed_map": pts_allowed_map, "my_nba_teams": sorted(set(my_nba_teams))}
 
 
 @fantasy_router.get("/week-detail")

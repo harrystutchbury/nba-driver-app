@@ -4600,11 +4600,12 @@ function MatchupProjection({ onSelectPlayer }) {
 // ── WeeklySchedulePage ─────────────────────────────────────────────────────────
 
 function WeeklySchedulePage() {
-  const [meta,        setMeta]        = useState(null)   // { weeks, all_teams, pts_allowed_map }
+  const [meta,        setMeta]        = useState(null)
   const [metaLoading, setMetaLoading] = useState(true)
   const [selectedIdx, setSelectedIdx] = useState(null)
-  const [gameData,    setGameData]    = useState(null)   // {team: {date: {opp, home}}}
+  const [gameData,    setGameData]    = useState(null)
   const [gameLoading, setGameLoading] = useState(false)
+  const [myTeams,     setMyTeams]     = useState([])   // NBA teams with my fantasy players
 
   useEffect(() => {
     apiFetch('/api/schedule/weeks')
@@ -4612,7 +4613,6 @@ function WeeklySchedulePage() {
       .then(d => {
         if (d) {
           setMeta(d)
-          // Default to the most recent week with games
           const today = new Date().toISOString().slice(0, 10)
           let idx = d.weeks.findIndex(w => w.end >= today)
           if (idx === -1) idx = d.weeks.length - 1
@@ -4621,6 +4621,16 @@ function WeeklySchedulePage() {
         setMetaLoading(false)
       })
       .catch(() => setMetaLoading(false))
+
+    // Best-effort: try ESPN then Yahoo to get my roster's NBA teams
+    apiFetch('/api/fantasy/espn/schedule-grid')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.my_nba_teams?.length) setMyTeams(d.my_nba_teams) })
+      .catch(() => {})
+    apiFetch('/api/fantasy/yahoo/schedule-grid')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.my_nba_teams?.length) setMyTeams(d.my_nba_teams) })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -4639,8 +4649,8 @@ function WeeklySchedulePage() {
 
   const { weeks, all_teams, pts_allowed_map } = meta
   const week = weeks[selectedIdx] || weeks[0]
+  const myTeamSet = new Set(myTeams)
 
-  // Build day columns
   const days = []
   if (week) {
     for (let d = new Date(week.start + 'T00:00:00'); d <= new Date(week.end + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
@@ -4650,12 +4660,8 @@ function WeeklySchedulePage() {
   const fmt = d => d.toISOString().slice(0, 10)
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
-  // Ease colour scale over all games in the visible week
   const weekEaseVals = all_teams.flatMap(team =>
-    days.map(d => {
-      const g = gameData?.[team]?.[fmt(d)]
-      return g ? pts_allowed_map?.[g.opp] : null
-    }).filter(v => v != null)
+    days.map(d => { const g = gameData?.[team]?.[fmt(d)]; return g ? pts_allowed_map?.[g.opp] : null }).filter(v => v != null)
   )
   const minEase = weekEaseVals.length ? Math.min(...weekEaseVals) : 0
   const maxEase = weekEaseVals.length ? Math.max(...weekEaseVals) : 1
@@ -4680,6 +4686,12 @@ function WeeklySchedulePage() {
         {week && <span className="wsg-week-range">{week.start} → {week.end}</span>}
       </div>
 
+      <div className="wsg-legend">
+        <span className="wsg-legend-item wsg-legend-easy">Easier matchup</span>
+        <span className="wsg-legend-item wsg-legend-hard">Harder matchup</span>
+        {myTeams.length > 0 && <span className="wsg-legend-item wsg-legend-my">You own a player</span>}
+      </div>
+
       {gameLoading ? (
         <div className="dash-empty">Loading games…</div>
       ) : (
@@ -4701,8 +4713,9 @@ function WeeklySchedulePage() {
               {all_teams.map(team => {
                 const teamGames = gameData?.[team] || {}
                 const gp = days.filter(d => teamGames[fmt(d)]).length
+                const isMyTeam = myTeamSet.has(team)
                 return (
-                  <tr key={team}>
+                  <tr key={team} className={isMyTeam ? 'wsg-my-team-row' : ''}>
                     <td className="wsg-td-team">{TEAM_ABBREV[team] || team.slice(0,3)}</td>
                     {days.map((d, i) => {
                       const g = teamGames[fmt(d)]
