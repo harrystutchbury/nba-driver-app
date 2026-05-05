@@ -742,8 +742,8 @@
   <div class="subsection">
     <div class="sub-title">How to read it</div>
     <ul class="read-list">
-      <li>Connect your league from the Fantasy section — you'll need to authorise via ESPN or Yahoo OAuth. This is a one-time step.</li>
-      <li>Once connected, your Dashboard shows your current roster with ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) visible across the entire platform.</li>
+      <li>Connect your league from the Account settings (person icon, top right). ESPN uses a cookie-based method — see the <a href="#espn" style="color:var(--accent)">ESPN connection guide</a> for full steps. Yahoo uses a one-click login.</li>
+      <li>Once connected, ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) appear across the entire platform against every player.</li>
       <li>Your league's scoring settings are automatically detected and applied to all rankings and projections.</li>
     </ul>
   </div>
@@ -751,7 +751,6 @@
   <div class="subsection">
     <div class="sub-title">Pro tips</div>
     <ul class="tips-list">
-      <li>If you run multiple leagues across ESPN and Yahoo, connect all of them — Roto Intel handles multiple leagues simultaneously.</li>
       <li>Check your position eligibility settings after connecting — the platform pulls your exact league eligibility rules.</li>
       <li>Bookmark the Dashboard as your daily entry point — it surfaces your most relevant data immediately.</li>
     </ul>
@@ -1182,9 +1181,8 @@
     <div class="sub-title">How to read it</div>
     <ul class="read-list">
       <li>The projection figure is the central estimate — our best single guess at what a player will produce.</li>
-      <li>The confidence band shows the realistic range of outcomes. A tight band means a consistent player. A wide band means high variance.</li>
+      <li>The range shown below each figure represents the realistic spread of outcomes. A narrow range means a consistent player. A wide range means higher variance.</li>
       <li>Green projected figures indicate the player is projected above their season average. Red indicates a projected decline.</li>
-      <li>The minutes slider on the player page lets you adjust projected minutes to model role changes — all downstream stats update automatically.</li>
     </ul>
   </div>
 
@@ -1192,8 +1190,7 @@
     <div class="sub-title">Pro tips</div>
     <ul class="tips-list">
       <li>Filter by free agents and sort by projected value over the next 14 days to find the best waiver wire pickups before your opponents do.</li>
-      <li>Use the confidence band to distinguish between a safe floor play and a boom/bust option.</li>
-      <li>When a player returns from injury, manually adjust their minutes projection to model a gradual return to full workload.</li>
+      <li>Use the outcome range to distinguish between a safe floor play and a boom/bust option.</li>
     </ul>
   </div>
 </section>
@@ -1338,8 +1335,8 @@
     <ul class="read-list">
       <li>Each category shows a win probability percentage. Above 60% is a likely win. Below 40% is a likely loss. 40–60% is a coin flip.</li>
       <li>High-variance categories like STL and BLK will have wider probability bands than consistent categories like PTS and REB.</li>
-      <li>The what-if engine lets you swap players in and out — add a free agent to your roster and all nine category probabilities update instantly.</li>
-      <li>If you're mid-matchup, the tool ingests stats already accumulated and projects only the remaining games.</li>
+      <li>The what-if engine lets you simulate adding a free agent and dropping a player — all nine category win probabilities update to show the impact.</li>
+      <li>If you're mid-matchup, the tool accounts for stats already accumulated and projects only the remaining games.</li>
     </ul>
   </div>
 
@@ -1404,29 +1401,30 @@
   <div class="sec-header">
     <div class="sec-label">10 — Trade Analysis</div>
     <h2 class="sec-title">Trade Analysis</h2>
-    <p class="sec-desc">Know exactly what you're getting and giving up in any trade.</p>
+    <p class="sec-desc">Know exactly what you're getting and giving up in any trade — or whether a waiver pickup actually helps.</p>
   </div>
 
   <div class="subsection">
     <div class="sub-title">What it's for</div>
-    <p>The Trade Analysis tool evaluates any proposed trade by calculating the net z-score change to your roster across all nine categories. See how the trade affects your category rankings against every opponent in your league, and whether it improves your projected standings position.</p>
+    <p>The Trade Analysis tool (currently ESPN only) simulates any roster change — trade or waiver pickup — and shows you the before and after across your entire squad. It calculates how your category totals shift, how your record changes against every opponent in the league, and where you'd sit in the projected standings.</p>
   </div>
 
   <div class="subsection">
     <div class="sub-title">How to read it</div>
     <ul class="read-list">
-      <li>The category table shows your z-score for each stat before and after the trade — green means improvement, red means decline.</li>
-      <li>The VS Each Opponent view shows your projected category win/loss record against every team post-trade.</li>
-      <li>Net value change is the composite z-score delta — positive means the trade improves your overall roster.</li>
+      <li>Click players on your roster to mark them as going out in a trade or being dropped. Search for incoming players by name.</li>
+      <li>The <strong>VS Each Opponent</strong> table shows your projected category win/loss record against every team, before and after the change.</li>
+      <li>The <strong>Squad Analysis</strong> section shows your full roster stats side by side — before and after — so you can see exactly which categories improve or decline.</li>
+      <li>Projected standings update to reflect where the change leaves you in the league table.</li>
     </ul>
   </div>
 
   <div class="subsection">
     <div class="sub-title">Pro tips</div>
     <ul class="tips-list">
-      <li>Filter the analysis by your punt categories — a trade that hurts your FT% is irrelevant if you're punting FT%.</li>
-      <li>Use the VS Each Opponent view to find trades that improve your record against your playoff opponents specifically.</li>
-      <li>Run the analysis both ways — check what the trade looks like from your trade partner's perspective.</li>
+      <li>Use it for waiver pickups too, not just trades — run any add/drop through the simulator before committing.</li>
+      <li>The VS Each Opponent view is most useful heading into the playoffs — prioritise moves that improve your record against your likely playoff opponents.</li>
+      <li>A trade that looks bad on overall value can still be worth it if it shores up a weak category you're losing consistently.</li>
     </ul>
   </div>
 </section>
@@ -1479,15 +1477,15 @@
 
   <div class="subsection">
     <div class="sub-title">What it's for</div>
-    <p>The Fantasy Dashboard is your personalised command centre once your ESPN or Yahoo league is connected. It surfaces your current roster with live ownership badges, your active matchup projection, your league standings, and recommended actions based on your specific team needs.</p>
+    <p>The Fantasy Dashboard is your personalised command centre once your ESPN league is connected. It surfaces your current roster with ownership badges, your active matchup projection, league standings, and your team's category strengths and weaknesses.</p>
   </div>
 
   <div class="subsection">
     <div class="sub-title">How to read it</div>
     <ul class="read-list">
-      <li>Ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) appear across the entire platform once your league is connected.</li>
-      <li>The active matchup widget shows your current week's win probabilities at a glance.</li>
-      <li>Active vs Out status is pulled directly from your ESPN or Yahoo league in real time.</li>
+      <li>Ownership badges (<strong>Mine</strong>, <strong>Taken</strong>, <strong>Free Agent</strong>) appear across the entire platform once your league is connected — in rankings, projections, trending and everywhere else.</li>
+      <li>The matchup widget shows your current week projection at a glance — click through to the full Matchup tool for category-by-category win probabilities.</li>
+      <li>Projected Standings shows where your team is expected to finish based on remaining schedule and current roster.</li>
     </ul>
   </div>
 
@@ -1495,8 +1493,7 @@
     <div class="sub-title">Pro tips</div>
     <ul class="tips-list">
       <li>Set the Dashboard as your daily bookmark — it's the fastest entry point into your team-specific data.</li>
-      <li>Connect multiple leagues if you play in more than one — the platform handles all of them simultaneously.</li>
-      <li>The projected standings widget updates as you make roster changes, giving you a real-time read on your season trajectory.</li>
+      <li>Use the Fantasy nav dropdown to jump directly to Roster Analysis, Trade Analysis, Matchup or Projected Standings without going through the Dashboard first.</li>
     </ul>
   </div>
 </section>
@@ -1549,7 +1546,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">See the <a href="#espn" style="color:var(--accent)">Connecting Your ESPN League</a> and <a href="#yahoo" style="color:var(--accent)">Connecting Your Yahoo League</a> sections above for full step-by-step instructions. The process takes under two minutes for both platforms.</div>
+      <div class="faq-answer-inner">See the <a href="#espn" style="color:var(--accent)">Connecting Your ESPN League</a> section for full step-by-step instructions. ESPN uses a cookie-based method that takes about two minutes on first setup. Yahoo uses a one-click OAuth login.</div>
     </div>
   </div>
 
@@ -1559,7 +1556,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">Yes — both platforms are fully supported. If you play in leagues on both platforms you can connect all of them simultaneously.</div>
+      <div class="faq-answer-inner">ESPN is fully supported. Yahoo league connection is available but Yahoo-specific fantasy features (roster analysis, trade analysis, matchup projection) are still being built out — full Yahoo support is coming soon.</div>
     </div>
   </div>
 
@@ -1569,7 +1566,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">Roto Intel currently supports 9-category head-to-head and rotisserie formats on both ESPN and Yahoo.</div>
+      <div class="faq-answer-inner">Roto Intel currently supports 9-category head-to-head and rotisserie formats on ESPN. Yahoo format support is in development.</div>
     </div>
   </div>
 
@@ -1619,7 +1616,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">ESPN OAuth tokens reset at the start of each season and will require reauthorisation. Yahoo tokens expire periodically and may need refreshing mid-season. Both take under 30 seconds to reconnect.</div>
+      <div class="faq-answer-inner">For ESPN, your session cookies can expire if you log out of ESPN or after extended inactivity — just reconnect using fresh cookies from the <a href="#espn" style="color:var(--accent)">ESPN connection guide</a>. It takes about two minutes. Yahoo tokens expire periodically and refresh in under 30 seconds.</div>
     </div>
   </div>
 
@@ -1629,7 +1626,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">Yes — both ESPN and Yahoo private leagues are fully supported through the OAuth authentication process.</div>
+      <div class="faq-answer-inner">Yes — private ESPN leagues are fully supported. Your session cookies give Roto Intel access automatically, with no extra steps required.</div>
     </div>
   </div>
 
@@ -1639,7 +1636,7 @@
       <span class="faq-chevron">▾</span>
     </div>
     <div class="faq-answer">
-      <div class="faq-answer-inner">You'll need to reconnect your league from the Fantasy settings page after a password change. The OAuth token will have been invalidated.</div>
+      <div class="faq-answer-inner">For ESPN, changing your password will invalidate your existing session cookies. Just follow the <a href="#espn" style="color:var(--accent)">ESPN connection steps</a> again to grab fresh ones — it takes about two minutes. For Yahoo, your OAuth token will be invalidated — reconnect via Account settings in under 30 seconds.</div>
     </div>
   </div>
 </section>
