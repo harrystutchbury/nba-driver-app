@@ -4877,35 +4877,31 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .mod-word-remove { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1; padding: 0; }
 .mod-word-remove:hover { color: var(--neg); }
 
-/* ── Week Drill-Down ─────────────────────────────────────────────────────── */
-.sg-drill-hint { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
-.sg-row-drillable { cursor: pointer; }
-.sg-row-drillable:hover { filter: brightness(1.08); }
+/* ── Weekly Schedule Page ────────────────────────────────────────────────── */
+.wsg-page { padding: 20px 24px; }
 
-.sg-drill-overlay { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+.wsg-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.wsg-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.wsg-select { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.wsg-week-range { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 
-.sg-drill-header { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.sg-drill-back { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 6px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.sg-drill-back:hover { background: rgba(255,255,255,0.1); }
-.sg-drill-title { font-size: 15px; font-weight: 700; }
+.wsg-scroll { overflow-x: auto; }
 
-.sg-drill-scroll { overflow-x: auto; }
+.wsg-table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.wsg-table th { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; font-weight: 700; text-align: center; white-space: nowrap; }
+.wsg-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: center; }
 
-.sg-drill-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.sg-drill-table th { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; font-weight: 700; }
-.sg-drill-table td { padding: 5px 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.wsg-th-team { text-align: left !important; min-width: 52px; padding-left: 4px !important; }
+.wsg-th-day { min-width: 72px; }
+.wsg-day-name { font-weight: 700; }
+.wsg-day-date { font-size: 10px; font-weight: 400; opacity: 0.7; }
+.wsg-th-gp { min-width: 36px; }
 
-.sg-drill-team-col { text-align: left !important; font-weight: 700; font-size: 11px; padding-left: 14px !important; white-space: nowrap; min-width: 44px; }
-.sg-drill-day-col { min-width: 56px; }
-.sg-drill-day-name { font-weight: 700; }
-.sg-drill-day-date { font-size: 10px; font-weight: 400; opacity: 0.7; }
-.sg-drill-gp-col { font-weight: 700; min-width: 36px; color: var(--text); }
+.wsg-td-team { text-align: left !important; font-weight: 700; font-size: 12px; padding-left: 4px !important; white-space: nowrap; }
+.wsg-td-cell { }
+.wsg-has-game { }
+.wsg-td-gp { font-weight: 700; color: var(--text); }
 
-.sg-drill-my-team { background: rgba(255,255,255,0.035); }
-.sg-drill-my-team .sg-drill-team-col { color: var(--accent); }
-
-.sg-drill-cell { }
-.sg-drill-has-game { }
-.sg-drill-opp { font-weight: 700; font-size: 12px; display: block; }
-.sg-drill-ha { font-size: 10px; color: var(--muted); display: block; font-weight: 600; }
-.sg-drill-rest { color: rgba(255,255,255,0.15); font-size: 13px; }
+.wsg-game-label { display: inline-flex; align-items: baseline; gap: 2px; font-weight: 700; font-size: 12px; }
+.wsg-at { color: var(--muted); font-weight: 500; font-size: 11px; }
+.wsg-rest { color: rgba(255,255,255,0.15); }

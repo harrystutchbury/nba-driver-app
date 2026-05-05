@@ -4597,66 +4597,141 @@ function MatchupProjection({ onSelectPlayer }) {
 }
 
 
-// ── WeekDrillDown ──────────────────────────────────────────────────────────────
+// ── WeeklySchedulePage ─────────────────────────────────────────────────────────
 
-function WeekDrillDown({ week, drillData, loading, allTeams, myTeams, abbrev, onClose }) {
-  const mySet = new Set(myTeams)
+const TEAM_ABBREV = {
+  'ATLANTA HAWKS': 'ATL', 'BOSTON CELTICS': 'BOS', 'BROOKLYN NETS': 'BKN',
+  'CHARLOTTE HORNETS': 'CHA', 'CHICAGO BULLS': 'CHI', 'CLEVELAND CAVALIERS': 'CLE',
+  'DALLAS MAVERICKS': 'DAL', 'DENVER NUGGETS': 'DEN', 'DETROIT PISTONS': 'DET',
+  'GOLDEN STATE WARRIORS': 'GSW', 'HOUSTON ROCKETS': 'HOU', 'INDIANA PACERS': 'IND',
+  'LOS ANGELES CLIPPERS': 'LAC', 'LOS ANGELES LAKERS': 'LAL', 'MEMPHIS GRIZZLIES': 'MEM',
+  'MIAMI HEAT': 'MIA', 'MILWAUKEE BUCKS': 'MIL', 'MINNESOTA TIMBERWOLVES': 'MIN',
+  'NEW ORLEANS PELICANS': 'NOP', 'NEW YORK KNICKS': 'NYK', 'OKLAHOMA CITY THUNDER': 'OKC',
+  'ORLANDO MAGIC': 'ORL', 'PHILADELPHIA 76ERS': 'PHI', 'PHOENIX SUNS': 'PHO',
+  'PORTLAND TRAIL BLAZERS': 'POR', 'SACRAMENTO KINGS': 'SAC', 'SAN ANTONIO SPURS': 'SAS',
+  'TORONTO RAPTORS': 'TOR', 'UTAH JAZZ': 'UTA', 'WASHINGTON WIZARDS': 'WAS',
+}
 
-  // Build Mon–Sun column dates for this week
+function WeeklySchedulePage() {
+  const [meta,        setMeta]        = useState(null)   // { weeks, all_teams, pts_allowed_map }
+  const [metaLoading, setMetaLoading] = useState(true)
+  const [selectedIdx, setSelectedIdx] = useState(null)
+  const [gameData,    setGameData]    = useState(null)   // {team: {date: {opp, home}}}
+  const [gameLoading, setGameLoading] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/schedule/weeks')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setMeta(d)
+          // Default to the most recent week with games
+          const today = new Date().toISOString().slice(0, 10)
+          let idx = d.weeks.findIndex(w => w.end >= today)
+          if (idx === -1) idx = d.weeks.length - 1
+          setSelectedIdx(idx)
+        }
+        setMetaLoading(false)
+      })
+      .catch(() => setMetaLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!meta || selectedIdx === null) return
+    const w = meta.weeks[selectedIdx]
+    setGameData(null)
+    setGameLoading(true)
+    apiFetch(`/api/fantasy/week-detail?start=${w.start}&end=${w.end}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { setGameData(d); setGameLoading(false) })
+      .catch(() => setGameLoading(false))
+  }, [meta, selectedIdx])
+
+  if (metaLoading) return <div className="dash-empty">Loading schedule…</div>
+  if (!meta) return <div className="dash-empty">Schedule data unavailable.</div>
+
+  const { weeks, all_teams, pts_allowed_map } = meta
+  const week = weeks[selectedIdx] || weeks[0]
+
+  // Build day columns
   const days = []
-  const start = new Date(week.start + 'T00:00:00')
-  const end   = new Date(week.end   + 'T00:00:00')
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    days.push(new Date(d))
+  if (week) {
+    for (let d = new Date(week.start + 'T00:00:00'); d <= new Date(week.end + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d))
+    }
+  }
+  const fmt = d => d.toISOString().slice(0, 10)
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+  // Ease colour scale over all games in the visible week
+  const weekEaseVals = all_teams.flatMap(team =>
+    days.map(d => {
+      const g = gameData?.[team]?.[fmt(d)]
+      return g ? pts_allowed_map?.[g.opp] : null
+    }).filter(v => v != null)
+  )
+  const minEase = weekEaseVals.length ? Math.min(...weekEaseVals) : 0
+  const maxEase = weekEaseVals.length ? Math.max(...weekEaseVals) : 1
+  function easeBg(opp) {
+    const val = pts_allowed_map?.[opp]
+    if (val == null || maxEase === minEase) return undefined
+    const t = (val - minEase) / (maxEase - minEase)
+    if (t >= 0.67) return `rgba(77,255,180,${0.08 + (t - 0.67) * 0.45})`
+    if (t <= 0.33) return `rgba(255,107,107,${0.08 + (0.33 - t) * 0.45})`
+    return undefined
   }
 
-  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const fmt = (d) => d.toISOString().slice(0, 10)
-
   return (
-    <div className="sg-drill-overlay">
-      <div className="sg-drill-header">
-        <button className="sg-drill-back" onClick={onClose}>← Back</button>
-        <span className="sg-drill-title">Week: {week.label}</span>
+    <div className="wsg-page">
+      <div className="wsg-controls">
+        <label className="wsg-label">Week</label>
+        <select className="wsg-select" value={selectedIdx ?? 0} onChange={e => setSelectedIdx(Number(e.target.value))}>
+          {weeks.map((w, i) => (
+            <option key={i} value={i}>{w.label}</option>
+          ))}
+        </select>
+        {week && <span className="wsg-week-range">{week.start} → {week.end}</span>}
       </div>
-      {loading ? (
-        <div className="dash-empty">Loading…</div>
+
+      {gameLoading ? (
+        <div className="dash-empty">Loading games…</div>
       ) : (
-        <div className="sg-drill-scroll">
-          <table className="sg-drill-table">
+        <div className="wsg-scroll">
+          <table className="wsg-table">
             <thead>
               <tr>
-                <th className="sg-drill-team-col">Team</th>
+                <th className="wsg-th-team">Team</th>
                 {days.map((d, i) => (
-                  <th key={i} className="sg-drill-day-col">
-                    <div className="sg-drill-day-name">{DAY_LABELS[i % 7]}</div>
-                    <div className="sg-drill-day-date">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                  <th key={i} className="wsg-th-day">
+                    <div className="wsg-day-name">{DAY_NAMES[d.getDay()]}</div>
+                    <div className="wsg-day-date">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                   </th>
                 ))}
-                <th className="sg-drill-gp-col">GP</th>
+                <th className="wsg-th-gp">GP</th>
               </tr>
             </thead>
             <tbody>
-              {allTeams.map(team => {
-                const teamData = drillData?.[team] || {}
-                const gp = days.filter(d => teamData[fmt(d)]).length
+              {all_teams.map(team => {
+                const teamGames = gameData?.[team] || {}
+                const gp = days.filter(d => teamGames[fmt(d)]).length
                 return (
-                  <tr key={team} className={mySet.has(team) ? 'sg-drill-my-team' : ''}>
-                    <td className="sg-drill-team-col">{abbrev[team] || team.slice(0, 3)}</td>
+                  <tr key={team}>
+                    <td className="wsg-td-team">{TEAM_ABBREV[team] || team.slice(0,3)}</td>
                     {days.map((d, i) => {
-                      const game = teamData[fmt(d)]
+                      const g = teamGames[fmt(d)]
+                      const bg = g ? easeBg(g.opp) : undefined
                       return (
-                        <td key={i} className={`sg-drill-cell${game ? ' sg-drill-has-game' : ''}`}>
-                          {game ? (
-                            <>
-                              <span className="sg-drill-opp">{abbrev[game.opp] || (game.opp || '').slice(0, 3)}</span>
-                              {game.home != null && <span className="sg-drill-ha">{game.home ? 'H' : 'A'}</span>}
-                            </>
-                          ) : <span className="sg-drill-rest">–</span>}
+                        <td key={i} className={`wsg-td-cell${g ? ' wsg-has-game' : ''}`} style={bg ? { backgroundColor: bg } : undefined}>
+                          {g ? (
+                            <span className="wsg-game-label">
+                              {!g.home && <span className="wsg-at">@</span>}
+                              {TEAM_ABBREV[g.opp] || (g.opp || '').slice(0,3)}
+                            </span>
+                          ) : <span className="wsg-rest">–</span>}
                         </td>
                       )
                     })}
-                    <td className="sg-drill-gp-col">{gp > 0 ? gp : '–'}</td>
+                    <td className="wsg-td-gp">{gp > 0 ? gp : '–'}</td>
                   </tr>
                 )
               })}
@@ -4672,12 +4747,9 @@ function WeekDrillDown({ week, drillData, loading, allTeams, myTeams, abbrev, on
 // ── ScheduleGrid ───────────────────────────────────────────────────────────────
 
 function ScheduleGrid({ provider = 'espn' }) {
-  const [data,      setData]      = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [drillWeek, setDrillWeek] = useState(null)   // { start, end, label }
-  const [drillData, setDrillData] = useState(null)   // {team: {date: {opp, home}}}
-  const [drillLoad, setDrillLoad] = useState(false)
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
 
   useEffect(() => {
     apiFetch(`/api/fantasy/${provider}/schedule-grid`)
@@ -4686,34 +4758,11 @@ function ScheduleGrid({ provider = 'espn' }) {
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [provider])
 
-  const openDrill = (week) => {
-    setDrillWeek(week)
-    setDrillData(null)
-    setDrillLoad(true)
-    apiFetch(`/api/fantasy/week-detail?start=${week.start}&end=${week.end}`)
-      .then(r => r.ok ? r.json() : {})
-      .then(d => { setDrillData(d); setDrillLoad(false) })
-      .catch(() => setDrillLoad(false))
-  }
-
   if (loading) return <div className="dash-empty">Loading schedule…</div>
   if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
   if (!data || !data.weeks.length) return <div className="dash-empty">No schedule data available.</div>
 
   const { weeks, all_teams, my_nba_teams } = data
-
-  const ABBREV = {
-    'ATLANTA HAWKS': 'ATL', 'BOSTON CELTICS': 'BOS', 'BROOKLYN NETS': 'BKN',
-    'CHARLOTTE HORNETS': 'CHA', 'CHICAGO BULLS': 'CHI', 'CLEVELAND CAVALIERS': 'CLE',
-    'DALLAS MAVERICKS': 'DAL', 'DENVER NUGGETS': 'DEN', 'DETROIT PISTONS': 'DET',
-    'GOLDEN STATE WARRIORS': 'GSW', 'HOUSTON ROCKETS': 'HOU', 'INDIANA PACERS': 'IND',
-    'LOS ANGELES CLIPPERS': 'LAC', 'LOS ANGELES LAKERS': 'LAL', 'MEMPHIS GRIZZLIES': 'MEM',
-    'MIAMI HEAT': 'MIA', 'MILWAUKEE BUCKS': 'MIL', 'MINNESOTA TIMBERWOLVES': 'MIN',
-    'NEW ORLEANS PELICANS': 'NOP', 'NEW YORK KNICKS': 'NYK', 'OKLAHOMA CITY THUNDER': 'OKC',
-    'ORLANDO MAGIC': 'ORL', 'PHILADELPHIA 76ERS': 'PHI', 'PHOENIX SUNS': 'PHO',
-    'PORTLAND TRAIL BLAZERS': 'POR', 'SACRAMENTO KINGS': 'SAC', 'SAN ANTONIO SPURS': 'SAS',
-    'TORONTO RAPTORS': 'TOR', 'UTAH JAZZ': 'UTA', 'WASHINGTON WIZARDS': 'WAS',
-  }
 
   const mySet = new Set(my_nba_teams)
 
@@ -4732,24 +4781,12 @@ function ScheduleGrid({ provider = 'espn' }) {
 
   return (
     <div className="sg-wrap">
-      {drillWeek && (
-        <WeekDrillDown
-          week={drillWeek}
-          drillData={drillData}
-          loading={drillLoad}
-          allTeams={all_teams}
-          myTeams={my_nba_teams}
-          abbrev={ABBREV}
-          onClose={() => { setDrillWeek(null); setDrillData(null) }}
-        />
-      )}
       <div className="sg-legend">
         <span className="sg-legend-item sg-legend-nba">NBA Playoffs</span>
         <span className="sg-legend-item sg-legend-fantasy">Fantasy Playoffs</span>
         <span className="sg-legend-item sg-legend-ease-easy">Easier matchups</span>
         <span className="sg-legend-item sg-legend-ease-hard">Harder matchups</span>
         <span className="sg-legend-cell-key">Cell: <strong>games</strong> / <span className="sg-legend-pts">avg opp PTS allowed</span></span>
-        <span className="sg-drill-hint">Double-click a row to drill into day-by-day view</span>
       </div>
       <div className="sg-scroll">
         <table className="sg-table">
@@ -4762,7 +4799,7 @@ function ScheduleGrid({ provider = 'espn' }) {
                   className={`sg-col-team${mySet.has(t) ? ' sg-my-team' : ''}`}
                   title={t}
                 >
-                  {ABBREV[t] || t.slice(0, 3)}
+                  {TEAM_ABBREV[t] || t.slice(0, 3)}
                 </th>
               ))}
               <th className="sg-col-total sg-col-my-total">My GP</th>
@@ -4778,7 +4815,7 @@ function ScheduleGrid({ provider = 'espn' }) {
                 w.is_fantasy_playoff ? 'sg-fantasy-playoff' : '',
               ].filter(Boolean).join(' ')
               return (
-                <tr key={w.start} className={rowCls + ' sg-row-drillable'} onDoubleClick={() => openDrill(w)} title="Double-click to see day-by-day breakdown">
+                <tr key={w.start} className={rowCls}>
                   <td className="sg-col-week">
                     <span className="sg-week-label">{w.label}</span>
                     {w.is_fantasy_playoff && !w.is_nba_playoff && <span className="sg-playoff-tag sg-playoff-tag-fantasy">Fantasy PO</span>}
@@ -5758,10 +5795,11 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </div>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['boxscores','injuries'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['boxscores','injuries','weekly-schedule'].includes(page) ? ' active' : ''}`}>
                     Schedule <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
+                    <button className="nav-drop-item" onClick={() => go('weekly-schedule')}>Weekly Schedule</button>
                     <button className="nav-drop-item" onClick={() => go('boxscores')}>Box Scores</button>
                     <button className="nav-drop-item" onClick={() => go('injuries')}>Injuries &amp; News</button>
                   </div>
@@ -5858,6 +5896,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'adjustments' && <AdjustmentsPage />}
 
       {page === 'moderation' && <ModerationPage />}
+
+      {page === 'weekly-schedule' && <WeeklySchedulePage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

@@ -4772,6 +4772,53 @@ def espn_schedule_grid(current_user: str = Depends(get_current_user)):
     }
 
 
+@router.get("/schedule/weeks")
+def get_schedule_weeks(current_user: str = Depends(get_current_user)):
+    """All weeks in the current season plus pts_allowed_map, no fantasy connection required."""
+    from datetime import date, timedelta
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    game_rows = conn.execute("""
+        SELECT DISTINCT game_date, team FROM game_logs WHERE season=? ORDER BY game_date
+    """, [season]).fetchall()
+
+    pts_rows = conn.execute("""
+        SELECT opponent AS team, AVG(game_pts) AS avg_pts
+        FROM (
+            SELECT game_date, team, opponent, SUM(pts) AS game_pts
+            FROM game_logs WHERE season=? AND opponent IS NOT NULL AND min > 0
+            GROUP BY game_date, team, opponent
+        )
+        GROUP BY opponent HAVING COUNT(*) >= 5
+    """, [season]).fetchall()
+    conn.close()
+
+    pts_allowed_map = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pts_rows}
+
+    if not game_rows:
+        return {"weeks": [], "all_teams": [], "pts_allowed_map": {}}
+
+    all_dates = [date.fromisoformat(r["game_date"]) for r in game_rows]
+    season_start = min(all_dates)
+    season_end   = max(all_dates)
+    monday = season_start - timedelta(days=season_start.weekday())
+
+    weeks, all_teams = [], set()
+    ws = monday
+    while ws <= season_end:
+        we = ws + timedelta(days=6)
+        weeks.append({"start": ws.isoformat(), "end": we.isoformat(),
+                      "label": f"{ws.strftime('%b %-d')}–{we.strftime('%b %-d')}"})
+        ws += timedelta(weeks=1)
+
+    for r in game_rows:
+        all_teams.add(r["team"])
+
+    return {"weeks": weeks, "all_teams": sorted(all_teams), "pts_allowed_map": pts_allowed_map}
+
+
 @fantasy_router.get("/week-detail")
 def fantasy_week_detail(
     start: str = Query(...),
