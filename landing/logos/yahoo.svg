@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="10" fill="#6001D2"/>
+  <text x="40" y="45" text-anchor="middle" fill="white"
+        font-family="Arial Black, Arial, sans-serif"
+        font-weight="900" font-size="22" letter-spacing="-0.5">Yahoo</text>
+  <text x="40" y="63" text-anchor="middle" fill="white"
+        font-family="Arial Black, Arial, sans-serif"
+        font-weight="900" font-size="13" letter-spacing="1">Sports</text>
+</svg>

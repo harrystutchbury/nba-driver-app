@@ -1193,13 +1193,13 @@
     <div class="social-divider"></div>
     <div class="social-badge">
       <div class="social-badge-icon">
-        <img src="https://logo.clearbit.com/espn.com" alt="ESPN" style="border-radius:6px;" />
+        <img src="logos/espn.svg" alt="ESPN" />
       </div>
       <span>ESPN</span>
     </div>
     <div class="social-badge">
       <div class="social-badge-icon">
-        <img src="https://logo.clearbit.com/sports.yahoo.com" alt="Yahoo" style="border-radius:6px;" />
+        <img src="logos/yahoo.svg" alt="Yahoo" />
       </div>
       <span>Yahoo</span>
     </div>
@@ -1207,7 +1207,7 @@
     <p class="social-text">Powered by real-time<br>NBA data.</p>
     <div class="social-badge">
       <div class="social-badge-icon">
-        <img src="https://logo.clearbit.com/nba.com" alt="NBA" style="border-radius:6px;" />
+        <img src="logos/nba.svg" alt="NBA" />
       </div>
       <span>NBA Data</span>
     </div>
@@ -1401,7 +1401,7 @@
     const stat = d ? (TICKER_STAT[d.stat] || d.stat.toUpperCase()) : null
     const dz   = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(2)}ΔZ` : ''
     const delta = (d && d.delta != null) ? `${d.delta > 0 ? '+' : ''}${Number(d.delta).toFixed(1)} ${stat} · ` : ''
-    return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta}${dz}`
+    return `${p.dir === 'up' ? '▲' : '▼'}  ${delta}${dz}`
   }
 
   function renderTicker(players) {
