@@ -769,7 +769,7 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 24px;
       margin-top: 64px;
-      align-items: start;
+      align-items: stretch;
     }
 
     .pricing-card {
@@ -781,7 +781,10 @@
       transition: transform 0.2s, box-shadow 0.2s;
       opacity: 0;
       transform: translateY(24px);
+      display: flex;
+      flex-direction: column;
     }
+    .pricing-card .btn-pricing { margin-top: auto; }
     .pricing-card.visible {
       opacity: 1;
       transform: translateY(0);
@@ -1215,7 +1218,7 @@
   <div class="section-inner">
     <p class="section-eyebrow">Features</p>
     <h2 class="section-title">Everything you need<br>to dominate your league.</h2>
-    <p class="section-sub">Three tools that work together to give you an edge from draft day to championship week.</p>
+    <p class="section-sub">Tools that work together to give you an edge from draft day to championship week.</p>
     <div class="features-grid">
       <div class="feature-card" data-animate>
         <div class="feature-icon">📊</div>
@@ -1240,7 +1243,7 @@
 <section id="how-it-works" class="how-section">
   <div class="section-inner">
     <p class="section-eyebrow">How It Works</p>
-    <h2 class="section-title">Three steps to<br>the edge.</h2>
+    <h2 class="section-title">Three steps to<br>your edge.</h2>
     <div class="steps-grid">
       <div class="step" data-animate>
         <div class="step-num">1</div>
@@ -1254,7 +1257,7 @@
       </div>
       <div class="step" data-animate>
         <div class="step-num">3</div>
-        <h3 class="step-title">Win more categories</h3>
+        <h3 class="step-title">Win more matchups</h3>
         <p class="step-body">Make smarter decisions on starts, trades, and pickups. Let the data do the work — and show up to matchup day knowing exactly where you stand.</p>
       </div>
     </div>
