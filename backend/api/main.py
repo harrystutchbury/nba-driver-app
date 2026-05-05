@@ -4858,7 +4858,6 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
         return name_to_slug[m[0]] if m else None
 
     teams: set = set()
-    print(f"[my-nba-teams] provider={provider} team_key={team_key}", flush=True)
     try:
         if provider == "yahoo":
             token = _refresh_yahoo_token(conn, current_user)
@@ -4868,7 +4867,6 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
                                .get("roster", {})
                                .get("0", {})
                                .get("players", {}))
-            print(f"[my-nba-teams] Yahoo players_raw keys: {list(players_raw.keys())[:5]}", flush=True)
             for pk, pv in players_raw.items():
                 if pk == "count":
                     continue
@@ -4882,47 +4880,47 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
                         teams.add(slug_to_team[slug])
 
         elif provider == "espn":
-            import urllib.request as _urlreq, json as _json2
+            import concurrent.futures as _cf
             espn_id_to_slug = {
                 r["provider_id"]: r["br_slug"]
                 for r in conn.execute(
                     "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
                 ).fetchall()
             }
-            print(f"[my-nba-teams] ESPN id_to_slug entries: {len(espn_id_to_slug)}", flush=True)
-            _season = _current_season_end_year()
-            _url = (
-                f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_season}"
-                f"/segments/0/leagues/{fc['league_key']}?view=mRoster"
-            )
-            print(f"[my-nba-teams] ESPN url={_url}", flush=True)
-            _req = _urlreq.Request(_url, headers={
-                "Cookie": f"espn_s2={fc['access_token']}; SWID={fc['refresh_token']}",
-            })
-            with _urlreq.urlopen(_req, timeout=10) as _r:
-                _raw = _json2.loads(_r.read())
-            team_ids = [t.get("id") for t in _raw.get("teams", [])]
-            print(f"[my-nba-teams] ESPN teams in response: {team_ids}", flush=True)
-            for _team in _raw.get("teams", []):
-                if str(_team.get("id", "")) != team_key:
-                    continue
-                entries = _team.get("roster", {}).get("entries", [])
-                print(f"[my-nba-teams] ESPN my team entries: {len(entries)}", flush=True)
-                for _entry in entries:
-                    _ppe  = _entry.get("playerPoolEntry", {})
-                    _pid  = str(_ppe.get("playerId", "") or _entry.get("playerId", ""))
-                    slug  = espn_id_to_slug.get(_pid)
+
+            def _get_espn_teams():
+                conn2 = get_conn()
+                try:
+                    league = _espn_league(conn2, current_user)
+                finally:
+                    conn2.close()
+                my_obj = next((t for t in league.teams if str(t.team_id) == team_key), None)
+                if not my_obj:
+                    return set()
+                result = set()
+                for p in (my_obj.roster or []):
+                    pid  = str(p.playerId)
+                    slug = espn_id_to_slug.get(pid)
                     if not slug:
-                        _pname = _ppe.get("player", {}).get("fullName", "")
-                        slug   = _resolve(_pname) if _pname else None
+                        m = rfprocess.extractOne(p.name, all_names, score_cutoff=75)
+                        slug = name_to_slug[m[0]] if m else None
                     if slug and slug in slug_to_team:
-                        teams.add(slug_to_team[slug])
+                        result.add(slug_to_team[slug])
+                return result
+
+            with _cf.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_get_espn_teams)
+                try:
+                    teams = fut.result(timeout=12)
+                except _cf.TimeoutError:
+                    logger.warning("my-nba-teams: ESPN timed out after 12s")
+                except Exception:
+                    logger.exception("my-nba-teams: ESPN error")
     except Exception:
-        logger.exception("my-nba-teams: API error")
+        logger.exception("my-nba-teams: error")
     finally:
         conn.close()
 
-    print(f"[my-nba-teams] returning teams={sorted(teams)}", flush=True)
     return {"teams": sorted(teams)}
 
 
