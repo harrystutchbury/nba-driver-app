@@ -1692,18 +1692,18 @@
 .shot-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .shot-table th {
   text-align: left;
   padding: 8px 10px;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  color: var(--muted);
+  color: var(--text);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1713,13 +1713,13 @@
 .shot-table td {
   padding: 9px 10px;
   border-bottom: 1px solid var(--border);
-  color: var(--muted);
+  color: var(--text);
   white-space: nowrap;
 }
 
 .shot-table td.num  { text-align: right; }
-.shot-table td.mono { font-family: var(--mono); font-size: 11px; }
-.shot-table td.num.mono { font-family: var(--mono); font-size: 11px; }
+.shot-table td.mono { font-family: var(--mono); font-size: 13px; }
+.shot-table td.num.mono { font-family: var(--mono); font-size: 13px; }
 .shot-table tbody tr:hover td { background: var(--surface); }
 
 /* ── Game log ────────────────────────────────────────────── */
