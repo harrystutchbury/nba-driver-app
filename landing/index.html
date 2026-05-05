@@ -363,6 +363,22 @@
       box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.04);
     }
 
+    .hero-screenshot-wrap {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1000px;
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.04);
+    }
+    .hero-screenshot {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
     .mock-bar {
       background: var(--surface-3);
       border-bottom: 1px solid var(--border);
@@ -1126,64 +1142,15 @@
       </div>
     </div>
 
-    <!-- MOCK UI -->
-    <div class="mock-ui">
+    <!-- APP SCREENSHOT -->
+    <div class="hero-screenshot-wrap">
       <div class="mock-bar">
         <div class="mock-dot"></div>
         <div class="mock-dot"></div>
         <div class="mock-dot"></div>
-        <div class="mock-url">app.rotointel.com/matchup/week-18</div>
+        <div class="mock-url">app.rotointel.com/fantasy/matchup</div>
       </div>
-      <div class="mock-body">
-        <div class="mock-left">
-          <p class="mock-section-label">Matchup · Week 18</p>
-          <p class="mock-matchup-title">Your Team</p>
-          <p class="mock-matchup-sub">vs. Hooper's Dream</p>
-          <div class="mock-proj-badge">⬆ Projected 6–3 Win</div>
-          <div class="mock-roster">
-            <div class="mock-player">
-              <span class="mock-player-name">N. Jokić</span>
-              <span class="mock-player-stat">PTS 38.2</span>
-            </div>
-            <div class="mock-player">
-              <span class="mock-player-name">J. Tatum</span>
-              <span class="mock-player-stat">AST 7.1</span>
-            </div>
-            <div class="mock-player">
-              <span class="mock-player-name">J.J. Jr.</span>
-              <span class="mock-player-stat">BLK 3.4</span>
-            </div>
-            <div class="mock-player">
-              <span class="mock-player-name">T. Haliburton</span>
-              <span class="mock-player-stat">AST 9.8</span>
-            </div>
-            <div class="mock-player">
-              <span class="mock-player-name">A. Şengün</span>
-              <span class="mock-player-stat">REB 11.2</span>
-            </div>
-          </div>
-        </div>
-        <div class="mock-right">
-          <p class="mock-section-label">Category win probability</p>
-          <div class="mock-summary">
-            <div class="mock-summary-card">
-              <div class="mock-summary-label">Proj Score</div>
-              <div class="mock-summary-val">6–3 <span>W</span></div>
-            </div>
-            <div class="mock-summary-card">
-              <div class="mock-summary-label">Win Prob</div>
-              <div class="mock-summary-val">74<span>%</span></div>
-            </div>
-            <div class="mock-summary-card">
-              <div class="mock-summary-label">Schedule Ease</div>
-              <div class="mock-summary-val">+<span>12%</span></div>
-            </div>
-          </div>
-          <div class="mock-cats" id="mock-cats">
-            <!-- filled by JS -->
-          </div>
-        </div>
-      </div>
+      <img src="screenshot.png" alt="Roto Intel matchup projection" class="hero-screenshot" />
     </div>
   </div>
 </section>
