@@ -6011,7 +6011,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                             <div className="shot-metric"><span className="metric-label">Comparison FG%</span><span className="metric-value">{(shotDiet.fg_pct_b * 100).toFixed(1)}%</span><span className={`metric-sub metric-delta ${shotDiet.delta >= 0 ? 'pos' : 'neg'}`}>{shotDiet.delta >= 0 ? '+' : ''}{(shotDiet.delta * 100).toFixed(1)}pp</span></div>
                           </div>
                           <div className="shot-diet-charts">
-                            <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot selection %</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
+                            <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot distribution by zone</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
                             <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
                           </div>
 
@@ -6791,7 +6791,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
                   {/* Bar charts */}
                   <div className="shot-diet-charts">
-                    <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot selection %</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
+                    <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot distribution by zone</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
                     <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
                   </div>
 
