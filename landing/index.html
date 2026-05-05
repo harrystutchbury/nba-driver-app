@@ -339,8 +339,8 @@
       font-size: 13px;
       font-weight: 700;
     }
-    .ticker-dir.up   { color: var(--accent); }
-    .ticker-dir.down { color: var(--red); }
+    .ticker-dir.up,   .ticker-driver.up   { color: var(--accent); }
+    .ticker-dir.down, .ticker-driver.down { color: var(--red); }
     .ticker-driver {
       font-family: var(--mono);
       font-size: 11px;
@@ -1369,7 +1369,7 @@
   function tickerLabel(p) {
     const d    = p.drivers?.[0]
     const stat = d ? (TICKER_STAT[d.stat] || d.stat.toUpperCase()) : null
-    const dz   = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(2)}ΔZ` : ''
+    const dz   = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(1)}ΔZ` : ''
     const delta = (d && d.delta != null) ? `${d.delta > 0 ? '+' : ''}${Number(d.delta).toFixed(1)} ${stat} · ` : ''
     return `${p.dir === 'up' ? '▲' : '▼'}  ${delta}${dz}`
   }
@@ -1382,7 +1382,7 @@
         <span class="ticker-name">${p.name}</span>
         <span class="ticker-team">${p.team}</span>
         <span class="ticker-dir ${p.dir}">${p.dir === 'up' ? '↑' : '↓'}</span>
-        <span class="ticker-driver">${tickerLabel(p)}</span>
+        <span class="ticker-driver ${p.dir}">${tickerLabel(p)}</span>
       </div>
     `).join('')
   }

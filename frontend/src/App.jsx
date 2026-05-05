@@ -1722,7 +1722,7 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
       const d     = p.drivers?.[0]
       const stat  = d ? (TICKER_STAT[d.stat] || d.stat) : null
       const delta = (d && d.delta != null) ? `${d.delta > 0 ? '+' : ''}${Number(d.delta).toFixed(1)} ${stat}` : null
-      const dz    = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(2)}ΔZ` : ''
+      const dz    = p.delta_z != null ? `${p.delta_z > 0 ? '+' : ''}${Number(p.delta_z).toFixed(1)}ΔZ` : ''
       return `${p.name}  ${p.dir === 'up' ? '▲' : '▼'}  ${delta ? `${delta} · ` : ''}${dz}`
     } catch { return p.name || '' }
   }
