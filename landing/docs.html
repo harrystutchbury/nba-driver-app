@@ -816,44 +816,83 @@
   <div class="sec-header">
     <div class="sec-label">02 — ESPN</div>
     <h2 class="sec-title">Connecting Your ESPN League</h2>
-    <p class="sec-desc">Step-by-step guide to linking your ESPN Fantasy Basketball league to Roto Intel.</p>
+    <p class="sec-desc">ESPN doesn't offer a simple one-click login for third-party apps, so the connection takes a few extra steps. Don't let that put you off — it takes about two minutes and you only ever do it once.</p>
   </div>
 
   <div class="subsection">
-    <div class="sub-title">What it's for</div>
-    <p>Connecting your ESPN league gives Roto Intel access to your roster, matchup schedule, league settings, scoring format and opponent rosters. This powers the ownership badges, matchup projections, trade analysis and projected standings tools. The connection is read-only — Roto Intel cannot make changes to your league without your explicit instruction.</p>
+    <div class="sub-title">What you'll need</div>
+    <p>Three things from ESPN: two authentication tokens called <strong>espn_s2</strong> and <strong>SWID</strong>, plus your <strong>League ID</strong>. These live in your browser when you're logged into ESPN — the steps below show you exactly where to find them.</p>
   </div>
 
   <div class="subsection">
-    <div class="sub-title">Step-by-step</div>
+    <div class="sub-title">Step 1 — Log in to ESPN</div>
     <ol class="steps-list">
       <li class="step-item">
         <div class="step-num">1</div>
-        <div class="step-body"><p>Navigate to the <strong>Fantasy</strong> section in the top nav and click <strong>Connect League</strong>.</p></div>
+        <div class="step-body"><p>Open <strong>Google Chrome</strong> and go to <a href="https://www.espn.com/fantasy/basketball/" target="_blank" style="color:var(--accent)">espn.com/fantasy/basketball</a>.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">2</div>
-        <div class="step-body"><p>Select <strong>ESPN</strong> as your platform.</p></div>
+        <div class="step-body"><p>Sign in with your ESPN account — the same one you use to manage your fantasy team.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">3</div>
-        <div class="step-body"><p>You'll be redirected to ESPN's login page. Enter your ESPN account credentials — the same ones you use to access your fantasy league.</p></div>
+        <div class="step-body"><p>Click into your fantasy league so you can see your team. Look at the URL in the address bar — you'll see a number after <code>leagueId=</code>. That's your <strong>League ID</strong>. Write it down or copy it.</p></div>
       </li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Step 2 — Open browser DevTools</div>
+    <p style="margin-bottom:16px">This is the part that sounds scary but isn't. DevTools is just a panel built into every browser that lets you inspect what's happening behind the scenes.</p>
+    <ol class="steps-list">
       <li class="step-item">
         <div class="step-num">4</div>
-        <div class="step-body"><p>ESPN will ask you to authorise Roto Intel to access your fantasy data. Click <strong>Allow</strong>. This grants read access to your league information only.</p></div>
+        <div class="step-body"><p>While still on the ESPN page, press <strong>F12</strong> on your keyboard (or right-click anywhere on the page and choose <strong>Inspect</strong>). A panel will open — usually on the right side or bottom of your screen.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">5</div>
-        <div class="step-body"><p>You'll be redirected back to Roto Intel. Select your league from the dropdown if you have multiple ESPN leagues.</p></div>
+        <div class="step-body"><p>At the top of that panel, click the tab labelled <strong>Application</strong>. If you don't see it, look for a <strong>&gt;&gt;</strong> arrow — it may be hidden behind other tabs.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">6</div>
-        <div class="step-body"><p>Roto Intel will sync your roster, matchup schedule and league settings. This takes 10–15 seconds.</p></div>
+        <div class="step-body"><p>In the left-hand sidebar of the Application panel, find <strong>Cookies</strong> and click the arrow to expand it. Then click on <strong>https://www.espn.com</strong>.</p></div>
       </li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Step 3 — Copy your tokens</div>
+    <ol class="steps-list">
       <li class="step-item">
         <div class="step-num">7</div>
-        <div class="step-body"><p>Once synced, ownership badges will appear across the platform and your Dashboard will populate with your team data.</p></div>
+        <div class="step-body"><p>You'll see a table of cookies. In the <strong>Name</strong> column, find <strong>espn_s2</strong>. Click on it and copy the long string of text in the <strong>Value</strong> column — this is your first token.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">8</div>
+        <div class="step-body"><p>Now find <strong>SWID</strong> in the same list. Copy its value — it will look something like <code>{"{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"}</code> with curly braces. Copy the whole thing including the braces.</p></div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">Step 4 — Connect in Roto Intel</div>
+    <ol class="steps-list">
+      <li class="step-item">
+        <div class="step-num">9</div>
+        <div class="step-body"><p>In Roto Intel, click the <strong>person icon</strong> in the top-right corner to open Account settings.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">10</div>
+        <div class="step-body"><p>Under <strong>Fantasy Connections</strong>, click <strong>Connect ESPN</strong>.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">11</div>
+        <div class="step-body"><p>Paste your <strong>espn_s2</strong> value, your <strong>SWID</strong> value, and your <strong>League ID</strong> into the three fields, then click <strong>Connect</strong>.</p></div>
+      </li>
+      <li class="step-item">
+        <div class="step-num">12</div>
+        <div class="step-body"><p>Done. Roto Intel will sync your roster and league settings. Ownership badges will appear across the platform and your Fantasy Dashboard will populate with your team data.</p></div>
       </li>
     </ol>
   </div>
@@ -863,11 +902,10 @@
     <div class="note-card">
       <div class="note-card-title">Notes</div>
       <ul class="note-list">
-        <li>ESPN uses OAuth 2.0 for authentication — your ESPN password is never stored by or visible to Roto Intel.</li>
-        <li>If your ESPN league is private, the OAuth process handles access automatically — no additional steps required.</li>
-        <li>ESPN's expected return date for injured players is ingested automatically and applied to your projections.</li>
-        <li>If you manage multiple ESPN leagues, you can connect all of them and switch between them from the Dashboard.</li>
-        <li>Re-authorisation may be required at the start of each season when ESPN resets OAuth tokens.</li>
+        <li>Your ESPN password is never entered into or stored by Roto Intel — only the two session tokens are used.</li>
+        <li>These tokens expire when you log out of ESPN or after a long period of inactivity. If your data stops updating, simply reconnect using fresh tokens from the steps above.</li>
+        <li>The connection is read-only — Roto Intel cannot make changes to your ESPN league.</li>
+        <li>If your league is private, these tokens give Roto Intel access automatically — no extra steps needed.</li>
       </ul>
     </div>
   </div>
@@ -877,9 +915,10 @@
     <div class="trouble-card">
       <div class="trouble-card-title">Troubleshooting</div>
       <ul class="trouble-list">
-        <li>League not appearing after connection? Make sure you're logged into the correct ESPN account that manages the league.</li>
-        <li>Ownership badges not showing? Try disconnecting and reconnecting your league from the Fantasy settings page.</li>
-        <li>Stats not updating? Check that your ESPN league is set to the current active season.</li>
+        <li><strong>Can't find the Application tab in DevTools?</strong> Make sure you're using Chrome or Edge. Safari and Firefox label this tab differently.</li>
+        <li><strong>"Invalid credentials" error?</strong> The tokens may have expired — log out of ESPN, log back in, and copy fresh values.</li>
+        <li><strong>Wrong league showing up?</strong> Double-check your League ID from the URL. If you're in multiple leagues, make sure you're copying the ID for the right one.</li>
+        <li><strong>Ownership badges not appearing?</strong> Try disconnecting and reconnecting from Account settings.</li>
       </ul>
     </div>
   </div>
@@ -892,12 +931,7 @@
   <div class="sec-header">
     <div class="sec-label">03 — Yahoo</div>
     <h2 class="sec-title">Connecting Your Yahoo League</h2>
-    <p class="sec-desc">Step-by-step guide to linking your Yahoo Fantasy Basketball league to Roto Intel.</p>
-  </div>
-
-  <div class="subsection">
-    <div class="sub-title">What it's for</div>
-    <p>Connecting your Yahoo league gives Roto Intel access to your roster, matchup data, league settings and opponent information. Yahoo's API provides particularly rich data including detailed position eligibility, which powers accurate lineup optimisation and matchup projections. As with ESPN, the connection is read-only by default.</p>
+    <p class="sec-desc">Yahoo uses a standard one-click login — no copying tokens or finding IDs. The whole process takes about 30 seconds.</p>
   </div>
 
   <div class="subsection">
@@ -905,31 +939,27 @@
     <ol class="steps-list">
       <li class="step-item">
         <div class="step-num">1</div>
-        <div class="step-body"><p>Navigate to the <strong>Fantasy</strong> section in the top nav and click <strong>Connect League</strong>.</p></div>
+        <div class="step-body"><p>In Roto Intel, click the <strong>person icon</strong> in the top-right corner to open Account settings.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">2</div>
-        <div class="step-body"><p>Select <strong>Yahoo</strong> as your platform.</p></div>
+        <div class="step-body"><p>Under <strong>Fantasy Connections</strong>, click <strong>Connect Yahoo</strong>. You'll be taken to Yahoo's login page.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">3</div>
-        <div class="step-body"><p>You'll be redirected to Yahoo's login page. Enter your Yahoo account credentials.</p></div>
+        <div class="step-body"><p>Sign in with the Yahoo account you use for your fantasy league. If you're already logged in to Yahoo in this browser, you may skip straight past this step.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">4</div>
-        <div class="step-body"><p>Yahoo will display an authorisation screen listing the data Roto Intel is requesting access to — this includes your fantasy league data, roster information and matchup schedule. Click <strong>Agree</strong>.</p></div>
+        <div class="step-body"><p>Yahoo will show an authorisation screen asking if you want to give Roto Intel access to your fantasy data. Click <strong>Agree</strong>. This is read-only access — Roto Intel cannot make any changes to your league.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">5</div>
-        <div class="step-body"><p>You'll be redirected back to Roto Intel. If you have multiple Yahoo leagues, select the one you want to connect from the dropdown.</p></div>
+        <div class="step-body"><p>You'll be redirected back to Roto Intel automatically. If you're in more than one Yahoo fantasy league, select the correct one from the dropdown that appears.</p></div>
       </li>
       <li class="step-item">
         <div class="step-num">6</div>
-        <div class="step-body"><p>Roto Intel will sync your league data. Yahoo sync typically completes in under 15 seconds.</p></div>
-      </li>
-      <li class="step-item">
-        <div class="step-num">7</div>
-        <div class="step-body"><p>Your Dashboard will populate with your Yahoo roster and ownership badges will appear across the platform.</p></div>
+        <div class="step-body"><p>Done. Your roster and league settings will sync within a few seconds. Ownership badges will appear across the platform and your Fantasy Dashboard will be ready to use.</p></div>
       </li>
     </ol>
   </div>
@@ -939,11 +969,10 @@
     <div class="note-card">
       <div class="note-card-title">Notes</div>
       <ul class="note-list">
-        <li>Yahoo uses OAuth 2.0 — your Yahoo password is never stored by Roto Intel.</li>
-        <li>Yahoo provides more granular position eligibility data than ESPN — this is automatically applied to lineup optimisation and matchup projections.</li>
-        <li>Yahoo tokens expire after a set period. If your data stops updating, simply reconnect your league from the Fantasy settings page — it takes under 30 seconds.</li>
-        <li>Yahoo leagues with custom scoring settings are fully supported — your league's specific category weights are applied automatically.</li>
+        <li>Your Yahoo password is never seen or stored by Roto Intel — authentication is handled entirely by Yahoo.</li>
+        <li>Yahoo access tokens expire periodically. If your data stops updating, just click <strong>Connect Yahoo</strong> again — it takes under 30 seconds to refresh.</li>
         <li>Both public and private Yahoo leagues are supported.</li>
+        <li>Custom scoring settings are picked up automatically from your league configuration.</li>
       </ul>
     </div>
   </div>
@@ -953,9 +982,9 @@
     <div class="trouble-card">
       <div class="trouble-card-title">Troubleshooting</div>
       <ul class="trouble-list">
-        <li>Token expired error? Go to Fantasy settings and click <strong>Reconnect Yahoo League</strong> to refresh your authorisation.</li>
-        <li>Wrong league appearing? Disconnect and reconnect, making sure to select the correct league from the dropdown.</li>
-        <li>Custom scoring categories not appearing correctly? Contact support — some non-standard Yahoo scoring configurations require manual mapping.</li>
+        <li><strong>Redirected to Yahoo but nothing happens after logging in?</strong> Try clearing your browser cookies for yahoo.com and connecting again.</li>
+        <li><strong>Wrong league showing?</strong> Disconnect from Account settings and reconnect — select the correct league from the dropdown on the way back in.</li>
+        <li><strong>Data stopped updating?</strong> Your token has likely expired. Reconnect via Account settings to get a fresh one.</li>
       </ul>
     </div>
   </div>
