@@ -1192,11 +1192,61 @@
 }
 
 /* ── Usage Projector ── */
+.usage-sliders-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
 .usage-sliders {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 16px;
+  flex: 1;
+}
+
+.usage-rank-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.usage-rank-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.usage-rank-vals {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.usage-rank-base { color: var(--muted); font-size: 14px; }
+.usage-rank-arrow { color: var(--muted); font-size: 12px; }
+.usage-rank-proj { font-size: 18px; }
+.usage-rank-delta { font-size: 13px; margin-left: 4px; }
+
+.usage-tr-total td {
+  border-top: 2px solid var(--border) !important;
+  font-weight: 700;
+  font-size: 13px;
 }
 
 .usage-reset-btn {

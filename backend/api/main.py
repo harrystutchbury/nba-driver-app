@@ -686,6 +686,31 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
         for s, g in sorted(seasons.items(), reverse=True)
     ]
 
+    # Z-score params for the current season (used by frontend Usage Projector)
+    current_season = sorted(seasons.keys(), reverse=True)[0] if seasons else None
+    z_params_out = None
+    z_total_dist = None
+    if current_season and current_season in league_by_season:
+        lg = league_by_season[current_season]
+        z_params_out = {}
+        for key in Z_KEYS:
+            mean, std = lg.get(key, (None, None))
+            if mean is not None and std is not None:
+                p = {"mean": mean, "std": std}
+                if key == 'fg_pct':
+                    p['league_avg'] = lg.get('_fg_mean')
+                elif key == 'ft_pct':
+                    p['league_avg'] = lg.get('_ft_mean')
+                z_params_out[key] = p
+        # Sorted z-totals for all qualifying players — used to estimate projected rank
+        season_player_rows = rows_by_season.get(current_season, [])
+        z_totals = []
+        for r in season_player_rows:
+            z = _composite_z(r, lg)
+            if z is not None:
+                z_totals.append(round(z, 2))
+        z_total_dist = sorted(z_totals)
+
     # Calculate current age from birthdate
     current_age = None
     if player_row["birthdate"]:
@@ -710,6 +735,8 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
         "seasons": season_avgs,
         "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30], team_game_map), league_l30, rows_l30),
         "l14":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_14], team_game_map), league_l14, rows_l14),
+        "z_params":             z_params_out,
+        "z_total_distribution": z_total_dist,
     }
 
 

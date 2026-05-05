@@ -6288,6 +6288,42 @@ function AppMain({ onLogout, onOpenAccount }) {
 
               const changed = effMin !== baseMpg || effUsg !== baseUsg
 
+              // ── Projected Z-total + rank ──────────────────────────────────
+              const zp   = playerStats.z_params
+              const dist = playerStats.z_total_distribution || []
+              const projFgaPg = (base.fga_pg || 0) * minScale * usgScale * fgDecay
+              const projFtaPg = (base.fta_pg || 0) * minScale * usgScale * fgDecay
+
+              const zScoreFor = (key, val, fgaPg, ftaPg) => {
+                const p = zp?.[key]
+                if (!p || !p.std) return 0
+                if (key === 'fg_pct') return ((val - p.league_avg) * fgaPg - p.mean) / p.std
+                if (key === 'ft_pct') return ((val - p.league_avg) * ftaPg - p.mean) / p.std
+                return (val - p.mean) / p.std
+              }
+
+              const baseZTotal = (base.z_pts ?? 0) + (base.z_reb ?? 0) + (base.z_ast ?? 0) +
+                                 (base.z_stl ?? 0) + (base.z_blk ?? 0) - (base.z_tov ?? 0) +
+                                 (base.z_fg3m ?? 0) + (base.z_fg_pct ?? 0) + (base.z_ft_pct ?? 0)
+
+              const projZTotal = zp ? (
+                zScoreFor('pts',    proj.pts,    projFgaPg, projFtaPg) +
+                zScoreFor('reb',    proj.reb,    projFgaPg, projFtaPg) +
+                zScoreFor('ast',    proj.ast,    projFgaPg, projFtaPg) +
+                zScoreFor('stl',    proj.stl,    projFgaPg, projFtaPg) +
+                zScoreFor('blk',    proj.blk,    projFgaPg, projFtaPg) -
+                zScoreFor('tov',    proj.tov,    projFgaPg, projFtaPg) +
+                zScoreFor('fg3m',   proj.fg3m,   projFgaPg, projFtaPg) +
+                zScoreFor('fg_pct', proj.fg_pct, projFgaPg, projFtaPg) +
+                zScoreFor('ft_pct', proj.ft_pct, projFgaPg, projFtaPg)
+              ) : baseZTotal
+
+              const deltaZTotal = projZTotal - baseZTotal
+              const baseRank  = base.rank ?? null
+              const projRank  = dist.length > 0
+                ? dist.filter(z => z > projZTotal).length + 1
+                : null
+
               const USAGE_ROWS = [
                 { key: 'pts',    label: 'PTS',  tag: 'USG', pct: false },
                 { key: 'ast',    label: 'AST',  tag: 'USG', pct: false },
@@ -6308,33 +6344,52 @@ function AppMain({ onLogout, onOpenAccount }) {
                   </div>
                   {usageExpanded && (
                     <>
-                    <div className="usage-sliders">
-                      <div className="mpg-slider-row">
-                        <span className="ctrl-label">Minutes/game</span>
-                        <input
-                          type="range" min={10} max={42} step={0.5}
-                          value={effMin}
-                          onChange={e => setUsageMinutes(+e.target.value)}
-                          className="mpg-slider"
-                        />
-                        <span className="mpg-value">{effMin.toFixed(1)}</span>
-                        {usageMinutes !== null && (
-                          <button className="usage-reset-btn" onClick={() => setUsageMinutes(null)}>reset</button>
-                        )}
+                    <div className="usage-sliders-row">
+                      <div className="usage-sliders">
+                        <div className="mpg-slider-row">
+                          <span className="ctrl-label">Minutes/game</span>
+                          <input
+                            type="range" min={10} max={42} step={0.5}
+                            value={effMin}
+                            onChange={e => setUsageMinutes(+e.target.value)}
+                            className="mpg-slider"
+                          />
+                          <span className="mpg-value">{effMin.toFixed(1)}</span>
+                          {usageMinutes !== null && (
+                            <button className="usage-reset-btn" onClick={() => setUsageMinutes(null)}>reset</button>
+                          )}
+                        </div>
+                        <div className="mpg-slider-row">
+                          <span className="ctrl-label">Usage%</span>
+                          <input
+                            type="range" min={5} max={45} step={0.5}
+                            value={effUsg}
+                            onChange={e => setUsageUsg(+e.target.value)}
+                            className="mpg-slider"
+                          />
+                          <span className="mpg-value">{effUsg.toFixed(1)}%</span>
+                          {usageUsg !== null && (
+                            <button className="usage-reset-btn" onClick={() => setUsageUsg(null)}>reset</button>
+                          )}
+                        </div>
                       </div>
-                      <div className="mpg-slider-row">
-                        <span className="ctrl-label">Usage%</span>
-                        <input
-                          type="range" min={5} max={45} step={0.5}
-                          value={effUsg}
-                          onChange={e => setUsageUsg(+e.target.value)}
-                          className="mpg-slider"
-                        />
-                        <span className="mpg-value">{effUsg.toFixed(1)}%</span>
-                        {usageUsg !== null && (
-                          <button className="usage-reset-btn" onClick={() => setUsageUsg(null)}>reset</button>
-                        )}
-                      </div>
+                      {baseRank && projRank && (
+                        <div className="usage-rank-pill">
+                          <span className="usage-rank-label">9-cat rank</span>
+                          <span className="usage-rank-vals">
+                            <span className="usage-rank-base">#{baseRank}</span>
+                            <span className="usage-rank-arrow"> → </span>
+                            <span className={`usage-rank-proj ${projRank < baseRank ? 'pos' : projRank > baseRank ? 'neg' : ''}`}>
+                              #{projRank}
+                            </span>
+                            {projRank !== baseRank && (
+                              <span className={`usage-rank-delta ${projRank < baseRank ? 'pos' : 'neg'}`}>
+                                {projRank < baseRank ? ` ▲${baseRank - projRank}` : ` ▼${projRank - baseRank}`}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {changed && defScale !== minScale && (
@@ -6376,6 +6431,19 @@ function AppMain({ onLogout, onOpenAccount }) {
                             </tr>
                           )
                         })}
+                        {zp && (
+                          <tr className="usage-tr-total">
+                            <td className="usage-td-stat">Z-Total</td>
+                            <td className="usage-td-num muted">{baseZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num">{projZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num usage-delta">
+                              {changed
+                                ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}`
+                                : '—'}
+                            </td>
+                            <td className="usage-td-tag"></td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                     <p className="usage-note">
