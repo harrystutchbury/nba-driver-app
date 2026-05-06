@@ -4443,7 +4443,18 @@ function MatchupProjection({ onSelectPlayer }) {
 
         {/* Outcome distribution */}
         <div className="mp-outcome-section">
-          <div className="mp-grid-label">Result Distribution</div>
+          <div className="mp-sim-outcome-header">
+            <div className="mp-grid-label">Result Distribution</div>
+            {simData && (() => {
+              const delta = Math.round(simData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
+              return (
+                <div className={`mp-sim-overall-delta ${delta > 0 ? 'mp-delta-pos' : delta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}`}>
+                  {delta > 0 ? `▲ +${delta}%` : delta < 0 ? `▼ ${delta}%` : '—'}
+                  <span className="mp-sim-overall-delta-label">sim Δ</span>
+                </div>
+              )
+            })()}
+          </div>
           <div className="mp-outcomes">
             {outcomes.slice().reverse().map(o => {
               const pct      = Math.round(o.prob * 100)
