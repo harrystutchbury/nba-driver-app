@@ -4704,12 +4704,7 @@ function MatchupProjection({ onSelectPlayer }) {
                         className={`mp-fa-row${isAdd ? ' mp-fa-selected' : ''}`}
                         onClick={() => { setAddSlug(fa.br_slug); setAddName(fa.espn_name); setSearchQ(''); setSearchRes([]) }}
                       >
-                        <span className="mp-fa-name">
-                          {fa.br_slug
-                            ? <button className="mp-player-link" onClick={e => { e.stopPropagation(); onSelectPlayer?.(fa.br_slug) }}>{fa.espn_name}</button>
-                            : fa.espn_name
-                          }
-                        </span>
+                        <span className="mp-fa-name">{fa.espn_name}</span>
                         <span className="mp-fa-team">{tm}</span>
                         {dayPills.map(({ iso }) => {
                           const plays = faPlaysOnDay(fa, iso)
