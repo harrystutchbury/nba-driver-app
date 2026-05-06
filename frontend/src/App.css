@@ -4563,8 +4563,13 @@ td.bs-pos {
 .mp-sim-result-matchup { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-weight: 700; }
 .mp-sim-cats-table { max-width: 500px; }
 .mp-sim-outcome { flex: 1; min-width: 200px; }
-.mp-delta-pos { color: var(--skill); font-weight: 700; }
-.mp-delta-neg { color: var(--neg);   font-weight: 700; }
+.mp-delta-pos  { color: var(--skill); font-weight: 700; }
+.mp-delta-neg  { color: var(--neg);   font-weight: 700; }
+.mp-delta-flat { color: var(--muted); }
+.mp-sim-outcome-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.mp-sim-outcome-header .mp-grid-label { margin-bottom: 0; }
+.mp-sim-overall-delta { display: flex; flex-direction: column; align-items: flex-end; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.mp-sim-overall-delta-label { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* Cats + outcome side by side */
 .mp-cats-outcome-row { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; }

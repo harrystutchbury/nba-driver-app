@@ -4209,7 +4209,7 @@ function MatchupProjection({ onSelectPlayer }) {
   if (error)   return <div className="login-error" style={{margin:24}}>{error}</div>
   if (!data)   return <div className="dash-empty">No data.</div>
 
-  const d = simData || data
+  const d = data
 
   // Outcome probability distribution via DP on per-category win probs
   function outcomeDistribution(categories) {
@@ -4546,15 +4546,16 @@ function MatchupProjection({ onSelectPlayer }) {
             <div className="mp-sim-body">
             <table className="mp-cats-table mp-sim-cats-table">
               <thead>
-                <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th></tr>
+                <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th><th>ΔWin%</th></tr>
               </thead>
               <tbody>
                 {simData.categories.map((c, i) => {
-                  const before = data.categories[i]
-                  const delta  = Math.round(c.my_proj) - Math.round(before?.my_proj || 0)
-                  const neg    = c.neg
-                  const better = neg ? delta < 0 : delta > 0
-                  const worse  = neg ? delta > 0 : delta < 0
+                  const before   = data.categories[i]
+                  const delta    = Math.round(c.my_proj) - Math.round(before?.my_proj || 0)
+                  const neg      = c.neg
+                  const better   = neg ? delta < 0 : delta > 0
+                  const worse    = neg ? delta > 0 : delta < 0
+                  const wpDelta  = Math.round((c.win_prob - (before?.win_prob ?? 0.5)) * 100)
                   return (
                     <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
                       <td className="mp-cat-name">{c.stat}</td>
@@ -4562,6 +4563,9 @@ function MatchupProjection({ onSelectPlayer }) {
                       <td className="mp-cat-my">{Math.round(c.my_proj)}</td>
                       <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}</td>
                       <td><WinProbBadge wp={c.win_prob} /></td>
+                      <td className={wpDelta > 0 ? 'mp-delta-pos' : wpDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}>
+                        {wpDelta > 0 ? `+${wpDelta}%` : wpDelta < 0 ? `${wpDelta}%` : '—'}
+                      </td>
                     </tr>
                   )
                 })}
@@ -4571,9 +4575,16 @@ function MatchupProjection({ onSelectPlayer }) {
             {(() => {
               const simOutcomes   = outcomeDistribution(simData.categories)
               const simMaxProb    = Math.max(...simOutcomes.map(o => o.prob))
+              const overallDelta = Math.round(simData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
               return (
                 <div className="mp-outcome-section mp-sim-outcome">
-                  <div className="mp-grid-label">Simulated Result Distribution</div>
+                  <div className="mp-sim-outcome-header">
+                    <div className="mp-grid-label">Simulated Result Distribution</div>
+                    <div className={`mp-sim-overall-delta ${overallDelta > 0 ? 'mp-delta-pos' : overallDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}`}>
+                      {overallDelta > 0 ? `▲ +${overallDelta}%` : overallDelta < 0 ? `▼ ${overallDelta}%` : '—'}
+                      <span className="mp-sim-overall-delta-label">win prob</span>
+                    </div>
+                  </div>
                   <div className="mp-outcomes">
                     {simOutcomes.slice().reverse().map(o => {
                       const pct    = Math.round(o.prob * 100)
