@@ -3023,38 +3023,32 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
                 <tr><th style={{textAlign:'left'}}>Player</th><th style={{textAlign:'center'}}>Pos</th><th>Status</th></tr>
               </thead>
               <tbody>
-                {(() => {
-                  const injBySlug = Object.fromEntries(
-                    (playerFeed?.injuries || []).map(inj => [inj.slug, inj])
+                {(roster.players || []).map((p, i) => {
+                  const dbInj   = (playerFeed?.injuries || []).find(inj => inj.slug === p.br_slug)
+                  const status  = p.injury_status || 'Active'
+                  const isOut   = status !== 'Active'
+                  const retDate = p.return_date || dbInj?.return_date
+                  const fmtDate = d => {
+                    if (!d) return null
+                    const parts = d.split('-'); if (parts.length < 3) return d
+                    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                    return `${months[+parts[1]-1]} ${+parts[2]}`
+                  }
+                  return (
+                    <tr key={p.name + i}>
+                      <td
+                        className={p.br_slug && onSelectPlayer ? 'rank-player-link' : undefined}
+                        onClick={() => p.br_slug && onSelectPlayer && onSelectPlayer({ slug: p.br_slug, name: p.name })}
+                      >{p.name}</td>
+                      <td style={{textAlign:'center'}}>{p.position || '—'}</td>
+                      <td className="dash-roster-status">
+                        <span className={isOut ? 'inj-out' : 'dash-status-active'}>{status}</span>
+                        {dbInj?.description && <span className="dash-inj-desc"> · {dbInj.description}</span>}
+                        {retDate && <span className="dash-inj-return"> · Exp. {fmtDate(retDate)}</span>}
+                      </td>
+                    </tr>
                   )
-                  return (roster.players || []).map((p, i) => {
-                    const inj = injBySlug[p.br_slug]
-                    const status = inj?.designation || p.injury_status || 'Active'
-                    const isOut  = status !== 'Active'
-                    const retDate = p.return_date || inj?.return_date
-                    const fmtDate = d => {
-                      if (!d) return null
-                      const parts = d.split('-')
-                      if (parts.length < 3) return d
-                      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-                      return `${months[+parts[1]-1]} ${+parts[2]}`
-                    }
-                    return (
-                      <tr key={p.name + i}>
-                        <td
-                          className={p.br_slug && onSelectPlayer ? 'rank-player-link' : undefined}
-                          onClick={() => p.br_slug && onSelectPlayer && onSelectPlayer({ slug: p.br_slug, name: p.name })}
-                        >{p.name}</td>
-                        <td style={{textAlign:'center'}}>{p.position || '—'}</td>
-                        <td className="dash-roster-status">
-                          <span className={isOut ? 'inj-out' : 'dash-status-active'}>{status}</span>
-                          {inj?.description && <span className="dash-inj-desc"> · {inj.description}</span>}
-                          {retDate && <span className="dash-inj-return"> · Exp. {fmtDate(retDate)}</span>}
-                        </td>
-                      </tr>
-                    )
-                  })
-                })()}
+                })}
               </tbody>
             </table>
           )}
@@ -3106,31 +3100,52 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
 
       </div>
 
-      {/* Player Updates: injuries + news */}
-      {playerFeed && (playerFeed.injuries.length > 0 || playerFeed.news.length > 0) && (() => {
-        const slugToName = Object.fromEntries((roster?.players || []).map(p => [p.br_slug, p.name]))
-        const INJ_COLOR = { Out: '#ff4d6a', 'Day-To-Day': '#ffb84d', Questionable: '#ffb84d', Doubtful: '#ff4d6a', IR: '#ff4d6a', Injured: '#ff4d6a' }
+      {/* Player Updates: injuries (from ESPN roster) + news (from DB) */}
+      {roster && (() => {
+        const INJ_COLOR  = { Out:'#ff4d6a','Day-To-Day':'#ffb84d',Questionable:'#ffb84d',Doubtful:'#ff4d6a',IR:'#ff4d6a',Suspended:'#888' }
         const fmtDate = d => {
-          if (!d) return ''
+          if (!d) return null
           const p = d.split('-'); if (p.length < 3) return d
           const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
           return `${m[+p[1]-1]} ${+p[2]}`
         }
+        const slugToName = Object.fromEntries((roster.players || []).map(p => [p.br_slug, p.name]))
+
+        // Injury list: built from ESPN roster data (always available)
+        const INACTIVE = new Set(['Out','IR','Doubtful','Questionable','Probable','Suspended','Day-To-Day'])
+        const dbInjBySlug = Object.fromEntries((playerFeed?.injuries || []).map(i => [i.slug, i]))
+        const injuredPlayers = (roster.players || [])
+          .filter(p => p.injury_status && INACTIVE.has(p.injury_status))
+          .map(p => {
+            const db = dbInjBySlug[p.br_slug]
+            return {
+              slug:        p.br_slug,
+              name:        p.name,
+              designation: p.injury_status,
+              description: db?.description || null,
+              return_date: p.return_date || db?.return_date || null,
+            }
+          })
+
+        const newsItems = playerFeed?.news || []
+        if (!injuredPlayers.length && !newsItems.length) return null
+
         return (
           <div className="dash-updates-section">
-            {playerFeed.injuries.length > 0 && (
+            {injuredPlayers.length > 0 && (
               <div className="dash-updates-col">
                 <div className="dash-card-title">Injury Report</div>
                 <div className="dash-inj-list">
-                  {playerFeed.injuries.map(inj => (
-                    <div key={inj.slug} className="dash-inj-item">
+                  {injuredPlayers.map(inj => (
+                    <div key={inj.slug || inj.name} className="dash-inj-item">
+                      <span className="dash-inj-badge" style={{background: INJ_COLOR[inj.designation] ?? '#555', color:'#fff'}}>
+                        {inj.designation === 'Questionable' || inj.designation === 'Day-To-Day' ? 'GTD'
+                          : inj.designation === 'Probable' ? 'PRB'
+                          : inj.designation}
+                      </span>
                       <span
-                        className="dash-inj-badge"
-                        style={{background: INJ_COLOR[inj.designation] ?? '#555', color:'#fff'}}
-                      >{inj.designation === 'Questionable' || inj.designation === 'Day-To-Day' ? 'GTD' : inj.designation}</span>
-                      <span
-                        className={onSelectPlayer ? 'rank-player-link dash-inj-name' : 'dash-inj-name'}
-                        onClick={() => onSelectPlayer && onSelectPlayer({ slug: inj.slug, name: inj.name })}
+                        className={onSelectPlayer && inj.slug ? 'rank-player-link dash-inj-name' : 'dash-inj-name'}
+                        onClick={() => inj.slug && onSelectPlayer && onSelectPlayer({ slug: inj.slug, name: inj.name })}
                       >{inj.name}</span>
                       {inj.description && <span className="dash-inj-desc">{inj.description}</span>}
                       {inj.return_date && <span className="dash-inj-return">Exp. {fmtDate(inj.return_date)}</span>}
@@ -3139,15 +3154,15 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
                 </div>
               </div>
             )}
-            {playerFeed.news.length > 0 && (
+            {newsItems.length > 0 && (
               <div className="dash-updates-col">
                 <div className="dash-card-title">Player News</div>
                 <div className="dash-news-list">
-                  {playerFeed.news.map((item, i) => {
-                    const names = item.slugs.map(s => slugToName[s] || s).join(', ')
+                  {newsItems.map((item, i) => {
+                    const names = (item.slugs || []).map(s => slugToName[s] || s).join(', ')
                     return (
                       <div key={i} className="dash-news-item">
-                        <div className="dash-news-players">{names}</div>
+                        {names && <div className="dash-news-players">{names}</div>}
                         <a className="dash-news-title" href={item.link} target="_blank" rel="noopener noreferrer">
                           {item.title}
                         </a>

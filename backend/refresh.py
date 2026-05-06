@@ -492,6 +492,18 @@ def run(seasons):
 
         log.info(f"[{season_label(season_end_year)}] Refresh complete.")
 
+    # Sync injuries once per refresh run (not per season)
+    try:
+        import os as _os
+        if _os.environ.get("RAPIDAPI_KEY"):
+            import sync_injuries
+            sync_injuries.sync()
+            log.info("Injury report synced.")
+        else:
+            log.info("Skipping injury sync — RAPIDAPI_KEY not set.")
+    except Exception as e:
+        log.warning(f"Injury sync failed (non-fatal): {e}")
+
     conn.close()
     log.info("All done.")
 

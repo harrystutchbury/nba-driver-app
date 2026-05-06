@@ -2393,11 +2393,24 @@ def get_player_news(slugs: str = Query(..., description="Comma-separated BR slug
 
     # Recent news (last 14 days), filter to articles mentioning our players
     cutoff = (date.today() - __import__("datetime").timedelta(days=14)).isoformat()
-    all_news = conn.execute("""
-        SELECT title, link, player_ids, fetched_date
-        FROM news_history WHERE fetched_date >= ?
-        ORDER BY fetched_date DESC, id DESC
-    """, (cutoff,)).fetchall()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS news_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                link TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                image TEXT,
+                player_ids TEXT,
+                fetched_date TEXT NOT NULL
+            )
+        """)
+        all_news = conn.execute("""
+            SELECT title, link, player_ids, fetched_date
+            FROM news_history WHERE fetched_date >= ?
+            ORDER BY fetched_date DESC, id DESC
+        """, (cutoff,)).fetchall()
+    except Exception:
+        all_news = []
     conn.close()
 
     news_out = []
