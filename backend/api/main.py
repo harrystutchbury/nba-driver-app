@@ -2366,6 +2366,77 @@ def get_news():
     return {"articles": articles, "fetched_at": now}
 
 
+@router.get("/player-news")
+def get_player_news(slugs: str = Query(..., description="Comma-separated BR slugs")):
+    """Return injuries + recent news for a given set of player slugs."""
+    import json as _jl, datetime as _dtm
+    slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
+    if not slug_list:
+        return {"injuries": [], "news": []}
+
+    conn = get_conn()
+    ph = ",".join("?" * len(slug_list))
+
+    # Injuries from local DB
+    inj_rows = conn.execute(f"""
+        SELECT player_slug, name, designation, description, return_date, inj_date
+        FROM injuries WHERE player_slug IN ({ph})
+        ORDER BY designation, name
+    """, slug_list).fetchall()
+
+    # tank01_id → br_slug mapping for news matching
+    t01_rows = conn.execute(f"""
+        SELECT br_slug, tank01_id FROM tank01_player_map
+        WHERE br_slug IN ({ph}) AND tank01_id IS NOT NULL
+    """, slug_list).fetchall()
+    slug_by_t01 = {r["tank01_id"]: r["br_slug"] for r in t01_rows}
+
+    # Recent news (last 14 days), filter to articles mentioning our players
+    cutoff = (date.today() - __import__("datetime").timedelta(days=14)).isoformat()
+    all_news = conn.execute("""
+        SELECT title, link, player_ids, fetched_date
+        FROM news_history WHERE fetched_date >= ?
+        ORDER BY fetched_date DESC, id DESC
+    """, (cutoff,)).fetchall()
+    conn.close()
+
+    news_out = []
+    seen_links: set = set()
+    for nr in all_news:
+        if nr["link"] in seen_links:
+            continue
+        try:
+            pids = _jl.loads(nr["player_ids"] or "[]")
+        except Exception:
+            pids = []
+        matched = [slug_by_t01[pid] for pid in pids if pid in slug_by_t01]
+        if matched:
+            seen_links.add(nr["link"])
+            news_out.append({
+                "title": nr["title"],
+                "link":  nr["link"],
+                "date":  nr["fetched_date"],
+                "slugs": matched,
+            })
+        if len(news_out) >= 20:
+            break
+
+    return {
+        "injuries": [
+            {
+                "slug":        r["player_slug"],
+                "name":        r["name"],
+                "designation": r["designation"],
+                "description": r["description"],
+                "return_date": r["return_date"],
+                "inj_date":    r["inj_date"],
+            }
+            for r in inj_rows
+        ],
+        "news": news_out,
+    }
+
+
 # -----------------------------------------------------------------------
 # Box Score
 # -----------------------------------------------------------------------
