@@ -5183,6 +5183,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [projection, setProjection]   = useState(null)
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
+  const [histMode, setHistMode]       = useState('pg')   // 'pg' | 'p36'
   const [projYear, setProjYear]       = useState(1)
   const [projExpanded, setProjExpanded] = useState(false)
   const [projScenario, setProjScenario] = useState('baseline')
@@ -5411,6 +5412,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const trendSeasons = playerStats ? [...playerStats.seasons].reverse() : []
   const Z_TREND_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct', 'ft_pct']
   const Z_TREND_INVERT = new Set(['tov'])
+  const HIST_PCT_KEYS = new Set(['fg_pct', 'ft_pct', 'z_sum'])
   const getStatVal = (s, key) => {
     if (key === 'z_sum') {
       let sum = 0
@@ -5421,13 +5423,19 @@ function AppMain({ onLogout, onOpenAccount }) {
       }
       return +sum.toFixed(2)
     }
-    return s[key] ?? null
+    const val = s[key] ?? null
+    if (histMode === 'p36' && val != null && !HIST_PCT_KEYS.has(key)) {
+      const mpg = s.min_pg || 30
+      return +(val * 36 / mpg).toFixed(1)
+    }
+    return val
   }
   const getProjVal = (proj, scenario = 'baseline') => {
     const src = scenario === 'baseline' ? proj : (proj[scenario] ?? proj)
     if (projStat === 'z_sum')  return src.z_sum ?? null
     if (projStat === 'ft_pct') return src.projection_p30.ft_pct ?? null
     if (projStat === 'fg_pct') return +src.projection_p30.fg_pct.toFixed(1)
+    if (histMode === 'p36')    return +(src.projection_p30[projStat] * 36 / 30).toFixed(1)
     return +(src.projection_p30[projStat] * projScale).toFixed(1)
   }
 
@@ -6929,6 +6937,18 @@ function AppMain({ onLogout, onOpenAccount }) {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
+                  {!HIST_PCT_KEYS.has(projStat) && (
+                    <div className="hist-mode-toggle">
+                      <button
+                        className={`hist-mode-btn${histMode === 'pg'  ? ' active' : ''}`}
+                        onClick={() => setHistMode('pg')}
+                      >Per game</button>
+                      <button
+                        className={`hist-mode-btn${histMode === 'p36' ? ' active' : ''}`}
+                        onClick={() => setHistMode('p36')}
+                      >Per 36</button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="trend-chart-wrap">
