@@ -544,6 +544,56 @@ def _composite_z(player_avgs, league):
     return total if count > 0 else None
 
 
+def _row_to_p30(r):
+    """Scale a player-averages row (from _league_data) to per-30-min rates."""
+    mpg = r.get('min_pg') or 0
+    if mpg < 5:
+        return None
+    scale = 30.0 / mpg
+    p = dict(r)
+    for k in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fga_pg', 'fta_pg']:
+        if p.get(k) is not None:
+            p[k] = p[k] * scale
+    return p
+
+
+def _p30_league_stats(p30_rows):
+    """
+    Compute league z-score params from per-30-scaled rows.
+    Mutates rows in-place to add fg_impact / ft_impact (needed by _composite_z).
+    """
+    if len(p30_rows) < 2:
+        return None
+    fg_vals = [r['fg_pct'] for r in p30_rows if r.get('fg_pct') is not None]
+    ft_vals = [r['ft_pct'] for r in p30_rows if r.get('ft_pct') is not None]
+    league_mean_fg = sum(fg_vals) / len(fg_vals) if fg_vals else None
+    league_mean_ft = sum(ft_vals) / len(ft_vals) if ft_vals else None
+    for r in p30_rows:
+        r['fg_impact'] = (
+            (r['fg_pct'] - league_mean_fg) * r['fga_pg']
+            if r.get('fg_pct') is not None and league_mean_fg is not None else None
+        )
+        r['ft_impact'] = (
+            (r['ft_pct'] - league_mean_ft) * r['fta_pg']
+            if r.get('ft_pct') is not None and league_mean_ft is not None else None
+        )
+    stats = {'_fg_mean': league_mean_fg, '_ft_mean': league_mean_ft}
+    for key in Z_KEYS:
+        if key == 'fg_pct':
+            vals = [r['fg_impact'] for r in p30_rows if r.get('fg_impact') is not None]
+        elif key == 'ft_pct':
+            vals = [r['ft_impact'] for r in p30_rows if r.get('ft_impact') is not None]
+        else:
+            vals = [r[key] for r in p30_rows if r.get(key) is not None]
+        if len(vals) < 2:
+            stats[key] = (None, None)
+            continue
+        mean = sum(vals) / len(vals)
+        std  = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))
+        stats[key] = (mean, std if std > 0 else None)
+    return stats
+
+
 def _player_rank(player_slug, player_rows, league):
     """Return (rank, n_players) based on composite Z-score."""
     if not league or not player_rows:
@@ -734,6 +784,28 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
                 z_totals.append(round(z, 2))
         z_total_dist = sorted(z_totals)
 
+    # Per-30 stats for current season
+    p30_data = None
+    if current_season and current_season in rows_by_season:
+        p30_rows = [_row_to_p30(r) for r in rows_by_season[current_season]]
+        p30_rows = [r for r in p30_rows if r is not None]
+        p30_league = _p30_league_stats(p30_rows)
+        if p30_league:
+            player_p30 = next((r for r in p30_rows if r['player_slug'] == player), None)
+            if player_p30:
+                p30_with_z = _with_zscores(player_p30, p30_league)
+                p30_rank, p30_rank_n = _player_rank(player, p30_rows, p30_league)
+                for k in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']:
+                    if p30_with_z.get(k) is not None:
+                        p30_with_z[k] = round(p30_with_z[k], 1)
+                p30_data = {
+                    **p30_with_z,
+                    'rank':   p30_rank,
+                    'rank_n': p30_rank_n,
+                    'gp':     season_avgs[0]['gp']   if season_avgs else None,
+                    'team':   season_avgs[0]['team'] if season_avgs else None,
+                }
+
     # Calculate current age from birthdate
     current_age = None
     if player_row["birthdate"]:
@@ -758,6 +830,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
         "seasons": season_avgs,
         "l30":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_30], team_game_map), league_l30, rows_l30),
         "l14":     with_rank(_avg_row([r for r in rows if r["game_date"] >= cutoff_14], team_game_map), league_l14, rows_l14),
+        "p30":     p30_data,
         "z_params":             z_params_out,
         "z_total_distribution": z_total_dist,
     }
