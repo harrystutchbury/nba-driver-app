@@ -4566,6 +4566,7 @@ td.bs-pos {
 .mp-delta-pos  { color: var(--skill); font-weight: 700; }
 .mp-delta-neg  { color: var(--neg);   font-weight: 700; }
 .mp-delta-flat { color: var(--muted); }
+.mp-out-row-delta { font-size: 10px; font-weight: 700; min-width: 28px; text-align: right; }
 .mp-sim-outcome-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .mp-sim-outcome-header .mp-grid-label { margin-bottom: 0; }
 .mp-sim-overall-delta { display: flex; flex-direction: column; align-items: flex-end; font-size: 22px; font-weight: 800; line-height: 1.1; }

@@ -4315,6 +4315,9 @@ function MatchupProjection({ onSelectPlayer }) {
   const overallCls = overallPct >= 55 ? 'mp-overall-win' : overallPct <= 45 ? 'mp-overall-loss' : 'mp-overall-toss'
   const outcomes   = outcomeDistribution(d.categories)
   const maxOutcomeProb = Math.max(...outcomes.map(o => o.prob))
+  const simOutcomesByWins = simData
+    ? Object.fromEntries(outcomeDistribution(simData.categories).map(o => [o.wins, o.prob]))
+    : null
 
   // Rostered slugs (for filtering free agents not on either roster)
   const rosteredSlugs = new Set([
@@ -4461,6 +4464,8 @@ function MatchupProjection({ onSelectPlayer }) {
               const barW     = maxOutcomeProb > 0 ? (o.prob / maxOutcomeProb) * 100 : 0
               const isProj   = o.wins === d.cat_wins
               const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
+              const simProb  = simOutcomesByWins?.[o.wins]
+              const rowDelta = simProb != null ? Math.round((simProb - o.prob) * 100) : null
               return (
                 <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
                   <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
@@ -4468,7 +4473,12 @@ function MatchupProjection({ onSelectPlayer }) {
                     <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
                   </div>
                   <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
-                  {isProj && <span className="mp-out-proj-tag">proj</span>}
+                  {rowDelta != null && rowDelta !== 0 &&
+                    <span className={`mp-out-row-delta ${rowDelta > 0 ? 'mp-delta-pos' : 'mp-delta-neg'}`}>
+                      {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
+                    </span>
+                  }
+                  {isProj && !rowDelta && <span className="mp-out-proj-tag">proj</span>}
                 </div>
               )
             })}
