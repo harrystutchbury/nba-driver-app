@@ -4315,9 +4315,6 @@ function MatchupProjection({ onSelectPlayer }) {
   const overallCls = overallPct >= 55 ? 'mp-overall-win' : overallPct <= 45 ? 'mp-overall-loss' : 'mp-overall-toss'
   const outcomes   = outcomeDistribution(d.categories)
   const maxOutcomeProb = Math.max(...outcomes.map(o => o.prob))
-  const simOutcomesByWins = simData
-    ? Object.fromEntries(outcomeDistribution(simData.categories).map(o => [o.wins, o.prob]))
-    : null
 
   // Rostered slugs (for filtering free agents not on either roster)
   const rosteredSlugs = new Set([
@@ -4446,26 +4443,13 @@ function MatchupProjection({ onSelectPlayer }) {
 
         {/* Outcome distribution */}
         <div className="mp-outcome-section">
-          <div className="mp-sim-outcome-header">
-            <div className="mp-grid-label">Result Distribution</div>
-            {simData && (() => {
-              const delta = Math.round(simData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
-              return (
-                <div className={`mp-sim-overall-delta ${delta > 0 ? 'mp-delta-pos' : delta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}`}>
-                  {delta > 0 ? `▲ +${delta}%` : delta < 0 ? `▼ ${delta}%` : '—'}
-                  <span className="mp-sim-overall-delta-label">sim Δ</span>
-                </div>
-              )
-            })()}
-          </div>
+          <div className="mp-grid-label">Result Distribution</div>
           <div className="mp-outcomes">
             {outcomes.slice().reverse().map(o => {
-              const pct      = Math.round(o.prob * 100)
-              const barW     = maxOutcomeProb > 0 ? (o.prob / maxOutcomeProb) * 100 : 0
-              const isProj   = o.wins === d.cat_wins
-              const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
-              const simProb  = simOutcomesByWins?.[o.wins]
-              const rowDelta = simProb != null ? Math.round((simProb - o.prob) * 100) : null
+              const pct    = Math.round(o.prob * 100)
+              const barW   = maxOutcomeProb > 0 ? (o.prob / maxOutcomeProb) * 100 : 0
+              const isProj = o.wins === d.cat_wins
+              const cls    = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
               return (
                 <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
                   <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
@@ -4473,12 +4457,7 @@ function MatchupProjection({ onSelectPlayer }) {
                     <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
                   </div>
                   <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
-                  {rowDelta != null && rowDelta !== 0 &&
-                    <span className={`mp-out-row-delta ${rowDelta > 0 ? 'mp-delta-pos' : 'mp-delta-neg'}`}>
-                      {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
-                    </span>
-                  }
-                  {isProj && !rowDelta && <span className="mp-out-proj-tag">proj</span>}
+                  {isProj && <span className="mp-out-proj-tag">proj</span>}
                 </div>
               )
             })}
@@ -4594,8 +4573,9 @@ function MatchupProjection({ onSelectPlayer }) {
             </table>
             {/* Simulated outcome distribution */}
             {(() => {
-              const simOutcomes   = outcomeDistribution(simData.categories)
-              const simMaxProb    = Math.max(...simOutcomes.map(o => o.prob))
+              const simOutcomes  = outcomeDistribution(simData.categories)
+              const simMaxProb   = Math.max(...simOutcomes.map(o => o.prob))
+              const realByWins   = Object.fromEntries(outcomes.map(o => [o.wins, o.prob]))
               const overallDelta = Math.round(simData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
               return (
                 <div className="mp-outcome-section mp-sim-outcome">
@@ -4608,10 +4588,11 @@ function MatchupProjection({ onSelectPlayer }) {
                   </div>
                   <div className="mp-outcomes">
                     {simOutcomes.slice().reverse().map(o => {
-                      const pct    = Math.round(o.prob * 100)
-                      const barW   = simMaxProb > 0 ? (o.prob / simMaxProb) * 100 : 0
-                      const isProj = o.wins === simData.cat_wins
-                      const cls    = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
+                      const pct      = Math.round(o.prob * 100)
+                      const barW     = simMaxProb > 0 ? (o.prob / simMaxProb) * 100 : 0
+                      const isProj   = o.wins === simData.cat_wins
+                      const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
+                      const rowDelta = Math.round((o.prob - (realByWins[o.wins] ?? 0)) * 100)
                       return (
                         <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
                           <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
@@ -4619,7 +4600,12 @@ function MatchupProjection({ onSelectPlayer }) {
                             <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
                           </div>
                           <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
-                          {isProj && <span className="mp-out-proj-tag">proj</span>}
+                          {rowDelta !== 0
+                            ? <span className={`mp-out-row-delta ${rowDelta > 0 ? 'mp-delta-pos' : 'mp-delta-neg'}`}>
+                                {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
+                              </span>
+                            : isProj && <span className="mp-out-proj-tag">proj</span>
+                          }
                         </div>
                       )
                     })}
