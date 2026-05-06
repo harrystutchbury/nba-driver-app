@@ -5143,6 +5143,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
         "cat_wins":         cat_wins,
         "cat_total":        len(categories),
         "team_week_games":  {team: len(dates) for team, dates in team_week_dates.items()},
+        "games_by_day":     {d.isoformat(): [t for t, dates in team_week_dates.items() if d in dates] for d in day_dates},
         "active_capacity":  active_capacity,
         "as_of_date":       as_of_dt.isoformat(),
         "past_end_idx":     past_end_idx,  # index of last past day in day_labels (-1 = all projected)

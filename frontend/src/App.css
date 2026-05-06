@@ -4629,6 +4629,26 @@ td.bs-pos {
 
 /* Free agents */
 .mp-fa-section { margin-top: 20px; }
+.mp-fa-section-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.mp-fa-section-header .mp-grid-label { margin-bottom: 0; }
+.mp-fa-day-mode { font-size: 11px; font-weight: 400; color: var(--accent); margin-left: 4px; }
+.mp-fa-days-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mp-day-pill {
+  padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; line-height: 1.6;
+}
+.mp-day-pill:hover { border-color: var(--accent); color: var(--accent); }
+.mp-day-pill-active { background: var(--accent); border-color: var(--accent); color: #000 !important; }
+.mp-day-pill-clear {
+  padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font-size: 11px;
+  cursor: pointer; transition: all 0.15s;
+}
+.mp-day-pill-clear:hover { border-color: var(--muted); color: var(--text); }
+.mp-fa-sort-hdr { cursor: pointer; user-select: none; transition: color 0.15s; }
+.mp-fa-sort-hdr:hover { color: var(--accent); }
+.mp-fa-sort-active { color: var(--accent) !important; font-weight: 700; }
 .mp-fa-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .mp-fa-header-row, .mp-fa-row {
   display: flex; align-items: center; gap: 0;
