@@ -5426,7 +5426,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     const val = s[key] ?? null
     if (histMode === 'p36' && val != null && !HIST_PCT_KEYS.has(key)) {
       const mpg = s.min_pg || 30
-      return +(val * 36 / mpg).toFixed(1)
+      return +(val * 30 / mpg).toFixed(1)
     }
     return val
   }
@@ -5435,7 +5435,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     if (projStat === 'z_sum')  return src.z_sum ?? null
     if (projStat === 'ft_pct') return src.projection_p30.ft_pct ?? null
     if (projStat === 'fg_pct') return +src.projection_p30.fg_pct.toFixed(1)
-    if (histMode === 'p36')    return +(src.projection_p30[projStat] * 36 / 30).toFixed(1)
+    if (histMode === 'p36')    return +(src.projection_p30[projStat]).toFixed(1)
     return +(src.projection_p30[projStat] * projScale).toFixed(1)
   }
 
@@ -6946,7 +6946,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                       <button
                         className={`hist-mode-btn${histMode === 'p36' ? ' active' : ''}`}
                         onClick={() => setHistMode('p36')}
-                      >Per 36</button>
+                      >Per 30</button>
                     </div>
                   )}
                 </div>
