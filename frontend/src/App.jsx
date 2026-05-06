@@ -4331,11 +4331,15 @@ function MatchupProjection({ onSelectPlayer }) {
     return { iso: d0.toISOString().slice(0, 10), label: lbl }
   }).filter(Boolean)
 
+  function faPlaysOnDay(fa, iso) {
+    return (gamesByDay[iso] || []).includes(fa.nba_team)
+  }
+
   function faCumGames(fa) {
     if (!selectedDays.size) return teamWeekGames[fa.nba_team] || 0
     let n = 0
     for (const iso of selectedDays) {
-      if ((gamesByDay[iso] || []).includes(fa.nba_team)) n++
+      if (faPlaysOnDay(fa, iso)) n++
     }
     return n
   }
@@ -4353,7 +4357,8 @@ function MatchupProjection({ onSelectPlayer }) {
     const s = fa.stats || {}
     if (faSortKey === 'fg_pct' || faSortKey === 'ft_pct') return s[faSortKey] ?? 0
     const v = s[faSortKey] ?? 0
-    return selectedDays.size ? v * faCumGames(fa) : v
+    const cum = selectedDays.size ? v * faCumGames(fa) : v
+    return faSortKey === 'tov' ? -cum : cum
   }
 
   const filteredFreeAgents = freeAgents
@@ -4599,24 +4604,11 @@ function MatchupProjection({ onSelectPlayer }) {
           <div className="mp-fa-section-header">
             <div className="mp-grid-label">
               Top Available Free Agents
-              {selectedDays.size > 0 && <span className="mp-fa-day-mode"> · {selectedDays.size} day{selectedDays.size > 1 ? 's' : ''} selected — showing cumulative</span>}
+              {selectedDays.size > 0 && <span className="mp-fa-day-mode"> · {selectedDays.size} day{selectedDays.size > 1 ? 's' : ''} selected — cumulative</span>}
             </div>
-            <div className="mp-fa-days-row">
-              {dayPills.map(({ iso, label }) => (
-                <button
-                  key={iso}
-                  className={`mp-day-pill${selectedDays.has(iso) ? ' mp-day-pill-active' : ''}`}
-                  onClick={() => {
-                    const next = new Set(selectedDays)
-                    next.has(iso) ? next.delete(iso) : next.add(iso)
-                    setSelectedDays(next)
-                  }}
-                >{label}</button>
-              ))}
-              {selectedDays.size > 0 && (
-                <button className="mp-day-pill-clear" onClick={() => setSelectedDays(new Set())}>All</button>
-              )}
-            </div>
+            {selectedDays.size > 0 && (
+              <button className="mp-day-pill-clear" onClick={() => setSelectedDays(new Set())}>Clear filter</button>
+            )}
           </div>
           {faLoading
             ? <div className="dash-empty" style={{padding:'12px 0'}}>Loading…</div>
@@ -4627,15 +4619,28 @@ function MatchupProjection({ onSelectPlayer }) {
                   <div className="mp-fa-header-row">
                     <span className="mp-fa-name">Player</span>
                     <span className="mp-fa-team">Tm</span>
-                    <span className="mp-fa-gp">GP</span>
+                    {dayPills.map(({ iso, label }) => (
+                      <span
+                        key={iso}
+                        className={`mp-fa-day-col mp-fa-sort-hdr${selectedDays.has(iso) ? ' mp-fa-day-col-active' : ''}`}
+                        title={`Filter to ${label}`}
+                        onClick={() => {
+                          const next = new Set(selectedDays)
+                          next.has(iso) ? next.delete(iso) : next.add(iso)
+                          setSelectedDays(next)
+                        }}
+                      >{label}</span>
+                    ))}
                     {[
                       { key: 'pts',    label: 'PTS' },
                       { key: 'reb',    label: 'REB' },
                       { key: 'ast',    label: 'AST' },
                       { key: 'stl',    label: 'STL' },
                       { key: 'blk',    label: 'BLK' },
+                      { key: 'tov',    label: 'TO'  },
                       { key: 'fg3m',   label: '3PM' },
                       { key: 'fg_pct', label: 'FG%' },
+                      { key: 'ft_pct', label: 'FT%' },
                     ].map(({ key, label }) => (
                       <span
                         key={key}
@@ -4666,14 +4671,24 @@ function MatchupProjection({ onSelectPlayer }) {
                           }
                         </span>
                         <span className="mp-fa-team">{tm}</span>
-                        <span className={`mp-fa-gp mp-gp-${cumG}`}>{cumG}</span>
+                        {dayPills.map(({ iso }) => {
+                          const plays = faPlaysOnDay(fa, iso)
+                          const sel   = selectedDays.has(iso)
+                          return (
+                            <span key={iso} className={`mp-fa-day-col${sel ? ' mp-fa-day-col-active' : ''}`}>
+                              {plays && <span className="mp-fa-day-dot" style={{color: sel ? 'var(--accent)' : 'var(--skill)'}}>●</span>}
+                            </span>
+                          )
+                        })}
                         <span className={`mp-fa-stat${faSortKey==='pts'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'pts'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='reb'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'reb'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='ast'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'ast'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='stl'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'stl'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='blk'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'blk'))}</span>
+                        <span className={`mp-fa-stat${faSortKey==='tov'    ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'tov'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='fg3m'   ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'fg3m'))}</span>
                         <span className={`mp-fa-stat${faSortKey==='fg_pct' ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'fg_pct'))}</span>
+                        <span className={`mp-fa-stat${faSortKey==='ft_pct' ?' mp-fa-sort-active':''}`}>{fmt(faCumStat(fa,'ft_pct'))}</span>
                         <span className={`mp-fa-val${faSortKey==='value'   ?' mp-fa-sort-active':''}`}>{fa.value}</span>
                       </div>
                     )
