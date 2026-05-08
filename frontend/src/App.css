@@ -1061,6 +1061,7 @@
   font-weight: 500;
   font-style: italic;
 }
+.stats-row-p30 .stats-period-cell.muted { font-style: normal; }
 
 .stats-grid tbody tr:hover td { background: var(--surface); }
 

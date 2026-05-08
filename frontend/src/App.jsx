@@ -5879,7 +5879,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   function StatCell({ val, col, z, noZ }) {
     if (val === null || val === undefined) return <><td className="num mono stat-cell">—</td>{!noZ && <td className="num mono z-cell">—</td>}</>
-    const display = (col === 'fg_pct' || col === 'ft_pct') ? `${val}%` : val.toFixed(1)
+    const display = (col === 'fg_pct' || col === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
     const zDisplay = (z !== null && z !== undefined) ? `${z >= 0 ? '+' : ''}${z.toFixed(1)}` : '—'
     return (
       <>
@@ -5914,10 +5914,18 @@ function AppMain({ onLogout, onOpenAccount }) {
     )
   }
 
-  function ProjectionRow({ label, data, note, scenario }) {
+  function ProjectionRow({ label, data, note, scenario, projRank, projRankN }) {
     if (!data) return null
-    const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Baseline'
+    const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Forecast'
     const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#00e676' : '#0a7a36'
+    const dark = isDark()
+    const rankColor = projRank && projRankN
+      ? projRank / projRankN <= 0.1  ? (dark ? '#00e676' : '#0a7a36')
+      : projRank / projRankN <= 0.25 ? (dark ? '#9affda' : '#2d8c5a')
+      : projRank / projRankN >= 0.9  ? '#ff6b6b'
+      : projRank / projRankN >= 0.75 ? '#ff9e9e'
+      : '#aaa'
+      : '#555'
     return (
       <tr className="stats-row-projection">
         <td className="stats-period-cell">
@@ -5926,13 +5934,15 @@ function AppMain({ onLogout, onOpenAccount }) {
         </td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
         <td className="num mono stat-cell muted">—</td>
-        <td className="num mono rank-cell" colSpan={2} style={{ color: '#555' }}>—</td>
+        <td className="num mono rank-cell" colSpan={2} style={{ color: rankColor }}>
+          {projRank ? projRank : '—'}
+        </td>
         {STAT_COLS.map(c => {
           const val = data[c.key]
           if (val === null || val === undefined) {
             return <Fragment key={c.key}><td className="num mono stat-cell">—</td>{!c.noZ && <td className="num mono z-cell">—</td>}</Fragment>
           }
-          const display = (c.key === 'fg_pct' || c.key === 'ft_pct') ? `${val}%` : val.toFixed(1)
+          const display = (c.key === 'fg_pct' || c.key === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
           return (
             <Fragment key={c.key}>
               <td className="num mono stat-cell" style={{ color: scenarioColor }}>{display}</td>
@@ -6157,6 +6167,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                     data={projRowData}
                     note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
                     scenario={projScenario}
+                    projRank={activeProjSrc?.proj_rank}
+                    projRankN={activeProjSrc?.proj_rank_n}
                   />
                   <StatsRow label="Career" data={{ ...playerStats.career, rank: null }} highlight="career" />
                 </tbody>

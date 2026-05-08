@@ -1355,6 +1355,33 @@ def get_projection(
         total += z_ft
         return round(total, 2)
 
+    # Build a z_sum distribution for all players (most recent season) to enable ranking
+    import bisect as _bisect
+    latest_per_player = df.sort_values('season').groupby('player_slug').last().reset_index()
+    all_player_z = []
+    for _, _row in latest_per_player.iterrows():
+        _p30d = {}
+        _skip = False
+        for _k in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']:
+            _v = _row.get(f'p30_{_k}', float('nan'))
+            if _v is None or (isinstance(_v, float) and np.isnan(_v)):
+                _skip = True; break
+            _p30d[_k] = float(_v)
+        if _skip:
+            continue
+        _fg = _row.get('fg_pct', float('nan'))
+        if _fg is None or (isinstance(_fg, float) and np.isnan(_fg)):
+            continue
+        _p30d['fg_pct'] = float(_fg)
+        _ft = _row.get('ft_pct', None)
+        _ft_val = float(_ft) if (_ft is not None and not (isinstance(_ft, float) and np.isnan(_ft))) else 75.0
+        all_player_z.append(_proj_z_sum(_p30d, _ft_val))
+    all_player_z.sort()
+    _proj_rank_n = len(all_player_z)
+
+    def _proj_rank(z_sum):
+        return _proj_rank_n - _bisect.bisect_left(all_player_z, z_sum) + 1
+
     # Build smooth aging curves for ratio-based year-over-year adjustments
     aging_curves = build_aging_curves(df)
 
@@ -1438,22 +1465,31 @@ def get_projection(
         p30_opt  = _apply_ratios(prev_by_scenario['optimistic'],  SCENARIO_K)
         p30_pes  = _apply_ratios(prev_by_scenario['pessimistic'], -SCENARIO_K)
 
+        _z_base = _proj_z_sum(p30_base, proj_ft_pct)
+        _z_opt  = _proj_z_sum(p30_opt,  proj_ft_pct)
+        _z_pes  = _proj_z_sum(p30_pes,  proj_ft_pct)
         projections.append({
-            'year':      yr,
-            'season':    _season_label(str(current['season']), yr),
-            'archetype': current_archetype,
+            'year':       yr,
+            'season':     _season_label(str(current['season']), yr),
+            'archetype':  current_archetype,
             'projection_p30': p30_base,
             'projection_pg':  _to_pg(p30_base),
-            'z_sum':     _proj_z_sum(p30_base, proj_ft_pct),
+            'z_sum':      _z_base,
+            'proj_rank':  _proj_rank(_z_base),
+            'proj_rank_n': _proj_rank_n,
             'optimistic': {
                 'projection_p30': p30_opt,
                 'projection_pg':  _to_pg(p30_opt),
-                'z_sum':          _proj_z_sum(p30_opt, proj_ft_pct),
+                'z_sum':          _z_opt,
+                'proj_rank':      _proj_rank(_z_opt),
+                'proj_rank_n':    _proj_rank_n,
             },
             'pessimistic': {
                 'projection_p30': p30_pes,
                 'projection_pg':  _to_pg(p30_pes),
-                'z_sum':          _proj_z_sum(p30_pes, proj_ft_pct),
+                'z_sum':          _z_pes,
+                'proj_rank':      _proj_rank(_z_pes),
+                'proj_rank_n':    _proj_rank_n,
             },
         })
         prev_by_scenario = {'baseline': p30_base, 'optimistic': p30_opt, 'pessimistic': p30_pes}
