@@ -1,0 +1,5 @@
+temp/
+social.db
+__pycache__/
+*.py[cod]
+.env

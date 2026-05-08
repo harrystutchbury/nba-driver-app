@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0e1a;
+    --surface:  #141824;
+    --text:     #ffffff;
+    --muted:    #8892a4;
+    --green:    #00e676;
+    --red:      #ff5252;
+    --amber:    #ffab40;
+    --border:   rgba(136,146,164,0.15);
+  }
+
+  html, body {
+    width: 1080px; height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(136,146,164,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,146,164,0.04) 1px, transparent 1px);
+    background-size: 54px 54px;
+    pointer-events: none;
+  }
+
+  .wrap {
+    display: flex;
+    flex-direction: column;
+    width: 1080px;
+    height: 1080px;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 32px 48px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--green); }
+  .date-label {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .headline {
+    padding: 32px 48px 20px;
+  }
+  .headline-main {
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--green);
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .headline-sub {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: 6px;
+  }
+
+  .players {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0 48px;
+  }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 14px 20px;
+    border-radius: 10px;
+    margin-bottom: 7px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .player-row::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--green);
+  }
+  {% if waiver_mode %}
+  .player-row::before { background: var(--amber); }
+  {% endif %}
+
+  .player-main {
+    flex: 1;
+    min-width: 0;
+    padding-left: 8px;
+  }
+  .name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .name {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pos-team {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+  .matchup-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .matchup {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .b2b-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--amber);
+    background: rgba(255,171,64,0.12);
+    border: 1px solid rgba(255,171,64,0.3);
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.08em;
+  }
+  .fa-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--green);
+    background: rgba(0,230,118,0.12);
+    border: 1px solid rgba(0,230,118,0.3);
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.08em;
+  }
+
+  .stat-cols {
+    display: flex;
+    gap: 28px;
+    flex-shrink: 0;
+  }
+  .stat-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 64px;
+  }
+  .stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .stat-val {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .stat-z {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .z-pos { color: var(--green); }
+  .z-neg { color: var(--red); }
+  .z-neu { color: var(--muted); }
+
+  .bottom-bar {
+    padding: 20px 48px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: center;
+  }
+  .site-url {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <div class="logo">ROTO<span>INTEL</span></div>
+    <div class="date-label">{{ date_label }}</div>
+  </div>
+
+  <div class="headline">
+    <div class="headline-main">{% if waiver_mode %}WIRE PICKS{% else %}TOMORROW'S EDGE{% endif %}</div>
+    {% if waiver_mode %}<div class="headline-sub">FREE AGENTS ONLY</div>{% endif %}
+  </div>
+
+  <div class="players">
+    {% for p in players %}
+    <div class="player-row">
+      <div class="player-main">
+        <div class="name-row">
+          <div class="name">{{ p.name }}</div>
+          <div class="pos-team">{{ p.position }} · {{ p.team }}</div>
+        </div>
+        <div class="matchup-row">
+          <div class="matchup">{{ p.matchup }}</div>
+          {% if p.is_b2b %}<div class="b2b-badge">B2B</div>{% endif %}
+          {% if p.is_fa %}<div class="fa-badge">FA</div>{% endif %}
+        </div>
+      </div>
+      <div class="stat-cols">
+        {% for stat in p.top_stats %}
+        <div class="stat-col">
+          <div class="stat-label">{{ stat.label }}</div>
+          <div class="stat-val">{{ stat.value }}</div>
+          <div class="stat-z {% if stat.z >= 1.0 %}z-pos{% elif stat.z <= -1.0 %}z-neg{% else %}z-neu{% endif %}">
+            {{ "%+.1f"|format(stat.z) }}z
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="bottom-bar">
+    <div class="site-url">rotointel.com</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0e1a;
+    --surface:  #141824;
+    --text:     #ffffff;
+    --muted:    #8892a4;
+    --green:    #00e676;
+    --red:      #ff5252;
+    --amber:    #ffab40;
+    --border:   rgba(136,146,164,0.15);
+  }
+
+  html, body {
+    width: 1080px; height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(136,146,164,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,146,164,0.04) 1px, transparent 1px);
+    background-size: 54px 54px;
+    pointer-events: none;
+  }
+
+  .wrap {
+    display: flex;
+    flex-direction: column;
+    width: 1080px;
+    height: 1080px;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 32px 48px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--green); }
+  .page-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ── Split layout ── */
+  .split {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .half {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 44px;
+    overflow: hidden;
+  }
+  .half-rising {
+    background: rgba(0,230,118,0.04);
+    border-right: 1px solid var(--border);
+  }
+  .half-falling {
+    background: rgba(255,82,82,0.04);
+  }
+
+  .half-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .half-arrow {
+    font-size: 36px;
+    line-height: 1;
+  }
+  .half-title {
+    font-size: 36px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .rising  .half-title,
+  .rising  .half-arrow { color: var(--green); }
+  .falling .half-title,
+  .falling .half-arrow { color: var(--red); }
+
+  .mover-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+  }
+
+  .mover-card {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .rising .mover-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--green);
+  }
+  .falling .mover-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--red);
+  }
+
+  .mover-name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .mover-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mover-team {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+  .mover-stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mover-stat {
+    font-size: 22px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .rising  .mover-stat { color: var(--green); }
+  .falling .mover-stat { color: var(--red); }
+
+  .driver-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .rising  .driver-tag {
+    color: var(--green);
+    background: rgba(0,230,118,0.12);
+    border: 1px solid rgba(0,230,118,0.25);
+  }
+  .falling .driver-tag {
+    color: var(--red);
+    background: rgba(255,82,82,0.12);
+    border: 1px solid rgba(255,82,82,0.25);
+  }
+
+  .bottom-bar {
+    padding: 20px 48px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: center;
+  }
+  .site-url {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <div class="logo">ROTO<span>INTEL</span></div>
+    <div class="page-title">WEEKLY MOVERS</div>
+  </div>
+
+  <div class="split">
+    <!-- Risers -->
+    <div class="half half-rising rising">
+      <div class="half-header">
+        <div class="half-arrow">↑</div>
+        <div class="half-title">RISING</div>
+      </div>
+      <div class="mover-list">
+        {% for p in risers %}
+        <div class="mover-card">
+          <div class="mover-name-row">
+            <div class="mover-name">{{ p.name }}</div>
+            <div class="mover-team">{{ p.team }}</div>
+          </div>
+          <div class="mover-stat-row">
+            <div class="mover-stat">{{ p.stat_label }}</div>
+            <div class="driver-tag">{{ p.driver }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Fallers -->
+    <div class="half half-falling falling">
+      <div class="half-header">
+        <div class="half-arrow">↓</div>
+        <div class="half-title">FALLING</div>
+      </div>
+      <div class="mover-list">
+        {% for p in fallers %}
+        <div class="mover-card">
+          <div class="mover-name-row">
+            <div class="mover-name">{{ p.name }}</div>
+            <div class="mover-team">{{ p.team }}</div>
+          </div>
+          <div class="mover-stat-row">
+            <div class="mover-stat">{{ p.stat_label }}</div>
+            <div class="driver-tag">{{ p.driver }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="site-url">rotointel.com</div>
+  </div>
+</div>
+</body>
+</html>
