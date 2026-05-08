@@ -14,6 +14,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -36,6 +37,10 @@ db.init_db()
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="Roto Intel Social Pipeline", version="1.0")
+
+_TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
+os.makedirs(_TEMP_DIR, exist_ok=True)
+app.mount("/temp", StaticFiles(directory=_TEMP_DIR), name="temp")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────
 _scheduler = BackgroundScheduler(timezone="America/New_York")
@@ -148,6 +153,18 @@ def preview(content_type: str):
 def posts(limit: int = 50):
     """Recent post history."""
     return db.recent_posts(limit=limit)
+
+
+@app.get("/images")
+def list_images():
+    """List all PNG previews currently in the temp directory."""
+    files = sorted(
+        f for f in os.listdir(_TEMP_DIR) if f.endswith(".png")
+    )
+    return [
+        {"filename": f, "url": f"/temp/{f}"}
+        for f in files
+    ]
 
 
 @app.get("/healthz")
