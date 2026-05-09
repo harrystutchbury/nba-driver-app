@@ -2085,7 +2085,12 @@ def get_projections(
 
         # ── 3. Player baselines (current season, ≥10 GP, ≥15 min) ──────────
         player_rows = conn.execute("""
-            SELECT g.player_slug, p.full_name, p.team, b.position_group,
+            SELECT g.player_slug, p.full_name,
+                   COALESCE(
+                       (SELECT gl.team FROM game_logs gl WHERE gl.player_slug = g.player_slug ORDER BY gl.game_date DESC LIMIT 1),
+                       p.team
+                   ) AS team,
+                   b.position_group,
                    COALESCE(fpm.position, t01.position, b.position_group) AS fantasy_position,
                    COUNT(*) AS gp_current,
                    AVG(g.min) AS min_pg,
