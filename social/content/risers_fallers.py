@@ -18,48 +18,39 @@ log = logging.getLogger(__name__)
 
 CONTENT_TYPE = "risers_fallers"
 
-_DRIVER_LABELS = {
-    "pts":   "Scoring",
-    "reb":   "Rebounding",
-    "ast":   "Assists",
-    "stl":   "Steals",
-    "blk":   "Blocks",
-    "fg3m":  "3-Pointers",
-    "tov":   "Turnovers",
-    "fg_pct": "FG%",
+_CAT_LABELS = {
+    "pts":  "PTS", "reb":  "REB", "ast":  "AST",
+    "stl":  "STL", "blk":  "BLK", "fg3m": "3PM",
 }
-
-_DRIVER_TAGS = ["rate change", "role", "pace", "schedule", "matchup"]
-
-
-def _top_stat_change(player: dict) -> tuple[str, str]:
-    """Return (stat_label, driver_tag) for the player's most notable change."""
-    cats  = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
-    z_now = {c: abs(player.get(f"z_{c}") or 0) for c in cats}
-    top_cat = max(z_now, key=z_now.get, default="pts")
-    delta   = player.get("z_delta", 0)
-    val     = player.get(top_cat) or 0
-    sign    = "+" if delta >= 0 else ""
-    label   = f"{top_cat.upper()} {sign}{delta:+.1f}z"
-    # Simple heuristic for driver tag
-    if abs(delta) > 1.5:
-        tag = "rate change"
-    elif player.get(f"z_{top_cat}", 0) > 1.0:
-        tag = "role"
-    else:
-        tag = "matchup"
-    return label, tag
 
 
 def _build_mover_rows(movers: list[dict]) -> list[dict]:
+    cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
     rows = []
     for p in movers:
-        stat_label, driver = _top_stat_change(p)
+        z_delta = p.get("z_delta", 0)
+
+        cat_deltas = [(c, p.get(f"z_{c}_delta") or 0) for c in cats]
+        top_cats   = sorted(cat_deltas, key=lambda x: abs(x[1]), reverse=True)[:3]
+        drivers    = [f"{_CAT_LABELS.get(c, c.upper())} {v:+.1f}z" for c, v in top_cats]
+
+        abs_delta = abs(z_delta)
+        top_cat   = top_cats[0][0] if top_cats else "pts"
+        if abs_delta >= 3:
+            diagnosis = "rate change"
+        elif abs(p.get(f"z_{top_cat}") or 0) > 1.5:
+            diagnosis = "role shift"
+        elif abs_delta > 1.0:
+            diagnosis = "hot streak" if z_delta > 0 else "cold stretch"
+        else:
+            diagnosis = "matchup"
+
         rows.append({
-            "name":       p["name"],
-            "team":       p.get("team", ""),
-            "stat_label": stat_label,
-            "driver":     driver,
+            "name":        p["name"],
+            "team":        api.abbrev_team(p.get("team", "")),
+            "z_delta_fmt": f"{z_delta:+.1f}",
+            "drivers":     drivers,
+            "diagnosis":   diagnosis,
         })
     return rows
 
@@ -111,7 +102,7 @@ def run(preview: bool = False) -> dict:
         return {"status": "skipped", "reason": "off-season"}
 
     try:
-        risers, fallers = api.risers_and_fallers(n=3)
+        risers, fallers = api.risers_and_fallers(n=5)
         if not risers and not fallers:
             db.log_run(CONTENT_TYPE, "skipped", "no mover data")
             return {"status": "skipped", "reason": "no mover data"}

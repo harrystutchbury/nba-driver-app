@@ -146,17 +146,24 @@ def top_tomorrow_projections(n: int = 10, fa_only: bool = False) -> list[dict]:
 def risers_and_fallers(n: int = 3) -> tuple[list[dict], list[dict]]:
     """
     Return top N risers and top N fallers by z_total delta (l14 vs season average).
+    Includes per-category z deltas as z_{cat}_delta fields.
     """
+    cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
     season_map  = {p["slug"]: p for p in season_rankings("season")}
     recent_list = season_rankings("l14")
 
     deltas = []
     for p in recent_list:
-        slug    = p["slug"]
-        z_now   = p.get("z_total") or 0
-        z_base  = (season_map.get(slug) or {}).get("z_total") or 0
-        delta   = round(z_now - z_base, 2)
-        deltas.append({**p, "z_delta": delta, "z_base": z_base})
+        slug     = p["slug"]
+        z_now    = p.get("z_total") or 0
+        season_p = season_map.get(slug) or {}
+        z_base   = season_p.get("z_total") or 0
+        delta    = round(z_now - z_base, 2)
+        cat_deltas = {
+            f"z_{c}_delta": round((p.get(f"z_{c}") or 0) - (season_p.get(f"z_{c}") or 0), 2)
+            for c in cats
+        }
+        deltas.append({**p, "z_delta": delta, "z_base": z_base, **cat_deltas})
 
     deltas.sort(key=lambda x: x["z_delta"], reverse=True)
     risers  = [d for d in deltas if d["z_delta"] > 0][:n]
