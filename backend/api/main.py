@@ -1929,6 +1929,32 @@ def admin_refresh_schedule():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/admin/debug-projections")
+def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15"):
+    """Temporary debug: check what schedule and player data exists in prod."""
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    sched = conn.execute(
+        "SELECT home_team, away_team, game_date FROM nba_schedule WHERE game_date >= ? AND game_date <= ? LIMIT 10",
+        (start, end)
+    ).fetchall()
+    player_count = conn.execute(
+        "SELECT COUNT(DISTINCT player_slug) FROM game_logs WHERE season = ? AND min >= 15",
+        (season,)
+    ).fetchone()[0]
+    player_sample = conn.execute(
+        "SELECT player_slug, team, game_date FROM game_logs WHERE season = ? AND min >= 15 ORDER BY game_date DESC LIMIT 3",
+        (season,)
+    ).fetchall()
+    return {
+        "season": season,
+        "schedule_games": [dict(r) for r in sched],
+        "qualifying_players": player_count,
+        "recent_game_logs": [dict(r) for r in player_sample],
+    }
+
+
 @router.post("/admin/upload-schedule")
 def admin_upload_schedule(games: list = Body(...)):
     """Accept schedule JSON pushed from local machine and store in DB."""
