@@ -62,13 +62,25 @@
     color: var(--muted);
     text-transform: uppercase;
   }
-  .logo-icon { font-size: 22px; line-height: 1; }
   .logo span { color: var(--green); }
+  .top-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
   .page-title {
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.14em;
     color: var(--muted);
+    text-transform: uppercase;
+  }
+  .date-range {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--green);
     text-transform: uppercase;
   }
 
@@ -115,9 +127,13 @@
   }
 
   .mover-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     background: var(--surface);
     border-radius: 10px;
-    padding: 14px 16px 12px;
+    padding: 0 16px;
     border: 1px solid var(--border);
     position: relative;
     overflow: hidden;
@@ -235,10 +251,18 @@
 <div class="wrap">
   <div class="top-bar">
     <div class="logo">
-      <span class="logo-icon">🏀</span>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="10" cy="10" r="8.5" stroke="#00e676" stroke-width="1.4"/>
+        <path d="M10 1.5C10 1.5 7 5.5 7 10C7 14.5 10 18.5 10 18.5" stroke="#00e676" stroke-width="1.4"/>
+        <path d="M10 1.5C10 1.5 13 5.5 13 10C13 14.5 10 18.5 10 18.5" stroke="#00e676" stroke-width="1.4"/>
+        <line x1="1.5" y1="10" x2="18.5" y2="10" stroke="#00e676" stroke-width="1.4"/>
+      </svg>
       ROTO<span>INTEL</span>
     </div>
-    <div class="page-title">WEEKLY MOVERS</div>
+    <div class="top-right">
+      <div class="page-title">WEEKLY MOVERS</div>
+      <div class="date-range">{{ date_range }}</div>
+    </div>
   </div>
 
   <div class="split">

@@ -6,7 +6,7 @@ Posts risers/fallers graphic + deep dive on the biggest mover 30 min later.
 import hashlib
 import logging
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import api_client as api
 import claude_gen as claude
@@ -17,6 +17,15 @@ from publishers import twitter, instagram
 log = logging.getLogger(__name__)
 
 CONTENT_TYPE = "risers_fallers"
+
+def _week_range_label() -> str:
+    today  = date.today()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    if monday.month == sunday.month:
+        return f"{monday.strftime('%b %-d').upper()}–{sunday.day}"
+    return f"{monday.strftime('%b %-d').upper()}–{sunday.strftime('%b %-d').upper()}"
+
 
 _CAT_LABELS = {
     "pts":  "PTS", "reb":  "REB", "ast":  "AST",
@@ -113,7 +122,7 @@ def run(preview: bool = False) -> dict:
 
         rf_path = renderer.render_and_screenshot(
             "risers_fallers.html",
-            {"risers": riser_rows, "fallers": faller_rows},
+            {"risers": riser_rows, "fallers": faller_rows, "date_range": _week_range_label()},
             f"risers_fallers_{date.today().isoformat()}",
             format="square",
         )
