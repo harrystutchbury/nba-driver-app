@@ -62,7 +62,7 @@ def _deepdive_data(player: dict) -> dict:
     for cat in cats:
         z_now  = player.get(f"z_{cat}") or 0
         z_base = player.get("z_base", 0)
-        drivers.append({"label": _DRIVER_LABELS.get(cat, cat.upper()), "value": round(z_now - (z_base / len(cats)), 2)})
+        drivers.append({"label": _CAT_LABELS.get(cat, cat.upper()), "value": round(z_now - (z_base / len(cats)), 2)})
 
     drivers_sorted = sorted(drivers, key=lambda d: abs(d["value"]), reverse=True)[:4]
     max_driver = max((abs(d["value"]) for d in drivers_sorted), default=1) or 1
