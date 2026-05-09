@@ -2075,10 +2075,13 @@ def get_projections(
             WHERE game_date >= ? AND game_date <= ?
         """, (start, end)).fetchall()
 
-        team_opponents = {}  # team -> [opponent, ...]
+        team_opponents = {}   # team -> [opponent, ...]
+        team_game_info = {}   # team -> {"opponent": str, "is_home": bool}
         for r in sched_rows:
             team_opponents.setdefault(r["home_team"], []).append(r["away_team"])
             team_opponents.setdefault(r["away_team"], []).append(r["home_team"])
+            team_game_info.setdefault(r["home_team"], {"opponent": r["away_team"], "is_home": True})
+            team_game_info.setdefault(r["away_team"], {"opponent": r["home_team"], "is_home": False})
 
         if not team_opponents:
             return []
@@ -2242,12 +2245,15 @@ def get_projections(
             z_total = _composite_z(proj, league)
             proj_z  = _with_zscores(proj, league)
 
+            _gi = team_game_info.get(team, {})
             results.append({
                 "slug":         slug,
                 "name":         r["full_name"],
                 "team":         team,
                 "position":     display_pos,
                 "gp":           gp,
+                "opponent":     _gi.get("opponent", ""),
+                "is_home":      _gi.get("is_home", True),
                 "injury":       injury_map.get(slug),
                 "is_adjusted":  adj is not None,
                 "z_total":      round(z_total, 2) if z_total is not None else None,

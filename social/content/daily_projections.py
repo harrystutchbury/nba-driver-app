@@ -45,11 +45,15 @@ def _top_stats_for_player(player: dict, n: int = 2) -> list[dict]:
 def _build_player_rows(players: list[dict]) -> list[dict]:
     rows = []
     for p in players:
+        opponent = p.get("opponent", "")
+        is_home  = p.get("is_home", True)
+        opp_abbr = api.abbrev_team(opponent)
+        matchup  = f"vs {opp_abbr}" if is_home else f"@ {opp_abbr}"
         rows.append({
             "name":      p["name"],
-            "team":      p.get("team", ""),
+            "team":      api.abbrev_team(p.get("team", "")),
             "position":  p.get("position", ""),
-            "matchup":   p.get("matchup", ""),
+            "matchup":   matchup if opp_abbr else "",
             "is_b2b":    p.get("is_b2b", False),
             "is_fa":     p.get("ownership_pct", 100) < 50,
             "top_stats": _top_stats_for_player(p, n=2),
@@ -68,8 +72,8 @@ def run(preview: bool = False) -> dict:
 
     try:
         tomorrow     = api.tomorrow_date()
-        top_5        = api.top_tomorrow_projections(n=5)
-        top_5_fa     = api.top_tomorrow_projections(n=5, fa_only=True)
+        top_5        = api.top_tomorrow_projections(n=10)
+        top_5_fa     = api.top_tomorrow_projections(n=10, fa_only=True)
         cat_leaders  = api.top_category_leaders(tomorrow)
 
         if not top_5:

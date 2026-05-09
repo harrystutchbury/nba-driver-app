@@ -53,12 +53,16 @@
     border-bottom: 1px solid var(--border);
   }
   .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--muted);
     text-transform: uppercase;
   }
+  .logo-icon { font-size: 22px; line-height: 1; }
   .logo span { color: var(--green); }
   .date-label {
     font-size: 13px;
@@ -69,10 +73,10 @@
   }
 
   .headline {
-    padding: 32px 48px 20px;
+    padding: 22px 48px 16px;
   }
   .headline-main {
-    font-size: 52px;
+    font-size: 40px;
     font-weight: 900;
     color: var(--green);
     text-transform: uppercase;
@@ -80,12 +84,12 @@
     line-height: 1;
   }
   .headline-sub {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--amber);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    margin-top: 6px;
+    margin-top: 5px;
   }
 
   .players {
@@ -100,9 +104,9 @@
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 14px 20px;
-    border-radius: 10px;
-    margin-bottom: 7px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    margin-bottom: 5px;
     background: var(--surface);
     border: 1px solid var(--border);
     position: relative;
@@ -131,7 +135,7 @@
     margin-bottom: 3px;
   }
   .name {
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 700;
     color: var(--text);
     white-space: nowrap;
@@ -139,7 +143,7 @@
     text-overflow: ellipsis;
   }
   .pos-team {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
     color: var(--muted);
     text-transform: uppercase;
@@ -149,11 +153,14 @@
   .matchup-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
   .matchup {
-    font-size: 12px;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
   .b2b-badge {
     font-size: 10px;
@@ -195,7 +202,7 @@
     text-transform: uppercase;
   }
   .stat-val {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--text);
     font-variant-numeric: tabular-nums;
@@ -227,12 +234,15 @@
 <body>
 <div class="wrap">
   <div class="top-bar">
-    <div class="logo">ROTO<span>INTEL</span></div>
+    <div class="logo">
+      <span class="logo-icon">🏀</span>
+      ROTO<span>INTEL</span>
+    </div>
     <div class="date-label">{{ date_label }}</div>
   </div>
 
   <div class="headline">
-    <div class="headline-main">{% if waiver_mode %}WIRE PICKS{% else %}TOMORROW'S EDGE{% endif %}</div>
+    <div class="headline-main">{% if waiver_mode %}WIRE PICKS{% else %}TOMORROW'S TOP PLAYERS{% endif %}</div>
     {% if waiver_mode %}<div class="headline-sub">FREE AGENTS ONLY</div>{% endif %}
   </div>
 
