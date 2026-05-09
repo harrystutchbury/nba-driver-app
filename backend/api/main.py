@@ -11,6 +11,7 @@ Run locally:
   or from the backend folder:
   uvicorn main:app --reload
 """
+from __future__ import annotations
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -2105,14 +2106,14 @@ def get_projections(
                    SQRT(MAX(0, AVG(g.tov*g.tov)  - AVG(g.tov)*AVG(g.tov)))  AS tov_sd,
                    SQRT(MAX(0, AVG(g.fg3m*g.fg3m) - AVG(g.fg3m)*AVG(g.fg3m))) AS fg3m_sd
             FROM game_logs g
-            JOIN players p ON p.slug = g.player_slug
+            JOIN players p ON p.slug = g.player_slug AND p.season = ?
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = g.player_slug AND fpm.provider = 'espn'
             LEFT JOIN tank01_player_map t01 ON t01.br_slug = g.player_slug
             WHERE g.season = ? AND g.min >= 15
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 10
-        """, (season,)).fetchall()
+        """, (season, season)).fetchall()
 
         # ── 3b. Last season SDs (for early-season blending) ─────────────────
         prev_season_year = season_year - 1

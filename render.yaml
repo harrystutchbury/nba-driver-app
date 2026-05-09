@@ -42,7 +42,7 @@ services:
         sync: false
       - key: ROTO_INTEL_API_BASE_URL
         sync: false
-      - key: ROTO_INTEL_API_KEY
+      - key: ROTO_INTEL_JWT_SECRET
         sync: false
 
   - type: web

@@ -9,6 +9,11 @@ import sys
 import os
 import logging
 from datetime import datetime
+from pathlib import Path
+
+# Load .env from the social/ directory if present
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
 
 # Ensure local imports work regardless of cwd
 sys.path.insert(0, os.path.dirname(__file__))

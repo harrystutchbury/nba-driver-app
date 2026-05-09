@@ -1,11 +1,11 @@
 """
 Weekly best performers content — runs Monday 8am ET.
-Pulls top 5 projected players for the week, renders graphic, posts to Twitter + Instagram.
+Pulls top 10 projected players for the week, renders graphic, posts to Twitter + Instagram.
 """
 
 import hashlib
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 import api_client as api
 import claude_gen as claude
@@ -27,17 +27,27 @@ def _build_player_rows(players: list[dict]) -> list[dict]:
             key=lambda x: x[1],
             reverse=True,
         )
-        top_cats = " · ".join(
-            f"{c.upper()} {v:.1f}" for c, v in scored[:3]
-        )
+        stats = [
+            {"label": c.upper(), "value": f"{v:.1f}"}
+            for c, v in scored[:3]
+        ]
         rows.append({
-            "name":         p["name"],
-            "team":         p.get("team", ""),
-            "period_value": p.get("period_value") or 0,
-            "top_cats":     top_cats,
-            "is_fa":        p.get("ownership_pct", 100) < 50,
+            "name":  p["name"],
+            "team":  api.abbrev_team(p.get("team", "")),
+            "games": p.get("gp") or 0,
+            "stats": stats,
         })
     return rows
+
+
+def _date_range_label() -> str:
+    today  = date.today()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    # e.g. "MAY 12–19"
+    if monday.month == sunday.month:
+        return f"{monday.strftime('%b %-d').upper()}–{sunday.day}"
+    return f"{monday.strftime('%b %-d').upper()}–{sunday.strftime('%b %-d').upper()}"
 
 
 def run(preview: bool = False) -> dict:
@@ -57,17 +67,16 @@ def run(preview: bool = False) -> dict:
         return {"status": "skipped", "reason": "off-season"}
 
     try:
-        top_players = api.top_week_projections(n=10)[:5]
+        top_players = api.top_week_projections(n=10)
         if not top_players:
             db.log_run(CONTENT_TYPE, "skipped", "no players")
             return {"status": "skipped", "reason": "no projection data"}
 
         # Build template data
-        week_label = date.today().strftime("%b %-d").upper()
         player_rows = _build_player_rows(top_players)
 
         template_data = {
-            "week_label": week_label,
+            "date_range": _date_range_label(),
             "players":    player_rows,
         }
 

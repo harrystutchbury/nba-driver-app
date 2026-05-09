@@ -8,11 +8,36 @@ from functools import lru_cache
 
 log = logging.getLogger(__name__)
 
+
+def _make_token() -> str:
+    """Generate a JWT for the backend API, or fall back to a pre-generated token."""
+    secret = os.environ.get("ROTO_INTEL_JWT_SECRET")
+    if secret:
+        import jwt
+        return jwt.encode({"sub": "social-pipeline"}, secret, algorithm="HS256")
+    return os.environ.get("ROTO_INTEL_API_KEY", "")
+
+
+_TEAM_ABBREV = {
+    "ATLANTA HAWKS": "ATL", "BOSTON CELTICS": "BOS", "BROOKLYN NETS": "BKN",
+    "CHARLOTTE HORNETS": "CHA", "CHICAGO BULLS": "CHI", "CLEVELAND CAVALIERS": "CLE",
+    "DALLAS MAVERICKS": "DAL", "DENVER NUGGETS": "DEN", "DETROIT PISTONS": "DET",
+    "GOLDEN STATE WARRIORS": "GSW", "HOUSTON ROCKETS": "HOU", "INDIANA PACERS": "IND",
+    "LOS ANGELES CLIPPERS": "LAC", "LOS ANGELES LAKERS": "LAL", "MEMPHIS GRIZZLIES": "MEM",
+    "MIAMI HEAT": "MIA", "MILWAUKEE BUCKS": "MIL", "MINNESOTA TIMBERWOLVES": "MIN",
+    "NEW ORLEANS PELICANS": "NOP", "NEW YORK KNICKS": "NYK", "OKLAHOMA CITY THUNDER": "OKC",
+    "ORLANDO MAGIC": "ORL", "PHILADELPHIA 76ERS": "PHI", "PHOENIX SUNS": "PHX",
+    "PORTLAND TRAIL BLAZERS": "POR", "SACRAMENTO KINGS": "SAC", "SAN ANTONIO SPURS": "SAS",
+    "TORONTO RAPTORS": "TOR", "UTAH JAZZ": "UTA", "WASHINGTON WIZARDS": "WAS",
+}
+
+def abbrev_team(full_name: str) -> str:
+    return _TEAM_ABBREV.get((full_name or "").upper(), full_name)
+
 BASE_URL = os.environ.get("ROTO_INTEL_API_BASE_URL", "http://localhost:8000")
-API_KEY  = os.environ.get("ROTO_INTEL_API_KEY", "")
 
 _SESSION = requests.Session()
-_SESSION.headers.update({"Authorization": f"Bearer {API_KEY}"})
+_SESSION.headers.update({"Authorization": f"Bearer {_make_token()}"})
 
 
 def _get(path: str, params: dict = None, timeout: int = 30) -> list | dict:
@@ -60,12 +85,14 @@ def is_season_active() -> bool:
 
 def data_freshness_ok() -> bool:
     """
-    Return True if the roster/stats data is less than 24 hours stale.
-    We use the rankings endpoint response to spot-check recency —
-    if it fails or returns nothing, data is considered stale.
+    Return True if any player data is available.
+    Checks l14 first, falls back to season — either is sufficient to generate content.
     """
     try:
         rows = season_rankings("l14")
+        if rows:
+            return True
+        rows = season_rankings("season")
         return len(rows) > 0
     except Exception:
         return False
