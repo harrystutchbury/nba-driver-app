@@ -20,6 +20,32 @@ services:
         generateValue: true
 
   - type: web
+    name: roto-intel-social
+    runtime: python
+    rootDir: social
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_ACCESS_TOKEN
+        sync: false
+      - key: TWITTER_ACCESS_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: INSTAGRAM_ACCESS_TOKEN
+        sync: false
+      - key: INSTAGRAM_ACCOUNT_ID
+        sync: false
+      - key: ROTO_INTEL_API_BASE_URL
+        sync: false
+      - key: ROTO_INTEL_API_KEY
+        sync: false
+
+  - type: web
     name: roto-intel-landing
     runtime: static
     rootDir: landing
