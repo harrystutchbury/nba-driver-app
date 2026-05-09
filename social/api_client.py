@@ -56,6 +56,17 @@ def season_rankings(period: str = "season") -> list[dict]:
     return _get("/rankings", {"period": period})
 
 
+def refresh_schedule() -> None:
+    """Trigger a schedule sync on the backend — call before weekly projection pulls."""
+    try:
+        url = f"{BASE_URL}/api/admin/refresh-schedule"
+        r = _SESSION.post(url, timeout=30)
+        r.raise_for_status()
+        log.info("Schedule refreshed: %s", r.json())
+    except Exception as exc:
+        log.warning("Schedule refresh failed (non-fatal): %s", exc)
+
+
 def schedule_projections(start: str, end: str) -> list[dict]:
     """Players ranked by schedule-adjusted projected value for the date window."""
     return _get("/projections", {"start": start, "end": end})

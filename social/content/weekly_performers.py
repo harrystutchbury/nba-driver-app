@@ -67,6 +67,7 @@ def run(preview: bool = False) -> dict:
         return {"status": "skipped", "reason": "off-season"}
 
     try:
+        api.refresh_schedule()
         top_players = api.top_week_projections(n=10)
         if not top_players:
             db.log_run(CONTENT_TYPE, "skipped", "no players")

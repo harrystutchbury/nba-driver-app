@@ -256,7 +256,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_box_score_live_poller())
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
-    scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
+    scheduler.add_job(_weekly_schedule_sync, 'cron', hour=7, minute=0)  # daily at 7am UTC
     # Injury sync every 3 hours so status stays fresh throughout the day
     scheduler.add_job(
         lambda: __import__('sync_injuries').sync(),
