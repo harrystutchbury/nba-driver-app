@@ -211,9 +211,31 @@
   .rising  .driver-chip { color: rgba(0,230,118,0.75); }
   .falling .driver-chip { color: rgba(255,82,82,0.75); }
 
+  /* Usage stats row */
+  .usage-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .usage-stat {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .usage-label {
+    color: var(--muted);
+    margin-right: 3px;
+  }
+  .usage-pos { color: var(--green); }
+  .usage-neg { color: var(--red); }
+  .usage-neu { color: var(--muted); }
+
   /* Diagnosis tag */
   .diagnosis-tag {
     display: inline-block;
+    align-self: flex-start;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -287,6 +309,13 @@
             <span class="driver-chip">{{ d }}</span>{% if not loop.last %}<span class="driver-sep">·</span>{% endif %}
             {% endfor %}
           </div>
+          <div class="usage-row">
+            {% for u in p.usage_stats %}
+            <span class="usage-stat">
+              <span class="usage-label">{{ u.label }}</span><span class="{% if u.delta > 0 %}usage-pos{% elif u.delta < 0 %}usage-neg{% else %}usage-neu{% endif %}">{{ u.fmt }}</span>
+            </span>
+            {% endfor %}
+          </div>
           <div class="diagnosis-tag">{{ p.diagnosis }}</div>
         </div>
         {% endfor %}
@@ -312,6 +341,13 @@
           <div class="mover-drivers-row">
             {% for d in p.drivers %}
             <span class="driver-chip">{{ d }}</span>{% if not loop.last %}<span class="driver-sep">·</span>{% endif %}
+            {% endfor %}
+          </div>
+          <div class="usage-row">
+            {% for u in p.usage_stats %}
+            <span class="usage-stat">
+              <span class="usage-label">{{ u.label }}</span><span class="{% if u.delta > 0 %}usage-pos{% elif u.delta < 0 %}usage-neg{% else %}usage-neu{% endif %}">{{ u.fmt }}</span>
+            </span>
             {% endfor %}
           </div>
           <div class="diagnosis-tag">{{ p.diagnosis }}</div>

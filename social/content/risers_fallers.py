@@ -37,20 +37,31 @@ def _build_mover_rows(movers: list[dict]) -> list[dict]:
     cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
     rows = []
     for p in movers:
-        z_delta = p.get("z_delta", 0)
+        z_delta   = p.get("z_delta", 0)
+        min_delta = p.get("min_pg_delta") or 0
+        fga_delta = p.get("fga_pg_delta") or 0
+        fgp_delta = p.get("fg_pct_delta") or 0
 
         cat_deltas = [(c, p.get(f"z_{c}_delta") or 0) for c in cats]
         top_cats   = sorted(cat_deltas, key=lambda x: abs(x[1]), reverse=True)[:3]
         drivers    = [f"{_CAT_LABELS.get(c, c.upper())} {v:+.1f}z" for c, v in top_cats]
 
-        abs_delta = abs(z_delta)
-        top_cat   = top_cats[0][0] if top_cats else "pts"
-        if abs_delta >= 3:
+        usage_stats = [
+            {"label": "MIN/G", "delta": min_delta, "fmt": f"{min_delta:+.1f}"},
+            {"label": "FGA/G", "delta": fga_delta, "fmt": f"{fga_delta:+.1f}"},
+            {"label": "FG%",   "delta": fgp_delta, "fmt": f"{fgp_delta:+.1f}%"},
+        ]
+
+        if abs(fga_delta) >= 2.0:
             diagnosis = "rate change"
-        elif abs(p.get(f"z_{top_cat}") or 0) > 1.5:
+        elif abs(min_delta) >= 3.0:
             diagnosis = "role shift"
-        elif abs_delta > 1.0:
-            diagnosis = "hot streak" if z_delta > 0 else "cold stretch"
+        elif fgp_delta >= 4.0:
+            diagnosis = "hot streak"
+        elif fgp_delta <= -4.0:
+            diagnosis = "cold stretch"
+        elif abs(z_delta) >= 2.0:
+            diagnosis = "rate change"
         else:
             diagnosis = "matchup"
 
@@ -59,6 +70,7 @@ def _build_mover_rows(movers: list[dict]) -> list[dict]:
             "team":        api.abbrev_team(p.get("team", "")),
             "z_delta_fmt": f"{z_delta:+.1f}",
             "drivers":     drivers,
+            "usage_stats": usage_stats,
             "diagnosis":   diagnosis,
         })
     return rows

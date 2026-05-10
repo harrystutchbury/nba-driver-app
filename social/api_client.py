@@ -163,7 +163,12 @@ def risers_and_fallers(n: int = 3) -> tuple[list[dict], list[dict]]:
             f"z_{c}_delta": round((p.get(f"z_{c}") or 0) - (season_p.get(f"z_{c}") or 0), 2)
             for c in cats
         }
-        deltas.append({**p, "z_delta": delta, "z_base": z_base, **cat_deltas})
+        usage_deltas = {
+            "min_pg_delta": round((p.get("min_pg") or 0) - (season_p.get("min_pg") or 0), 1),
+            "fga_pg_delta": round((p.get("fga_pg") or 0) - (season_p.get("fga_pg") or 0), 1),
+            "fg_pct_delta": round((p.get("fg_pct") or 0) - (season_p.get("fg_pct") or 0), 1),
+        }
+        deltas.append({**p, "z_delta": delta, "z_base": z_base, **cat_deltas, **usage_deltas})
 
     deltas.sort(key=lambda x: x["z_delta"], reverse=True)
     risers  = [d for d in deltas if d["z_delta"] > 0][:n]
