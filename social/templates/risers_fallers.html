@@ -210,47 +210,57 @@
   .rising  .driver-chip { color: rgba(0,230,118,0.75); }
   .falling .driver-chip { color: rgba(255,82,82,0.75); }
 
-  /* Usage stats row */
-  .usage-row {
+  /* Driver boxes grid */
+  .driver-grid {
     display: flex;
+    gap: 8px;
+  }
+  .driver-box-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 10px;
+    gap: 5px;
   }
-  .usage-stat {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    white-space: nowrap;
-  }
-  .usage-label {
-    color: var(--muted);
-    margin-right: 3px;
-  }
-  .usage-pos { color: var(--green); }
-  .usage-neg { color: var(--red); }
-  .usage-neu { color: var(--muted); }
-
-  /* Diagnosis tag */
-  .diagnosis-tag {
-    display: inline-block;
-    align-self: flex-start;
+  .driver-stat-label {
     font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-align: center;
+  }
+  .driver-stat-val {
     font-weight: 700;
-    letter-spacing: 0.1em;
+    font-variant-numeric: tabular-nums;
+  }
+  .dv-pos { color: var(--green); }
+  .dv-neg { color: var(--red); }
+  .dv-neu { color: var(--muted); }
+  .driver-box {
+    width: 100%;
+    padding: 7px 4px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 4px;
+    line-height: 1.3;
   }
-  .rising  .diagnosis-tag {
+  .box-pos {
+    background: rgba(0,230,118,0.14);
+    border: 1px solid rgba(0,230,118,0.35);
     color: var(--green);
-    background: rgba(0,230,118,0.12);
-    border: 1px solid rgba(0,230,118,0.25);
   }
-  .falling .diagnosis-tag {
+  .box-neg {
+    background: rgba(255,82,82,0.14);
+    border: 1px solid rgba(255,82,82,0.35);
     color: var(--red);
-    background: rgba(255,82,82,0.12);
-    border: 1px solid rgba(255,82,82,0.25);
+  }
+  .box-dim {
+    background: rgba(136,146,164,0.05);
+    border: 1px solid rgba(136,146,164,0.1);
+    color: rgba(136,146,164,0.3);
   }
 
   .bottom-bar {
@@ -308,14 +318,18 @@
             <span class="driver-chip">{{ d }}</span>{% if not loop.last %}<span class="driver-sep">·</span>{% endif %}
             {% endfor %}
           </div>
-          <div class="usage-row">
-            {% for u in p.usage_stats %}
-            <span class="usage-stat">
-              <span class="usage-label">{{ u.label }}</span><span class="{% if u.delta > 0 %}usage-pos{% elif u.delta < 0 %}usage-neg{% else %}usage-neu{% endif %}">{{ u.fmt }}</span>
-            </span>
+          <div class="driver-grid">
+            {% for d in p.drivers_grid %}
+            <div class="driver-box-wrap">
+              <div class="driver-stat-label">
+                {{ d.stat_label }} <span class="driver-stat-val {% if d.delta > 0 %}dv-pos{% elif d.delta < 0 %}dv-neg{% else %}dv-neu{% endif %}">{{ d.stat_fmt }}</span>
+              </div>
+              <div class="driver-box {% if d.active %}{% if d.delta > 0 %}box-pos{% else %}box-neg{% endif %}{% else %}box-dim{% endif %}">
+                {{ d.label }}
+              </div>
+            </div>
             {% endfor %}
           </div>
-          <div class="diagnosis-tag">{{ p.diagnosis }}</div>
         </div>
         {% endfor %}
       </div>
@@ -342,14 +356,18 @@
             <span class="driver-chip">{{ d }}</span>{% if not loop.last %}<span class="driver-sep">·</span>{% endif %}
             {% endfor %}
           </div>
-          <div class="usage-row">
-            {% for u in p.usage_stats %}
-            <span class="usage-stat">
-              <span class="usage-label">{{ u.label }}</span><span class="{% if u.delta > 0 %}usage-pos{% elif u.delta < 0 %}usage-neg{% else %}usage-neu{% endif %}">{{ u.fmt }}</span>
-            </span>
+          <div class="driver-grid">
+            {% for d in p.drivers_grid %}
+            <div class="driver-box-wrap">
+              <div class="driver-stat-label">
+                {{ d.stat_label }} <span class="driver-stat-val {% if d.delta > 0 %}dv-pos{% elif d.delta < 0 %}dv-neg{% else %}dv-neu{% endif %}">{{ d.stat_fmt }}</span>
+              </div>
+              <div class="driver-box {% if d.active %}{% if d.delta > 0 %}box-pos{% else %}box-neg{% endif %}{% else %}box-dim{% endif %}">
+                {{ d.label }}
+              </div>
+            </div>
             {% endfor %}
           </div>
-          <div class="diagnosis-tag">{{ p.diagnosis }}</div>
         </div>
         {% endfor %}
       </div>

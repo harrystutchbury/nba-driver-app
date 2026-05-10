@@ -46,32 +46,36 @@ def _build_mover_rows(movers: list[dict]) -> list[dict]:
         top_cats   = sorted(cat_deltas, key=lambda x: abs(x[1]), reverse=True)[:3]
         drivers    = [f"{_CAT_LABELS.get(c, c.upper())} {v:+.1f}z" for c, v in top_cats]
 
-        usage_stats = [
-            {"label": "MIN/G", "delta": min_delta, "fmt": f"{min_delta:+.1f}"},
-            {"label": "FGA/G", "delta": fga_delta, "fmt": f"{fga_delta:+.1f}"},
-            {"label": "FG%",   "delta": fgp_delta, "fmt": f"{fgp_delta:+.1f}%"},
+        drivers_grid = [
+            {
+                "stat_label": "MIN/G",
+                "stat_fmt":   f"{min_delta:+.1f}",
+                "delta":      min_delta,
+                "label":      "ROLE INCREASE" if min_delta > 0 else "ROLE DECREASE",
+                "active":     abs(min_delta) >= 2.0,
+            },
+            {
+                "stat_label": "FGA/G",
+                "stat_fmt":   f"{fga_delta:+.1f}",
+                "delta":      fga_delta,
+                "label":      "USAGE INCREASE" if fga_delta > 0 else "USAGE DECREASE",
+                "active":     abs(fga_delta) >= 1.5,
+            },
+            {
+                "stat_label": "FG%",
+                "stat_fmt":   f"{fgp_delta:+.1f}%",
+                "delta":      fgp_delta,
+                "label":      "HOT STREAK" if fgp_delta > 0 else "COLD STRETCH",
+                "active":     abs(fgp_delta) >= 4.0,
+            },
         ]
 
-        # Dominant signal determines label; normalize each to comparable scale
-        min_sig = abs(min_delta) / 2.0
-        fga_sig = abs(fga_delta) / 1.5
-        fgp_sig = abs(fgp_delta) / 4.0
-        dominant = max([("min", min_sig, min_delta), ("fga", fga_sig, fga_delta), ("fgp", fgp_sig, fgp_delta)], key=lambda x: x[1])
-        kind, _, val = dominant
-        if kind == "min":
-            diagnosis = "role increase" if val > 0 else "role decrease"
-        elif kind == "fga":
-            diagnosis = "usage increase" if val > 0 else "usage decrease"
-        else:
-            diagnosis = "hot streak" if val > 0 else "cold stretch"
-
         rows.append({
-            "name":        p["name"],
-            "team":        api.abbrev_team(p.get("team", "")),
-            "z_delta_fmt": f"{z_delta:+.1f}",
-            "drivers":     drivers,
-            "usage_stats": usage_stats,
-            "diagnosis":   diagnosis,
+            "name":         p["name"],
+            "team":         api.abbrev_team(p.get("team", "")),
+            "z_delta_fmt":  f"{z_delta:+.1f}",
+            "drivers":      drivers,
+            "drivers_grid": drivers_grid,
         })
     return rows
 
