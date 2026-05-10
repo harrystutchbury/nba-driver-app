@@ -121,6 +121,18 @@ def tomorrow_date() -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
+def next_game_date() -> str:
+    """Return the nearest upcoming date (including tomorrow) that has games scheduled."""
+    for days_ahead in range(1, 8):
+        d = (date.today() + timedelta(days=days_ahead)).isoformat()
+        try:
+            if schedule_projections(d, d):
+                return d
+        except Exception:
+            continue
+    return tomorrow_date()
+
+
 def previous_week_window() -> tuple[str, str]:
     """Monday–Sunday of the previous week."""
     today  = date.today()

@@ -71,14 +71,20 @@ def run(preview: bool = False) -> dict:
         return {"status": "skipped", "reason": "off-season"}
 
     try:
-        tomorrow     = api.tomorrow_date()
-        top_5        = api.top_tomorrow_projections(n=10)
-        top_5_fa     = api.top_tomorrow_projections(n=10, fa_only=True)
-        cat_leaders  = api.top_category_leaders(tomorrow)
+        tomorrow = api.tomorrow_date()
+        top_5    = api.top_tomorrow_projections(n=10)
+        if not top_5:
+            # Fall back to next date with games (useful for preview and off-days)
+            tomorrow = api.next_game_date()
+            players_raw = api.schedule_projections(tomorrow, tomorrow)
+            top_5 = sorted(players_raw, key=lambda p: p.get("period_value") or 0, reverse=True)[:10]
 
         if not top_5:
             db.log_run(CONTENT_TYPE, "skipped", "no tomorrow data")
             return {"status": "skipped", "reason": "no projection data for tomorrow"}
+
+        top_5_fa    = [p for p in api.schedule_projections(tomorrow, tomorrow) if p.get("ownership_pct", 100) < 50][:10]
+        cat_leaders = api.top_category_leaders(tomorrow)
 
         date_label = date.today().strftime("%a %b %-d").upper()
 
