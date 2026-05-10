@@ -52,18 +52,18 @@ def _build_mover_rows(movers: list[dict]) -> list[dict]:
             {"label": "FG%",   "delta": fgp_delta, "fmt": f"{fgp_delta:+.1f}%"},
         ]
 
-        if abs(fga_delta) >= 2.0:
-            diagnosis = "rate change"
-        elif abs(min_delta) >= 3.0:
-            diagnosis = "role shift"
-        elif fgp_delta >= 4.0:
-            diagnosis = "hot streak"
-        elif fgp_delta <= -4.0:
-            diagnosis = "cold stretch"
-        elif abs(z_delta) >= 2.0:
-            diagnosis = "rate change"
+        # Dominant signal determines label; normalize each to comparable scale
+        min_sig = abs(min_delta) / 2.0
+        fga_sig = abs(fga_delta) / 1.5
+        fgp_sig = abs(fgp_delta) / 4.0
+        dominant = max([("min", min_sig, min_delta), ("fga", fga_sig, fga_delta), ("fgp", fgp_sig, fgp_delta)], key=lambda x: x[1])
+        kind, _, val = dominant
+        if kind == "min":
+            diagnosis = "role increase" if val > 0 else "role decrease"
+        elif kind == "fga":
+            diagnosis = "usage increase" if val > 0 else "usage decrease"
         else:
-            diagnosis = "matchup"
+            diagnosis = "hot streak" if val > 0 else "cold stretch"
 
         rows.append({
             "name":        p["name"],
