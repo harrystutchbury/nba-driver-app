@@ -279,8 +279,10 @@ async def lifespan(app: FastAPI):
             logger.info("CTW: no player scores found — computing in background")
             def _seed_scores():
                 try:
-                    from ctw.run import run as _ctw_run
-                    _ctw_run("2024-25", scores_only=True)
+                    from ctw import player_scores as _ps, adjustments as _adj
+                    _c = get_conn()
+                    _ps.calculate_and_store(_c, "2024-25", league_sizes=[12], periods=["full_season"])
+                    _adj.apply_scarcity(_c, "2024-25", league_sizes=[12], periods=["full_season"])
                     logger.info("CTW: player scores computed")
                 except Exception as _ex:
                     logger.exception("CTW: player score computation failed: %s", _ex)

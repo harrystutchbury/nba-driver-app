@@ -28,8 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from schema import get_conn
 from ctw.schema import init_ctw_tables
-from ctw import adp as adp_mod
-from ctw import simulation, curves as curve_mod, player_scores, adjustments, validate
+from ctw import curves as curve_mod, player_scores, adjustments, validate
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,14 +59,15 @@ def run(
         league_sizes = list(range(8, 17))
 
     if not scores_only:
+        from ctw import adp as adp_mod, simulation
+        from ctw.constants import DEFAULT_N_LEAGUES, DEFAULT_N_WEEKS, DEFAULT_N_WEEK_SAMPLES
+        import numpy as _np
+
         adp_path = adp_path or adp_mod.DEFAULT_ADP_PATH
         log.info("Loading ADP from %s (prefer=%s)", adp_path, adp_prefer)
         adp_players = adp_mod.load_adp(adp_path, prefer=adp_prefer)
         adp_players = adp_mod.match_to_slugs(adp_players, conn)
         log.info("%d ADP players matched", len(adp_players))
-
-        from ctw.constants import DEFAULT_N_LEAGUES, DEFAULT_N_WEEKS, DEFAULT_N_WEEK_SAMPLES
-        import numpy as _np
 
         rng = _np.random.default_rng(seed)
         pool = simulation.build_player_pool(conn, season)
