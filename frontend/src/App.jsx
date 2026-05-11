@@ -2014,7 +2014,7 @@ function useCTW(period) {
   const [ctw, setCtw] = useState({})
   useEffect(() => {
     const ctwPeriod = CTW_PERIOD_MAP[period] || 'full_season'
-    apiFetch(`/api/ctw/rankings?season=2024-25&league_size=10&period=${ctwPeriod}&limit=500`)
+    apiFetch(`/api/ctw/rankings?season=2024-25&league_size=12&period=${ctwPeriod}&limit=500`)
       .then(r => r.ok ? r.json() : { rankings: [] })
       .then(d => {
         const map = {}

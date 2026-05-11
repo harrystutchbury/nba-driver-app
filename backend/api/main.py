@@ -253,29 +253,40 @@ async def lifespan(app: FastAPI):
     _bs_condition = asyncio.Condition()
     from schema import init_db
     init_db()
-    # Initialise CTW tables, warm curve cache, and seed data if missing
+    # Initialise CTW tables, seed curves if missing, compute player scores
     try:
         import threading as _threading
         from ctw.schema import init_ctw_tables
         from ctw import curves as _ctw_curves
         _ctw_conn = get_conn()
         init_ctw_tables(_ctw_conn)
+
+        _curve_count = _ctw_conn.execute("SELECT COUNT(*) FROM ctw_curves").fetchone()[0]
+        if _curve_count == 0:
+            import os as _os
+            _seed_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "ctw_curves_seed.sql")
+            logger.info("CTW: loading curves from seed file %s", _seed_path)
+            with open(_seed_path) as _f:
+                _ctw_conn.executescript(_f.read())
+            logger.info("CTW: curves seeded from file")
+
         _ctw_curves.load_curves_into_cache(_ctw_conn)
-        _ctw_count = _ctw_conn.execute(
+
+        _score_count = _ctw_conn.execute(
             "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25'"
         ).fetchone()[0]
-        if _ctw_count == 0:
-            logger.info("CTW: no data found — running simulation in background")
-            def _seed_ctw():
+        if _score_count == 0:
+            logger.info("CTW: no player scores found — computing in background")
+            def _seed_scores():
                 try:
                     from ctw.run import run as _ctw_run
-                    _ctw_run("2024-25")
-                    logger.info("CTW: background simulation complete")
+                    _ctw_run("2024-25", scores_only=True)
+                    logger.info("CTW: player scores computed")
                 except Exception as _ex:
-                    logger.exception("CTW: background simulation failed: %s", _ex)
-            _threading.Thread(target=_seed_ctw, daemon=True).start()
+                    logger.exception("CTW: player score computation failed: %s", _ex)
+            _threading.Thread(target=_seed_scores, daemon=True).start()
         else:
-            logger.info("CTW: %d score rows found, skipping simulation", _ctw_count)
+            logger.info("CTW: %d player score rows found", _score_count)
     except Exception as _e:
         logger.warning("CTW startup: %s", _e)
     asyncio.create_task(_box_score_live_poller())

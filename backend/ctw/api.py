@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 ctw_router = APIRouter(prefix="/api/ctw", tags=["ctw"])
 
 _DEFAULT_SEASON = "2024-25"
-_DEFAULT_LS = 10
+_DEFAULT_LS = 12
 _DEFAULT_PERIOD = "full_season"
 
 _http_bearer = HTTPBearer()
