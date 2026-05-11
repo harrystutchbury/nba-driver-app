@@ -637,6 +637,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [sortKey,  setSortKey]  = useState('z_total')
   const [sortAsc,  setSortAsc]  = useState(false)
   const [viewMode, setViewMode] = useState('pg')  // 'pg' | 'totals'
+  const [showCTW, setShowCTW] = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
   useEffect(() => {
@@ -762,6 +763,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
           <div className="rank-pills">
             <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
+            <button className={`rank-pill rank-pill-ctw${showCTW ? ' active' : ''}`} onClick={() => setShowCTW(v => !v)}>CTW</button>
           </div>
         </div>
         {hasOwnership && (
@@ -860,10 +862,12 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                       const displayFmt = isTotalsKey(c.key)
                         ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                         : fmt(p[c.key], c.pct)
+                      const ctwCatVal = showCTW ? p[`ctw_${c.key}`] : null
                       return (
                         <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                           <div>{displayFmt}</div>
                           <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>
+                          {showCTW && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
                         </td>
                       )
                     })}
@@ -1394,6 +1398,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [error, setError]           = useState(null)
   const [viewMode, setViewMode]     = useState('pg')
   const [showRanges, setShowRanges] = useState(false)
+  const [showCTW, setShowCTW]       = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
 
@@ -1528,6 +1533,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
             <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
             <button className={`rank-pill${showRanges ? ' active' : ''}`} onClick={() => setShowRanges(r => !r)}>Ranges</button>
+            <button className={`rank-pill rank-pill-ctw${showCTW ? ' active' : ''}`} onClick={() => setShowCTW(v => !v)}>CTW</button>
           </div>
         </div>
         {hasOwnership && (
@@ -1637,11 +1643,13 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                     const rangeHigh = p[`${c.key}_high`]
                     const displayLow  = isTotalsKey(c.key) ? Math.round(rangeLow  * (p.gp ?? 0)) : rangeLow
                     const displayHigh = isTotalsKey(c.key) ? Math.round(rangeHigh * (p.gp ?? 0)) : rangeHigh
+                    const ctwCatVal = showCTW && !c.noZ ? p[`ctw_${c.key}`] : null
                     return (
                       <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                         <div>{displayFmt}</div>
                         {!c.noZ && !hasRange && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
                         {hasRange && rangeLow != null && <div className="rank-range">{displayLow}–{displayHigh}</div>}
+                        {showCTW && !c.noZ && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
                       </td>
                     )
                   })}

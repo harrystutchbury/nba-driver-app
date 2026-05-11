@@ -1675,13 +1675,26 @@ def get_rankings(
 
         # Attach CTW score (ls=12, full_season) directly to each player
         ctw_rows = conn.execute("""
-            SELECT player_slug, total_expected_wins
+            SELECT player_slug, total_expected_wins,
+                   expected_wins_pts, expected_wins_reb, expected_wins_ast,
+                   expected_wins_stl, expected_wins_blk, expected_wins_tov,
+                   expected_wins_3pm, expected_wins_fg, expected_wins_ft
             FROM ctw_player_scores
             WHERE season='2025-26' AND league_size=12 AND period='full_season'
         """).fetchall()
-        ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
+        ctw_map = {r["player_slug"]: dict(r) for r in ctw_rows}
         for p in results:
-            p["ctw"] = ctw_map.get(p["slug"])
+            ctw = ctw_map.get(p["slug"])
+            p["ctw"]        = ctw["total_expected_wins"]  if ctw else None
+            p["ctw_pts"]    = ctw["expected_wins_pts"]    if ctw else None
+            p["ctw_reb"]    = ctw["expected_wins_reb"]    if ctw else None
+            p["ctw_ast"]    = ctw["expected_wins_ast"]    if ctw else None
+            p["ctw_stl"]    = ctw["expected_wins_stl"]    if ctw else None
+            p["ctw_blk"]    = ctw["expected_wins_blk"]    if ctw else None
+            p["ctw_tov"]    = ctw["expected_wins_tov"]    if ctw else None
+            p["ctw_fg3m"]   = ctw["expected_wins_3pm"]    if ctw else None
+            p["ctw_fg_pct"] = ctw["expected_wins_fg"]     if ctw else None
+            p["ctw_ft_pct"] = ctw["expected_wins_ft"]     if ctw else None
 
         results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
         for i, p in enumerate(results):
@@ -2324,13 +2337,26 @@ def get_projections(
 
         # Attach CTW score directly
         ctw_rows = conn.execute("""
-            SELECT player_slug, total_expected_wins
+            SELECT player_slug, total_expected_wins,
+                   expected_wins_pts, expected_wins_reb, expected_wins_ast,
+                   expected_wins_stl, expected_wins_blk, expected_wins_tov,
+                   expected_wins_3pm, expected_wins_fg, expected_wins_ft
             FROM ctw_player_scores
             WHERE season='2025-26' AND league_size=12 AND period='full_season'
         """).fetchall()
-        ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
+        ctw_map = {r["player_slug"]: dict(r) for r in ctw_rows}
         for p in results:
-            p["ctw"] = ctw_map.get(p["slug"])
+            ctw = ctw_map.get(p["slug"])
+            p["ctw"]        = ctw["total_expected_wins"]  if ctw else None
+            p["ctw_pts"]    = ctw["expected_wins_pts"]    if ctw else None
+            p["ctw_reb"]    = ctw["expected_wins_reb"]    if ctw else None
+            p["ctw_ast"]    = ctw["expected_wins_ast"]    if ctw else None
+            p["ctw_stl"]    = ctw["expected_wins_stl"]    if ctw else None
+            p["ctw_blk"]    = ctw["expected_wins_blk"]    if ctw else None
+            p["ctw_tov"]    = ctw["expected_wins_tov"]    if ctw else None
+            p["ctw_fg3m"]   = ctw["expected_wins_3pm"]    if ctw else None
+            p["ctw_fg_pct"] = ctw["expected_wins_fg"]     if ctw else None
+            p["ctw_ft_pct"] = ctw["expected_wins_ft"]     if ctw else None
 
         results.sort(key=lambda x: (x["period_value"] or -999), reverse=True)
         for i, p in enumerate(results):
