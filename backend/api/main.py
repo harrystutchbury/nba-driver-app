@@ -253,13 +253,29 @@ async def lifespan(app: FastAPI):
     _bs_condition = asyncio.Condition()
     from schema import init_db
     init_db()
-    # Initialise CTW tables and warm the curve cache if curves exist
+    # Initialise CTW tables, warm curve cache, and seed data if missing
     try:
+        import threading as _threading
         from ctw.schema import init_ctw_tables
         from ctw import curves as _ctw_curves
         _ctw_conn = get_conn()
         init_ctw_tables(_ctw_conn)
         _ctw_curves.load_curves_into_cache(_ctw_conn)
+        _ctw_count = _ctw_conn.execute(
+            "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25'"
+        ).fetchone()[0]
+        if _ctw_count == 0:
+            logger.info("CTW: no data found — running simulation in background")
+            def _seed_ctw():
+                try:
+                    from ctw.run import run as _ctw_run
+                    _ctw_run("2024-25")
+                    logger.info("CTW: background simulation complete")
+                except Exception as _ex:
+                    logger.exception("CTW: background simulation failed: %s", _ex)
+            _threading.Thread(target=_seed_ctw, daemon=True).start()
+        else:
+            logger.info("CTW: %d score rows found, skipping simulation", _ctw_count)
     except Exception as _e:
         logger.warning("CTW startup: %s", _e)
     asyncio.create_task(_box_score_live_poller())
