@@ -261,20 +261,36 @@ async def lifespan(app: FastAPI):
         _ctw_conn = get_conn()
         init_ctw_tables(_ctw_conn)
 
-        _curve_count = _ctw_conn.execute("SELECT COUNT(*) FROM ctw_curves").fetchone()[0]
-        if _curve_count == 0:
+        _curve_count = _ctw_conn.execute(
+            "SELECT COUNT(DISTINCT category || '|' || league_size) FROM ctw_curves"
+        ).fetchone()[0]
+        _EXPECTED_CURVES = 81  # 9 cats × 9 league sizes
+        if _curve_count < _EXPECTED_CURVES:
             import os as _os
             _seed_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "ctw_curves_seed.sql")
-            logger.info("CTW: loading curves from seed file %s", _seed_path)
+            logger.info("CTW: only %d/%d curves found — reloading from seed", _curve_count, _EXPECTED_CURVES)
+            _ctw_conn.execute("DELETE FROM ctw_curves")
+            _ctw_conn.execute("DELETE FROM ctw_league_baselines")
+            _ctw_conn.commit()
             with open(_seed_path) as _f:
-                _ctw_conn.executescript(_f.read())
+                _sql = _f.read()
+            _ctw_conn.executescript(_sql)
             logger.info("CTW: curves seeded from file")
 
         _ctw_curves.load_curves_into_cache(_ctw_conn)
 
+        # Scores computed against missing curves are all 4.5 — detect and wipe them
+        _bad_scores = _ctw_conn.execute(
+            "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25' AND ABS(total_expected_wins - 4.5) < 0.001"
+        ).fetchone()[0]
         _score_count = _ctw_conn.execute(
             "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25'"
         ).fetchone()[0]
+        if _bad_scores > 10:
+            logger.info("CTW: %d bad scores (all 4.5) detected — wiping", _bad_scores)
+            _ctw_conn.execute("DELETE FROM ctw_player_scores WHERE season='2024-25'")
+            _ctw_conn.commit()
+            _score_count = 0
         if _score_count == 0:
             logger.info("CTW: no player scores found — computing in background")
             def _seed_scores():
