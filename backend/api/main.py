@@ -253,50 +253,30 @@ async def lifespan(app: FastAPI):
     _bs_condition = asyncio.Condition()
     from schema import init_db
     init_db()
-    # Initialise CTW tables, seed curves if missing, compute player scores
+    # Load CTW curves from bundled npz, compute player scores if missing
     try:
         import threading as _threading
         from ctw.schema import init_ctw_tables
         from ctw import curves as _ctw_curves
         _ctw_conn = get_conn()
         init_ctw_tables(_ctw_conn)
+        _ctw_curves.load_curves_into_cache()
+        logger.info("CTW: %d curves loaded from npz", len(_ctw_curves._CURVE_CACHE))
 
-        _curve_count = _ctw_conn.execute(
-            "SELECT COUNT(DISTINCT category || '|' || league_size) FROM ctw_curves"
-        ).fetchone()[0]
-        _EXPECTED_CURVES = 81  # 9 cats × 9 league sizes
-        if _curve_count < _EXPECTED_CURVES:
-            import os as _os
-            _seed_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "ctw_curves_seed.sql")
-            logger.info("CTW: only %d/%d curves found — reloading from seed", _curve_count, _EXPECTED_CURVES)
-            _ctw_conn.execute("DELETE FROM ctw_curves")
-            _ctw_conn.execute("DELETE FROM ctw_league_baselines")
-            _ctw_conn.commit()
-            with open(_seed_path) as _f:
-                _sql = _f.read()
-            _ctw_conn.executescript(_sql)
-            logger.info("CTW: curves seeded from file")
-
-        _ctw_curves.load_curves_into_cache(_ctw_conn)
-
-        # Scores computed against missing curves are all 4.5 — detect and wipe them
-        _bad_scores = _ctw_conn.execute(
-            "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25' AND ABS(total_expected_wins - 4.5) < 0.001"
-        ).fetchone()[0]
         _score_count = _ctw_conn.execute(
-            "SELECT COUNT(*) FROM ctw_player_scores WHERE season='2024-25'"
+            "SELECT COUNT(*) FROM ctw_player_scores "
+            "WHERE season='2024-25' AND league_size=12 AND period='full_season' "
+            "AND ABS(total_expected_wins - 4.5) > 0.01"
         ).fetchone()[0]
-        if _bad_scores > 10:
-            logger.info("CTW: %d bad scores (all 4.5) detected — wiping", _bad_scores)
-            _ctw_conn.execute("DELETE FROM ctw_player_scores WHERE season='2024-25'")
-            _ctw_conn.commit()
-            _score_count = 0
+
         if _score_count == 0:
-            logger.info("CTW: no player scores found — computing in background")
+            logger.info("CTW: computing player scores in background")
             def _seed_scores():
                 try:
                     from ctw import player_scores as _ps, adjustments as _adj
                     _c = get_conn()
+                    _c.execute("DELETE FROM ctw_player_scores WHERE season='2024-25'")
+                    _c.commit()
                     _ps.calculate_and_store(_c, "2024-25", league_sizes=[12], periods=["full_season"])
                     _adj.apply_scarcity(_c, "2024-25", league_sizes=[12], periods=["full_season"])
                     logger.info("CTW: player scores computed")
@@ -304,9 +284,9 @@ async def lifespan(app: FastAPI):
                     logger.exception("CTW: player score computation failed: %s", _ex)
             _threading.Thread(target=_seed_scores, daemon=True).start()
         else:
-            logger.info("CTW: %d player score rows found", _score_count)
+            logger.info("CTW: %d valid player scores found", _score_count)
     except Exception as _e:
-        logger.warning("CTW startup: %s", _e)
+        logger.exception("CTW startup failed: %s", _e)
     asyncio.create_task(_box_score_live_poller())
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)

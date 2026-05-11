@@ -17,6 +17,7 @@ How the curve is built:
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -130,37 +131,35 @@ def store_curves(conn: sqlite3.Connection, curves: dict[tuple[str, int], dict]) 
     log.info("Stored %d curve rows and %d baseline rows", len(curve_rows), len(baseline_rows))
 
 
-def load_curves_into_cache(conn: sqlite3.Connection) -> None:
-    """
-    Load all curves from DB into the in-memory cache on app startup.
-    Lookups after this are sub-millisecond numpy array indexing.
-    """
-    global _CURVE_CACHE
+_NPZ_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ctw_curves.npz")
+
+# Baselines loaded from npz: (league_size, category) → dict of floats
+_BASELINE_CACHE: dict[tuple[int, str], dict] = {}
+_BASELINE_KEYS = ["avg_winning_total", "avg_losing_total", "std_winning_total",
+                  "percentile_25", "percentile_50", "percentile_75",
+                  "avg_team_fgm", "avg_team_fga", "avg_team_ftm", "avg_team_fta"]
+
+
+def load_curves_into_cache(conn: sqlite3.Connection | None = None) -> None:
+    """Load curves from the bundled .npz file into the in-memory cache."""
+    global _CURVE_CACHE, _BASELINE_CACHE
     _CURVE_CACHE = {}
+    _BASELINE_CACHE = {}
 
-    rows = conn.execute(
-        "SELECT category, league_size, ctw_pct, win_probability FROM ctw_curves ORDER BY category, league_size, ctw_pct"
-    ).fetchall()
+    data = np.load(_NPZ_PATH)
+    for key in data.files:
+        if key.startswith("bl_"):
+            # baseline: bl_<ls>_<cat>
+            _, ls_str, cat = key.split("_", 2)
+            vals = data[key]
+            _BASELINE_CACHE[(int(ls_str), cat)] = dict(zip(_BASELINE_KEYS, vals.tolist()))
+        else:
+            # curve: <cat>_<ls>
+            *cat_parts, ls_str = key.split("_")
+            cat = "_".join(cat_parts)
+            _CURVE_CACHE[(cat, int(ls_str))] = data[key].astype(np.float32)
 
-    n_pts = CTW_PCT_MAX - CTW_PCT_MIN + 1
-    current_key = None
-    arr = None
-
-    for row in rows:
-        key = (row["category"], row["league_size"])
-        if key != current_key:
-            if current_key and arr is not None:
-                _CURVE_CACHE[current_key] = arr
-            arr = np.zeros(n_pts, dtype=np.float32)
-            current_key = key
-        idx = row["ctw_pct"] - CTW_PCT_MIN
-        if 0 <= idx < n_pts and arr is not None:
-            arr[idx] = row["win_probability"]
-
-    if current_key and arr is not None:
-        _CURVE_CACHE[current_key] = arr
-
-    log.info("Loaded %d curves into memory cache", len(_CURVE_CACHE))
+    log.info("Loaded %d curves and %d baselines from npz", len(_CURVE_CACHE), len(_BASELINE_CACHE))
 
 
 def lookup(category: str, league_size: int, ctw_pct: float) -> float:

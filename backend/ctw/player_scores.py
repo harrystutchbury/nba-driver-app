@@ -123,9 +123,8 @@ def calculate_and_store(
         periods = list(_PERIODS.keys())
 
     if not curve_store.is_cache_populated():
-        curve_store.load_curves_into_cache(conn)
+        curve_store.load_curves_into_cache()
 
-    # Load baselines from DB
     baselines = _load_baselines(conn)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -195,11 +194,25 @@ def calculate_and_store(
 
 
 def _load_baselines(conn: sqlite3.Connection) -> dict:
-    """
-    Return {league_size: {category: {avg_winning_total, ...}, '_team_volume': {...}}}
-    """
+    """Return baselines from npz cache (falls back to DB if cache empty)."""
+    if curve_store._BASELINE_CACHE:
+        baselines: dict = {}
+        for (ls, cat), vals in curve_store._BASELINE_CACHE.items():
+            if ls not in baselines:
+                baselines[ls] = {"_team_volume": {}}
+            baselines[ls][cat] = {
+                "avg_winning_total": vals["avg_winning_total"],
+                "avg_losing_total":  vals["avg_losing_total"],
+            }
+            if vals.get("avg_team_fgm"):
+                baselines[ls]["_team_volume"]["avg_team_fgm"] = vals["avg_team_fgm"]
+                baselines[ls]["_team_volume"]["avg_team_fga"] = vals["avg_team_fga"]
+                baselines[ls]["_team_volume"]["avg_team_ftm"] = vals["avg_team_ftm"]
+                baselines[ls]["_team_volume"]["avg_team_fta"] = vals["avg_team_fta"]
+        return baselines
+
     rows = conn.execute("SELECT * FROM ctw_league_baselines").fetchall()
-    baselines: dict = {}
+    baselines = {}
     for r in rows:
         ls  = r["league_size"]
         cat = r["category"]
