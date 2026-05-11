@@ -1673,6 +1673,16 @@ def get_rankings(
         for p in results:
             p["injury"] = injury_map.get(p["slug"])
 
+        # Attach CTW score (ls=12, full_season) directly to each player
+        ctw_rows = conn.execute("""
+            SELECT player_slug, total_expected_wins
+            FROM ctw_player_scores
+            WHERE season='2024-25' AND league_size=12 AND period='full_season'
+        """).fetchall()
+        ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
+        for p in results:
+            p["ctw"] = ctw_map.get(p["slug"])
+
         results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
         for i, p in enumerate(results):
             p["rank"] = i + 1
@@ -2311,6 +2321,16 @@ def get_projections(
                 **{f"{stat}_low":  proj[f"{stat}_low"]  for stat in SCHED_STATS},
                 **{f"{stat}_high": proj[f"{stat}_high"] for stat in SCHED_STATS},
             })
+
+        # Attach CTW score directly
+        ctw_rows = conn.execute("""
+            SELECT player_slug, total_expected_wins
+            FROM ctw_player_scores
+            WHERE season='2024-25' AND league_size=12 AND period='full_season'
+        """).fetchall()
+        ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
+        for p in results:
+            p["ctw"] = ctw_map.get(p["slug"])
 
         results.sort(key=lambda x: (x["period_value"] or -999), reverse=True)
         for i, p in enumerate(results):
