@@ -265,7 +265,7 @@ async def lifespan(app: FastAPI):
 
         _score_count = _ctw_conn.execute(
             "SELECT COUNT(*) FROM ctw_player_scores "
-            "WHERE season='2024-25' AND league_size=12 AND period='full_season' "
+            "WHERE season='2025-26' AND league_size=12 AND period='full_season' "
             "AND ABS(total_expected_wins - 4.5) > 0.01"
         ).fetchone()[0]
 
@@ -275,10 +275,10 @@ async def lifespan(app: FastAPI):
                 try:
                     from ctw import player_scores as _ps, adjustments as _adj
                     _c = get_conn()
-                    _c.execute("DELETE FROM ctw_player_scores WHERE season='2024-25'")
+                    _c.execute("DELETE FROM ctw_player_scores WHERE season='2025-26'")
                     _c.commit()
-                    _ps.calculate_and_store(_c, "2024-25", league_sizes=[12], periods=["full_season"])
-                    _adj.apply_scarcity(_c, "2024-25", league_sizes=[12], periods=["full_season"])
+                    _ps.calculate_and_store(_c, "2025-26", league_sizes=[12], periods=["full_season"])
+                    _adj.apply_scarcity(_c, "2025-26", league_sizes=[12], periods=["full_season"])
                     logger.info("CTW: player scores computed")
                 except Exception as _ex:
                     logger.exception("CTW: player score computation failed: %s", _ex)
@@ -1677,7 +1677,7 @@ def get_rankings(
         ctw_rows = conn.execute("""
             SELECT player_slug, total_expected_wins
             FROM ctw_player_scores
-            WHERE season='2024-25' AND league_size=12 AND period='full_season'
+            WHERE season='2025-26' AND league_size=12 AND period='full_season'
         """).fetchall()
         ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
         for p in results:
@@ -2326,7 +2326,7 @@ def get_projections(
         ctw_rows = conn.execute("""
             SELECT player_slug, total_expected_wins
             FROM ctw_player_scores
-            WHERE season='2024-25' AND league_size=12 AND period='full_season'
+            WHERE season='2025-26' AND league_size=12 AND period='full_season'
         """).fetchall()
         ctw_map = {r["player_slug"]: r["total_expected_wins"] for r in ctw_rows}
         for p in results:
