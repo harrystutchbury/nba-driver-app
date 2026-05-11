@@ -836,6 +836,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
               {sorted.map((p, i) => {
                 const isTopVal = sortKey === 'z_total'
                 const ctwVal = ctw[p.slug]
+                if (i === 0) console.log('[CTW] first player slug:', p.slug, 'ctwVal:', ctwVal, 'ctw keys sample:', Object.keys(ctw).slice(0,3))
                 return (
                   <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                     <td className="rank-col muted">{p.rank}</td>
@@ -2019,6 +2020,7 @@ function useCTW(period) {
       .then(d => {
         const map = {}
         for (const r of (d.rankings || [])) map[r.player_slug] = r.total_expected_wins
+        console.log('[CTW] loaded', Object.keys(map).length, 'entries, sample:', Object.entries(map).slice(0,3))
         setCtw(map)
       })
       .catch(() => {})
