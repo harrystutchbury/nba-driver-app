@@ -13,7 +13,6 @@ import os
 import sys
 
 from fastapi import APIRouter, HTTPException, Query, Body
-from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -41,7 +40,6 @@ def get_rankings(
     season:      str = Query(_DEFAULT_SEASON),
     league_size: int = Query(_DEFAULT_LS, ge=8, le=16),
     period:      str = Query(_DEFAULT_PERIOD, pattern="^(full_season|last_30|last_14)$"),
-    position:    Optional[str] = Query(None),
     limit:       int = Query(50, ge=1, le=200),
     use_scarcity: bool = Query(False),
 ):
@@ -57,7 +55,6 @@ def get_rankings(
         SELECT
             s.player_slug,
             pl.full_name,
-            pl.position,
             pl.team,
             s.period,
             s.ctw_pct_pts, s.ctw_pct_reb, s.ctw_pct_ast, s.ctw_pct_stl, s.ctw_pct_blk,
@@ -73,10 +70,9 @@ def get_rankings(
         FROM ctw_player_scores s
         LEFT JOIN players pl ON pl.slug = s.player_slug AND pl.season = s.season
         WHERE s.season = ? AND s.league_size = ? AND s.period = ?
-        {"AND pl.position LIKE '%' || ? || '%'" if position else ""}
         ORDER BY {sort_col} DESC
         LIMIT ?
-    """, (season, league_size, period, *([position] if position else []), limit)).fetchall()
+    """, (season, league_size, period, limit)).fetchall()
 
     return {"rankings": [dict(r) for r in rows]}
 
