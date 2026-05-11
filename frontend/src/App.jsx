@@ -639,6 +639,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [viewMode, setViewMode] = useState('pg')  // 'pg' | 'totals'
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
+  const ctw = useCTW(period)
 
   useEffect(() => {
     setLoading(true)
@@ -715,6 +716,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
 
   const getSortVal = (p, key) => {
     if (key === 'z_total') return getEffectiveZTotal(p)
+    if (key === 'ctw') return ctw[p.slug] ?? -Infinity
     if (viewMode === 'totals' && isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
     return p[key] ?? -Infinity
   }
@@ -825,11 +827,15 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
                   Value <SortIcon col="z_total" />
                 </th>
+                <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
+                  CTW <SortIcon col="ctw" />
+                </th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((p, i) => {
                 const isTopVal = sortKey === 'z_total'
+                const ctwVal = ctw[p.slug]
                 return (
                   <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                     <td className="rank-col muted">{p.rank}</td>
@@ -865,6 +871,9 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                     })}
                     <td className="num mono z-total-cell">
                       {fmtZ(getEffectiveZTotal(p))}
+                    </td>
+                    <td className="num mono ctw-cell">
+                      {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
                     </td>
                   </tr>
                 )
@@ -1389,6 +1398,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [showRanges, setShowRanges] = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
+  const ctw = useCTW('season')
 
   useEffect(() => {
     if (!start || !end || start > end) return
@@ -1465,6 +1475,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
   const getSortVal = (p, key) => {
     if (key === 'period_value') return getEffectiveValue(p)
+    if (key === 'ctw') return ctw[p.slug] ?? -Infinity
     if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
     return p[key] ?? -Infinity
   }
@@ -1587,10 +1598,15 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                 <th className="num" onClick={() => handleSort('period_value')} style={{ cursor: 'pointer' }}>
                   Value <SortIcon col="period_value" />
                 </th>
+                <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
+                  CTW <SortIcon col="ctw" />
+                </th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((p, i) => (
+              {sorted.map((p, i) => {
+                const ctwVal = ctw[p.slug]
+                return (
                 <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
                   <td className="rank-col muted">{i + 1}</td>
                   <td className="name-col">
@@ -1635,8 +1651,12 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   <td className="num mono z-total-cell">
                     {(() => { const v = getEffectiveValue(p); return v != null ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
                   </td>
+                  <td className="num mono ctw-cell">
+                    {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
+                  </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -1985,6 +2005,25 @@ const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_
 const STAT_LABELS = {
   pts: 'PTS', reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK',
   tov: 'TOV', fg3m: '3PM', fg_pct: 'FG%', ft_pct: 'FT%',
+}
+
+// period key from rankings/projections → CTW API period
+const CTW_PERIOD_MAP = { season: 'full_season', l30: 'last_30', l14: 'last_14' }
+
+function useCTW(period) {
+  const [ctw, setCtw] = useState({})
+  useEffect(() => {
+    const ctwPeriod = CTW_PERIOD_MAP[period] || 'full_season'
+    apiFetch(`/api/ctw/rankings?season=2024-25&league_size=10&period=${ctwPeriod}&limit=500`)
+      .then(r => r.ok ? r.json() : { rankings: [] })
+      .then(d => {
+        const map = {}
+        for (const r of (d.rankings || [])) map[r.player_slug] = r.total_expected_wins
+        setCtw(map)
+      })
+      .catch(() => {})
+  }, [period])
+  return ctw
 }
 
 function TrendingPage({ onSelectPlayer, ownership }) {

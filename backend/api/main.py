@@ -253,6 +253,15 @@ async def lifespan(app: FastAPI):
     _bs_condition = asyncio.Condition()
     from schema import init_db
     init_db()
+    # Initialise CTW tables and warm the curve cache if curves exist
+    try:
+        from ctw.schema import init_ctw_tables
+        from ctw import curves as _ctw_curves
+        _ctw_conn = get_conn()
+        init_ctw_tables(_ctw_conn)
+        _ctw_curves.load_curves_into_cache(_ctw_conn)
+    except Exception as _e:
+        logger.warning("CTW startup: %s", _e)
     asyncio.create_task(_box_score_live_poller())
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
@@ -2169,6 +2178,19 @@ def get_projections(
         """, (prev_season,)).fetchall()
         prev_sd_map = {r["player_slug"]: dict(r) for r in prev_sd_rows}
 
+        # ── 3c. Opponent pts-allowed (schedule ease) ────────────────────────
+        pts_allowed_rows = conn.execute("""
+            SELECT opponent AS team, AVG(game_pts) AS avg_pts
+            FROM (
+                SELECT game_date, team, opponent, SUM(pts) AS game_pts
+                FROM game_logs
+                WHERE season=? AND opponent IS NOT NULL AND min > 0
+                GROUP BY game_date, team, opponent
+            )
+            GROUP BY opponent HAVING COUNT(*) >= 5
+        """, (season,)).fetchall()
+        pts_allowed_map = {r["team"]: round(r["avg_pts"] or 0, 1) for r in pts_allowed_rows}
+
         # ── 4. League data + injury map ─────────────────────────────────────
         league, _ = _league_data(conn, season=season, min_games=10)
         if not league:
@@ -2245,15 +2267,17 @@ def get_projections(
             z_total = _composite_z(proj, league)
             proj_z  = _with_zscores(proj, league)
 
-            _gi = team_game_info.get(team, {})
+            _gi  = team_game_info.get(team, {})
+            _opp = _gi.get("opponent", "")
             results.append({
                 "slug":         slug,
                 "name":         r["full_name"],
                 "team":         team,
                 "position":     display_pos,
                 "gp":           gp,
-                "opponent":     _gi.get("opponent", ""),
+                "opponent":     _opp,
                 "is_home":      _gi.get("is_home", True),
+                "ease":         pts_allowed_map.get(_opp),
                 "injury":       injury_map.get(slug),
                 "is_adjusted":  adj is not None,
                 "z_total":      round(z_total, 2) if z_total is not None else None,
@@ -8368,6 +8392,9 @@ async def box_score_stream(token: str = Query(None)):
     )
 
 app.include_router(_sse_router)
+
+from ctw.api import ctw_router
+app.include_router(ctw_router)
 
 
 # Must come AFTER all API routes so /api/* is never caught here.

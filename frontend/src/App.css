@@ -2197,6 +2197,9 @@
 
 .rank-stat-cell { padding-top: 6px !important; padding-bottom: 6px !important; }
 .rank-z { font-size: 10px; color: #555; margin-top: 2px; }
+
+.ctw-col-header { color: #f5a623; border-left: 1px solid var(--border); }
+.ctw-cell { border-left: 1px solid var(--border); color: #f5a623; font-weight: 600; }
 .rank-range { font-size: 10px; color: #555; margin-top: 2px; white-space: nowrap; }
 
 .th-z {
