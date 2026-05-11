@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
-import { Bar, Line, Radar, Scatter } from 'react-chartjs-2'
+import { Bar, Line, Radar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -797,51 +797,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
 
       {loading && <p className="rankings-loading">Loading…</p>}
 
-      {!loading && sorted.length > 0 && (() => {
-        const scatterData = sorted.filter(p => p.ctw != null && p.z_total != null)
-        return (
-          <div className="ctw-scatter-wrap">
-            <Scatter
-              data={{
-                datasets: [{
-                  label: 'Players',
-                  data: scatterData.map(p => ({ x: p.ctw, y: p.z_total, name: p.name })),
-                  backgroundColor: 'rgba(245, 166, 35, 0.7)',
-                  pointRadius: 5,
-                  pointHoverRadius: 7,
-                }]
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                  legend: { display: false },
-                  tooltip: {
-                    callbacks: {
-                      label: ctx => `${ctx.raw.name}  CTW ${ctx.raw.x.toFixed(2)}  Z ${ctx.raw.y.toFixed(2)}`
-                    }
-                  },
-                  datalabels: { display: false },
-                },
-                scales: {
-                  x: {
-                    title: { display: true, text: 'CTW (12-team)', color: '#aaa' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: { color: '#aaa' },
-                  },
-                  y: {
-                    title: { display: true, text: 'Z-Score', color: '#aaa' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: { color: '#aaa' },
-                  },
-                },
-              }}
-            />
-          </div>
-        )
-      })()}
-
-      {!loading && sorted.length > 0 && (
+{!loading && sorted.length > 0 && (
         <div className="rankings-table-wrap">
           <table className="rankings-table">
             <thead>
