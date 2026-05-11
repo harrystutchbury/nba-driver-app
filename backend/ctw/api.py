@@ -11,8 +11,10 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,6 +29,25 @@ ctw_router = APIRouter(prefix="/api/ctw", tags=["ctw"])
 _DEFAULT_SEASON = "2024-25"
 _DEFAULT_LS = 10
 _DEFAULT_PERIOD = "full_season"
+
+_http_bearer = HTTPBearer()
+_run_lock = threading.Lock()
+_run_status: dict = {"running": False, "last": None}
+
+
+def _require_admin(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)) -> str:
+    from jose import JWTError, jwt
+    JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        username: str = payload["sub"]
+    except (JWTError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    conn = get_conn()
+    row = conn.execute("SELECT is_admin FROM users WHERE username=?", [username]).fetchone()
+    if not (row and row["is_admin"]):
+        raise HTTPException(status_code=403, detail="Admin only")
+    return username
 
 
 def _ensure_cache() -> None:
@@ -184,3 +205,47 @@ def get_validation(season: str = Query(_DEFAULT_SEASON)):
         LIMIT 50
     """, (season,)).fetchall()
     return {"season": season, "checks": [dict(r) for r in rows]}
+
+
+@ctw_router.post("/run")
+def run_simulation(
+    body: dict = Body(default={}),
+    _admin: str = Depends(_require_admin),
+):
+    """
+    Trigger a full CTW simulation run on the server (admin only).
+    Runs in a background thread — returns immediately.
+    Poll /api/ctw/run/status to check progress.
+    """
+    season = body.get("season", _DEFAULT_SEASON)
+
+    if _run_status["running"]:
+        return {"status": "already_running", "season": _run_status.get("season")}
+
+    def _run():
+        if not _run_lock.acquire(blocking=False):
+            return
+        try:
+            _run_status["running"] = True
+            _run_status["season"] = season
+            _run_status["error"] = None
+            log.info("CTW simulation starting for season=%s", season)
+            from ctw import run as ctw_run
+            ctw_run.run(season)
+            _run_status["last"] = season
+            log.info("CTW simulation complete for season=%s", season)
+        except Exception as e:
+            log.exception("CTW simulation failed")
+            _run_status["error"] = str(e)
+        finally:
+            _run_status["running"] = False
+            _run_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "season": season}
+
+
+@ctw_router.get("/run/status")
+def run_status(_admin: str = Depends(_require_admin)):
+    """Return the current simulation run status."""
+    return _run_status
