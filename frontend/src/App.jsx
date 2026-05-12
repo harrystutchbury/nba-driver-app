@@ -932,7 +932,9 @@ const INJ_COLORS = {
 function OwnBadge({ slug, ownership }) {
   if (!ownership || !slug) return null
   const info = ownership[slug]
-  if (!info) return null
+  if (!info) return Object.keys(ownership).length > 0
+    ? <span className="own-badge own-fa">FA</span>
+    : null
   return info.is_mine
     ? <span className="own-badge own-mine">Mine</span>
     : <span className="own-badge own-taken" title={info.team}>Taken</span>

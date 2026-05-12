@@ -4272,6 +4272,7 @@ td.bs-pos {
 }
 .own-mine   { background: rgba(0,230,118,0.18); color: var(--skill); }
 .own-taken  { background: rgba(255,184,77,0.15); color: var(--opponent); }
+.own-fa     { background: rgba(120,120,140,0.18); color: #888; }
 
 /* ── Ownership badge alignment in name column ──────────────────────────────── */
 .name-col-inner {
