@@ -7402,7 +7402,6 @@ function AppMain({ onLogout, onOpenAccount }) {
                             <th>Date</th>
                             <th>Opp</th>
                             <th className="num">Score</th>
-                            <th className="num">Margin</th>
                             <th className="num">USG%</th>
                             <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
                             <th className="num">Min</th>
@@ -7443,14 +7442,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                                     </span>
                                   : '—'}
                               </td>
-                              <td className="num mono">
-                                {g.team_score != null && g.opp_score != null
-                                  ? (() => { const m = g.team_score - g.opp_score; return Math.abs(m) > 20 ? <span className="muted" style={{ fontSize: 10, letterSpacing: '0.5px' }}>BLOWOUT</span> : '—' })()
-                                  : '—'}
-                              </td>
                               <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
-                              <td className="num mono" style={{ color: g.opp_ease == null ? '#888' : g.opp_ease > 3 ? '#00e676' : g.opp_ease < -3 ? '#ff6b6b' : '#888' }}>
-                                {g.opp_ease == null ? '—' : g.opp_ease > 3 ? 'High' : g.opp_ease < -3 ? 'Low' : 'Mid'}
+                              <td className="num mono" style={{ color: g.opp_ease == null ? '#888' : g.opp_ease > 1 ? '#00e676' : g.opp_ease < -1 ? '#ff6b6b' : '#888' }}>
+                                {g.opp_ease == null ? '—' : g.opp_ease > 1 ? 'High' : g.opp_ease < -1 ? 'Low' : 'Mid'}
                               </td>
                               <td className="num mono">{g.min}</td>
                               <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
@@ -7733,7 +7727,6 @@ function AppMain({ onLogout, onOpenAccount }) {
                         <th>Date</th>
                         <th>Opp</th>
                         <th className="num">Score</th>
-                        <th className="num">Margin</th>
                         <th className="num">USG%</th>
                         <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
                         <th className="num">Min</th>
@@ -7772,11 +7765,6 @@ function AppMain({ onLogout, onOpenAccount }) {
                               ? <span className={g.team_score > g.opp_score ? 'z-pos' : 'z-neg'}>
                                   {g.team_score > g.opp_score ? 'W' : 'L'} {g.team_score}-{g.opp_score}
                                 </span>
-                              : '—'}
-                          </td>
-                          <td className="num mono">
-                            {g.team_score != null && g.opp_score != null
-                              ? (() => { const m = g.team_score - g.opp_score; return Math.abs(m) > 20 ? <span className="muted" style={{ fontSize: 10, letterSpacing: '0.5px' }}>BLOWOUT</span> : '—' })()
                               : '—'}
                           </td>
                           <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
