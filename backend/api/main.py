@@ -8227,6 +8227,7 @@ def get_trending(
     baseline_end:   str = Query(None),
     comp_start:     str = Query(None),
     comp_end:       str = Query(None),
+    min_minutes: int = Query(0),
 ):
     conn = get_conn()
     try:
@@ -8434,6 +8435,8 @@ def get_trending(
         # Sort
         going_up = direction == "up"
         results.sort(key=lambda x: x['delta_z'], reverse=going_up)
+        if min_minutes > 0:
+            results = [r for r in results if (r.get('season_min') or 0) >= min_minutes]
         results = results[:limit]
         pa_vals = list(pts_allowed.values())
         return {

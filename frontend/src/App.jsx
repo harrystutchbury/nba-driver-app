@@ -2052,7 +2052,7 @@ function TrendingPage({ onSelectPlayer, ownership }) {
   const [customActive,   setCustomActive]   = useState(false)
   const [minFilter,      setMinFilter]      = useState(false)
 
-  const fetchTrending = (dir, win, custom, pA, pB) => {
+  const fetchTrending = (dir, win, custom, pA, pB, minMins) => {
     setLoading(true)
     let url = `/api/trending?direction=${dir}&limit=15`
     if (custom && pA.start && pA.end && pB.start && pB.end) {
@@ -2060,6 +2060,7 @@ function TrendingPage({ onSelectPlayer, ownership }) {
     } else {
       url += `&window=${win}`
     }
+    if (minMins > 0) url += `&min_minutes=${minMins}`
     apiFetch(url)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
@@ -2067,26 +2068,24 @@ function TrendingPage({ onSelectPlayer, ownership }) {
   }
 
   useEffect(() => {
-    fetchTrending(direction, window, false, periodA, periodB)
-  }, [window, direction])
+    fetchTrending(direction, window, false, periodA, periodB, minFilter ? 20 : 0)
+  }, [window, direction, minFilter])
 
   const handleApplyDates = () => {
     if (!periodA.start || !periodA.end || !periodB.start || !periodB.end) return
     setCustomActive(true)
-    fetchTrending(direction, window, true, periodA, periodB)
+    fetchTrending(direction, window, true, periodA, periodB, minFilter ? 20 : 0)
   }
 
   const handleClearDates = () => {
     setCustomActive(false)
     setPeriodA({ start: '', end: '' })
     setPeriodB({ start: '', end: '' })
-    fetchTrending(direction, window, false, {}, {})
+    fetchTrending(direction, window, false, {}, {}, minFilter ? 20 : 0)
   }
 
   const hasOwnership = Object.keys(ownership || {}).length > 0
-  const players = (data?.players || [])
-    .filter(p => !faOnly || !ownership?.[p.slug])
-    .filter(p => !minFilter || (p.season_min ?? 0) >= 20)
+  const players = (data?.players || []).filter(p => !faOnly || !ownership?.[p.slug])
   const compLabel = customActive && data?.comp_start
     ? `${data.comp_start} – ${data.comp_end}`
     : `${window}d`
@@ -2106,10 +2105,10 @@ function TrendingPage({ onSelectPlayer, ownership }) {
 
       <div className="trend-controls">
         <div className="trend-toggle-group">
-          <button className={`trend-toggle${direction === 'up' ? ' active' : ''}`} onClick={() => { setDirection('up'); fetchTrending('up', window, customActive, periodA, periodB) }}>
+          <button className={`trend-toggle${direction === 'up' ? ' active' : ''}`} onClick={() => { setDirection('up'); fetchTrending('up', window, customActive, periodA, periodB, minFilter ? 20 : 0) }}>
             Trending Up
           </button>
-          <button className={`trend-toggle${direction === 'down' ? ' active' : ''}`} onClick={() => { setDirection('down'); fetchTrending('down', window, customActive, periodA, periodB) }}>
+          <button className={`trend-toggle${direction === 'down' ? ' active' : ''}`} onClick={() => { setDirection('down'); fetchTrending('down', window, customActive, periodA, periodB, minFilter ? 20 : 0) }}>
             Trending Down
           </button>
         </div>
