@@ -2050,6 +2050,7 @@ function TrendingPage({ onSelectPlayer, ownership }) {
   const [periodA,        setPeriodA]        = useState({ start: '', end: '' })
   const [periodB,        setPeriodB]        = useState({ start: '', end: '' })
   const [customActive,   setCustomActive]   = useState(false)
+  const [minFilter,      setMinFilter]      = useState(false)
 
   const fetchTrending = (dir, win, custom, pA, pB) => {
     setLoading(true)
@@ -2083,7 +2084,9 @@ function TrendingPage({ onSelectPlayer, ownership }) {
   }
 
   const hasOwnership = Object.keys(ownership || {}).length > 0
-  const players = (data?.players || []).filter(p => !faOnly || !ownership?.[p.slug])
+  const players = (data?.players || [])
+    .filter(p => !faOnly || !ownership?.[p.slug])
+    .filter(p => !minFilter || (p.season_min ?? 0) >= 20)
   const compLabel = customActive && data?.comp_start
     ? `${data.comp_start} – ${data.comp_end}`
     : `${window}d`
@@ -2124,6 +2127,11 @@ function TrendingPage({ onSelectPlayer, ownership }) {
             onClick={() => setShowDateFilter(v => !v)}
           >
             {customActive ? 'Custom ✓' : 'Date range'} {showDateFilter ? '▲' : '▼'}
+          </button>
+        </div>
+        <div className="trend-toggle-group">
+          <button className={`trend-toggle${minFilter ? ' active' : ''}`} onClick={() => setMinFilter(v => !v)}>
+            20+ MIN
           </button>
         </div>
         {hasOwnership && (
