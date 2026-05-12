@@ -1030,6 +1030,125 @@ def get_decompose(
 
 
 # -----------------------------------------------------------------------
+# GET /z-score-comparison
+# -----------------------------------------------------------------------
+
+@router.get("/z-score-comparison")
+def get_z_score_comparison(
+    player:   str = Query(..., description="Player slug"),
+    pa_start: str = Query(..., description="Period A start YYYY-MM-DD"),
+    pa_end:   str = Query(..., description="Period A end YYYY-MM-DD"),
+    pb_start: str = Query(..., description="Period B start YYYY-MM-DD"),
+    pb_end:   str = Query(..., description="Period B end YYYY-MM-DD"),
+):
+    """
+    Compare a player's Z-scores across all 9 fantasy categories between two periods.
+    Population is the top 200 players by games played in each period.
+    """
+    conn = get_conn()
+
+    player_row = conn.execute(
+        "SELECT full_name, team FROM players WHERE slug = ? LIMIT 1", (player,)
+    ).fetchone()
+    if not player_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Player '{player}' not found.")
+
+    def _period_pop(start, end, top_n=200):
+        rows = conn.execute("""
+            SELECT player_slug,
+                   AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm)*1.0/NULLIF(SUM(fga),0) as fg_pct,
+                   SUM(ftm)*1.0/NULLIF(SUM(fta),0) as ft_pct
+            FROM game_logs
+            WHERE game_date BETWEEN ? AND ? AND min >= 5
+            GROUP BY player_slug
+            HAVING COUNT(*) >= 3
+            ORDER BY COUNT(*) DESC
+            LIMIT ?
+        """, (start, end, top_n)).fetchall()
+        return [dict(r) for r in rows]
+
+    def _player_stats(start, end):
+        row = conn.execute("""
+            SELECT AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm)*1.0/NULLIF(SUM(fga),0) as fg_pct,
+                   SUM(ftm)*1.0/NULLIF(SUM(fta),0) as ft_pct,
+                   COUNT(*) as gp
+            FROM game_logs
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
+        """, (player, start, end)).fetchone()
+        return dict(row) if row and row["gp"] and row["gp"] > 0 else None
+
+    def _z(val, pop_vals):
+        if val is None or len(pop_vals) < 2:
+            return 0.0
+        mean = sum(pop_vals) / len(pop_vals)
+        std  = (sum((v - mean) ** 2 for v in pop_vals) / len(pop_vals)) ** 0.5
+        return (val - mean) / std if std > 1e-9 else 0.0
+
+    pop_a   = _period_pop(pa_start, pa_end)
+    pop_b   = _period_pop(pb_start, pb_end)
+    stats_a = _player_stats(pa_start, pa_end)
+    stats_b = _player_stats(pb_start, pb_end)
+
+    if not stats_a and not stats_b:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Insufficient data for the requested player and date ranges.")
+
+    CATS = [
+        ("pts",    "PTS",  False),
+        ("reb",    "REB",  False),
+        ("ast",    "AST",  False),
+        ("stl",    "STL",  False),
+        ("blk",    "BLK",  False),
+        ("tov",    "TOV",  True),
+        ("fg3m",   "3PM",  False),
+        ("fg_pct", "FG%",  False),
+        ("ft_pct", "FT%",  False),
+    ]
+
+    categories = []
+    z_total_a  = 0.0
+    z_total_b  = 0.0
+
+    for key, label, inverted in CATS:
+        vals_a = [r[key] for r in pop_a if r.get(key) is not None]
+        vals_b = [r[key] for r in pop_b if r.get(key) is not None]
+        val_a  = stats_a.get(key) if stats_a else None
+        val_b  = stats_b.get(key) if stats_b else None
+
+        z_a = _z(val_a, vals_a) * (-1 if inverted else 1)
+        z_b = _z(val_b, vals_b) * (-1 if inverted else 1)
+
+        z_total_a += z_a
+        z_total_b += z_b
+
+        categories.append({
+            "key":   key,
+            "label": label,
+            "z_a":   round(z_a, 3),
+            "z_b":   round(z_b, 3),
+            "delta": round(z_b - z_a, 3),
+            "val_a": round(val_a, 3) if val_a is not None else None,
+            "val_b": round(val_b, 3) if val_b is not None else None,
+        })
+
+    conn.close()
+    return {
+        "player":   {"slug": player, "name": player_row["full_name"], "team": player_row["team"]},
+        "period_a": {"start": pa_start, "end": pa_end, "z_total": round(z_total_a, 3)},
+        "period_b": {"start": pb_start, "end": pb_end, "z_total": round(z_total_b, 3)},
+        "delta":    round(z_total_b - z_total_a, 3),
+        "categories": categories,
+    }
+
+
+# -----------------------------------------------------------------------
 # GET /seasons
 # -----------------------------------------------------------------------
 

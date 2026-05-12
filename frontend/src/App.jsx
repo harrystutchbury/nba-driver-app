@@ -325,6 +325,7 @@ function LoginPage({ onLogin }) {
 }
 
 const STAT_OPTIONS = [
+  { value: 'z_scores', label: 'Z-Scores (all cats)' },
   { value: 'pts', label: 'Points' },
   { value: 'reb', label: 'Rebounds' },
   { value: 'ast', label: 'Assists' },
@@ -520,6 +521,42 @@ function buildWaterfall(result) {
   colors.push(TOTAL_COLOR)
   tipLabels.push(`Comparison: ${period_b.value.toFixed(2)}`)
   displayLabels.push(period_b.value.toFixed(1))
+
+  return { labels, floatData, barData, colors, tipLabels, displayLabels }
+}
+
+function buildZWaterfall(zResult) {
+  const { period_a, period_b, categories } = zResult
+  const baselineColor = isDark() ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'
+  const labels        = ['Baseline', ...categories.map(c => c.label), 'Comparison']
+  const floatData     = []
+  const barData       = []
+  const colors        = []
+  const tipLabels     = []
+  const displayLabels = []
+
+  floatData.push(0)
+  barData.push(period_a.z_total)
+  colors.push(baselineColor)
+  tipLabels.push(`Baseline Z: ${period_a.z_total.toFixed(2)}`)
+  displayLabels.push(period_a.z_total.toFixed(1))
+
+  let running = period_a.z_total
+  for (const c of categories) {
+    const d = c.delta
+    floatData.push(d >= 0 ? running : running + d)
+    barData.push(Math.abs(d))
+    colors.push(d >= 0 ? '#00e676' : '#ff6b6b')
+    tipLabels.push(`${c.label}: ${d >= 0 ? '+' : ''}${d.toFixed(3)} (${period_a.z_total >= 0 ? '' : ''}A: ${c.z_a.toFixed(2)}, B: ${c.z_b.toFixed(2)})`)
+    displayLabels.push(`${d >= 0 ? '+' : ''}${d.toFixed(2)}`)
+    running += d
+  }
+
+  floatData.push(0)
+  barData.push(period_b.z_total)
+  colors.push('#f5a623')
+  tipLabels.push(`Comparison Z: ${period_b.z_total.toFixed(2)}`)
+  displayLabels.push(period_b.z_total.toFixed(1))
 
   return { labels, floatData, barData, colors, tipLabels, displayLabels }
 }
@@ -5433,6 +5470,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [periodA, setPeriodA]         = useState({ start: '2025-10-22', end: '2026-02-13' })
   const [periodB, setPeriodB]         = useState({ start: '2026-02-21', end: '2026-04-06' })
   const [result, setResult]           = useState(null)
+  const [zResult, setZResult]         = useState(null)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const [dataRange, setDataRange]     = useState(null)
@@ -5600,14 +5638,27 @@ function AppMain({ onLogout, onOpenAccount }) {
     setLoading(true)
     setError(null)
     setResult(null)
+    setZResult(null)
     setGameLog(null)
     setShotDiet(null)
     try {
       const params = new URLSearchParams({
-        player: selectedPlayer.slug, stat,
+        player: selectedPlayer.slug,
         pa_start: periodA.start, pa_end: periodA.end,
         pb_start: periodB.start, pb_end: periodB.end,
       })
+      if (stat === 'z_scores') {
+        const res = await apiFetch(`/api/z-score-comparison?${params}`)
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: 'Request failed' }))
+          setError(body.detail ?? 'Request failed')
+        } else {
+          setZResult(await res.json())
+        }
+        setLoading(false)
+        return
+      }
+      params.set('stat', stat)
       const res = await apiFetch(`/api/decompose?${params}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: 'Request failed' }))
@@ -5645,7 +5696,9 @@ function AppMain({ onLogout, onOpenAccount }) {
     }
   }
 
-  const wf = result ? buildWaterfall(result) : null
+  const wf  = result  ? buildWaterfall(result)   : null
+  const zwf = zResult ? buildZWaterfall(zResult) : null
+  const activeWf = zwf ?? wf
 
   // Active projection year (from multi-year array)
   const activeProj = projection?.projections?.[projYear - 1] ?? null
@@ -5912,7 +5965,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const labelPlugin = {
     id: 'waterfallLabels',
     afterDraw(chart) {
-      if (!wf) return
+      if (!activeWf) return
       const meta = chart.getDatasetMeta(1)
       if (!meta?.data) return
       const { ctx } = chart
@@ -5921,21 +5974,21 @@ function AppMain({ onLogout, onOpenAccount }) {
       ctx.textAlign = 'center'
       ctx.textBaseline = 'bottom'
       meta.data.forEach((bar, i) => {
-        if (wf.barData[i] === 0) return
-        ctx.fillStyle = i === 0 || i === wf.labels.length - 1
+        if (activeWf.barData[i] === 0) return
+        ctx.fillStyle = i === 0 || i === activeWf.labels.length - 1
           ? 'rgba(232,232,232,0.5)'
-          : wf.colors[i]
-        ctx.fillText(wf.displayLabels[i], bar.x, bar.y - 4)
+          : activeWf.colors[i]
+        ctx.fillText(activeWf.displayLabels[i], bar.x, bar.y - 4)
       })
       ctx.restore()
     },
   }
 
-  const chartData = wf && {
-    labels: wf.labels,
+  const chartData = activeWf && {
+    labels: activeWf.labels,
     datasets: [
-      { label: 'float', data: wf.floatData, backgroundColor: 'transparent', borderWidth: 0, stack: 'wf' },
-      { label: 'value', data: wf.barData, backgroundColor: wf.colors, borderRadius: 2, borderWidth: 0, stack: 'wf' },
+      { label: 'float', data: activeWf.floatData, backgroundColor: 'transparent', borderWidth: 0, stack: 'wf' },
+      { label: 'value', data: activeWf.barData, backgroundColor: activeWf.colors, borderRadius: 2, borderWidth: 0, stack: 'wf' },
     ],
   }
 
@@ -5948,7 +6001,7 @@ function AppMain({ onLogout, onOpenAccount }) {
       legend: { display: false },
       tooltip: {
         filter: (item) => item.datasetIndex === 1,
-        callbacks: { label: (ctx) => ' ' + wf.tipLabels[ctx.dataIndex] },
+        callbacks: { label: (ctx) => ' ' + (activeWf?.tipLabels[ctx.dataIndex] ?? '') },
         backgroundColor: '#1c1c1c',
         borderColor: '#2a2a2a',
         borderWidth: 1,
@@ -6541,6 +6594,71 @@ function AppMain({ onLogout, onOpenAccount }) {
                     {loading ? '…' : 'Analyse'}
                   </button>
                 </div>
+                {zResult && selectedPlayer && (
+                  <div className="driver-results">
+                    <div className="metrics-row">
+                      <div className="metric-card">
+                        <span className="metric-label">Baseline Z</span>
+                        <span className="metric-value">{zResult.period_a.z_total.toFixed(2)}</span>
+                        <span className="metric-sub">{zResult.period_a.start} – {zResult.period_a.end}</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Δ Z-Score</span>
+                        <span className="metric-value" style={{ color: zResult.delta >= 0 ? '#00e676' : '#ff6b6b' }}>
+                          {zResult.delta >= 0 ? '+' : ''}{zResult.delta.toFixed(2)}
+                        </span>
+                        <span className="metric-sub">across all categories</span>
+                      </div>
+                      <div className="metric-card">
+                        <span className="metric-label">Comparison Z</span>
+                        <span className="metric-value">{zResult.period_b.z_total.toFixed(2)}</span>
+                        <span className="metric-sub">{zResult.period_b.start} – {zResult.period_b.end}</span>
+                      </div>
+                    </div>
+                    <div className="chart-wrap">
+                      <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                    </div>
+                    <div className="analysis-row">
+                      <div className="breakdown-panel">
+                        <h2 className="panel-title">Category breakdown</h2>
+                        <table className="drivers-table">
+                          <thead>
+                            <tr>
+                              <th>Category</th>
+                              <th className="num">Baseline Z</th>
+                              <th className="num">Comparison Z</th>
+                              <th className="num">Δ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {zResult.categories.map(c => {
+                              const maxAbs = Math.max(...zResult.categories.map(x => Math.abs(x.delta)), 0.01)
+                              const barPct = (Math.abs(c.delta) / maxAbs) * 100
+                              return (
+                                <tr key={c.key}>
+                                  <td className="driver-cell">
+                                    <span className="driver-name">{c.label}</span>
+                                    {c.val_a != null && c.val_b != null && (
+                                      <span className="cat-pill" style={{ background: 'rgba(136,136,136,0.1)', color: '#888', borderColor: 'rgba(136,136,136,0.2)' }}>
+                                        {c.val_a.toFixed(1)} → {c.val_b.toFixed(1)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="num">{c.z_a.toFixed(2)}</td>
+                                  <td className="num">{c.z_b.toFixed(2)}</td>
+                                  <td className={`num change-val ${c.delta >= 0 ? 'pos' : 'neg'}`}>
+                                    {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
+                                    <div className="attr-bar" style={{ width: `${barPct}%`, background: c.delta >= 0 ? '#00e676' : '#ff6b6b', marginTop: 2 }} />
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {result && selectedPlayer && (
                   <div className="driver-results">
                     {/* ── Metrics row ──────────────────────────────── */}
