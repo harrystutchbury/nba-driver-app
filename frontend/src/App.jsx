@@ -7445,7 +7445,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                               </td>
                               <td className="num mono">
                                 {g.team_score != null && g.opp_score != null
-                                  ? (() => { const m = g.team_score - g.opp_score; return <span className={m > 0 ? 'z-pos' : m < 0 ? 'z-neg' : ''}>{m > 0 ? '+' : ''}{m}</span> })()
+                                  ? (() => { const m = g.team_score - g.opp_score; return Math.abs(m) > 20 ? <span className="muted" style={{ fontSize: 10, letterSpacing: '0.5px' }}>BLOWOUT</span> : '—' })()
                                   : '—'}
                               </td>
                               <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
@@ -7776,7 +7776,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           </td>
                           <td className="num mono">
                             {g.team_score != null && g.opp_score != null
-                              ? (() => { const m = g.team_score - g.opp_score; return <span className={m > 0 ? 'z-pos' : m < 0 ? 'z-neg' : ''}>{m > 0 ? '+' : ''}{m}</span> })()
+                              ? (() => { const m = g.team_score - g.opp_score; return Math.abs(m) > 20 ? <span className="muted" style={{ fontSize: 10, letterSpacing: '0.5px' }}>BLOWOUT</span> : '—' })()
                               : '—'}
                           </td>
                           <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
