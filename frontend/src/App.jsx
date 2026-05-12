@@ -6618,45 +6618,6 @@ function AppMain({ onLogout, onOpenAccount }) {
                     <div className="chart-wrap">
                       <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
                     </div>
-                    <div className="analysis-row">
-                      <div className="breakdown-panel">
-                        <h2 className="panel-title">Category breakdown</h2>
-                        <table className="drivers-table">
-                          <thead>
-                            <tr>
-                              <th>Category</th>
-                              <th className="num">Baseline Z</th>
-                              <th className="num">Comparison Z</th>
-                              <th className="num">Δ</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {zResult.categories.map(c => {
-                              const maxAbs = Math.max(...zResult.categories.map(x => Math.abs(x.delta)), 0.01)
-                              const barPct = (Math.abs(c.delta) / maxAbs) * 100
-                              return (
-                                <tr key={c.key}>
-                                  <td className="driver-cell">
-                                    <span className="driver-name">{c.label}</span>
-                                    {c.val_a != null && c.val_b != null && (
-                                      <span className="cat-pill" style={{ background: 'rgba(136,136,136,0.1)', color: '#888', borderColor: 'rgba(136,136,136,0.2)' }}>
-                                        {c.val_a.toFixed(1)} → {c.val_b.toFixed(1)}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="num">{c.z_a.toFixed(2)}</td>
-                                  <td className="num">{c.z_b.toFixed(2)}</td>
-                                  <td className={`num change-val ${c.delta >= 0 ? 'pos' : 'neg'}`}>
-                                    {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
-                                    <div className="attr-bar" style={{ width: `${barPct}%`, background: c.delta >= 0 ? '#00e676' : '#ff6b6b', marginTop: 2 }} />
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
                   </div>
                 )}
                 {result && selectedPlayer && (
