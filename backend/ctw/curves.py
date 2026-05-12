@@ -176,6 +176,28 @@ def lookup(category: str, league_size: int, ctw_pct: float) -> float:
     return _lookup_positive(category, league_size, ctw_pct)
 
 
+def lookup_delta(category: str, league_size: int, ctw_pct: float) -> float:
+    """
+    Delta-mode lookup: ctw_pct = (player_weekly - replacement_weekly) / avg_winning × 100.
+
+    For all categories, positive ctw_pct means the player is above replacement in a
+    beneficial direction → positive result. Negative ctw_pct → negative result.
+
+    For inverted categories (TOV), the stored curve is decreasing (baked-in inversion),
+    so stored_value - 1.0 gives the correctly signed result:
+      - pct=0  (average TOs) → stored=1.0 → 1.0-1.0 = 0.0  (neutral) ✓
+      - pct>0  (more TOs, bad) → stored<1.0 → stored-1.0 < 0  (negative) ✓
+      - pct<0  (fewer TOs, good) → negated → positive ✓
+    """
+    from .constants import INVERTED_CATS
+    if ctw_pct < 0:
+        return -lookup_delta(category, league_size, -ctw_pct)
+    raw = _lookup_positive(category, league_size, ctw_pct)
+    if category in INVERTED_CATS:
+        return raw - 1.0
+    return raw
+
+
 def _lookup_positive(category: str, league_size: int, ctw_pct: float) -> float:
     key = (category, league_size)
     if key not in _CURVE_CACHE:

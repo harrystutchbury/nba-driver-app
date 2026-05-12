@@ -1,8 +1,16 @@
 """
 Calculate CTW% per category per player and look up expected wins from the curves.
 
-CTW% for counting stats:
-    (player_weekly_avg / avg_winning_total) × 100
+CTW% for counting stats and TOV:
+    delta = player_weekly - replacement_weekly
+    ctw_pct = delta / avg_winning_total × 100
+    where replacement = average stats of the top (league_size × ROSTER_SIZE) players
+    by composite fantasy value for that period.
+
+    Positive delta → player is above replacement → positive expected wins.
+    Negative delta → player is below replacement → negative expected wins.
+    TOV is handled identically; lookup_delta() un-inverts the stored curve so
+    pct=0 (average TOs) → 0 contribution rather than ~1.0.
 
 CTW% for FG%/FT%:
     player's marginal contribution to team rate × (1 / avg_winning_total) × 100
@@ -19,7 +27,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from . import curves as curve_store
-from .constants import ALL_CATS, MIN_GAMES, MIN_MIN_PG
+from .constants import ALL_CATS, MIN_GAMES, MIN_MIN_PG, ROSTER_SIZE
 
 log = logging.getLogger(__name__)
 
@@ -63,23 +71,58 @@ def _player_averages(conn: sqlite3.Connection, season: str, days: int | None) ->
     return [dict(r) for r in rows]
 
 
-def _ctw_pct(player: dict, baselines: dict, league_size: int) -> dict[str, float]:
+def _replacement_stats(players: list[dict], n_rostered: int) -> dict[str, float]:
     """
-    Return CTW% for each category for a given player against the simulated baselines.
+    Return average per-game stats for the top n_rostered players by composite value.
+    These represent the 'average rostered player' used as the replacement baseline.
+    """
+    def _composite(p: dict) -> float:
+        return (
+            (p.get("pts")  or 0.0)
+            + (p.get("reb")  or 0.0)
+            + (p.get("ast")  or 0.0)
+            + (p.get("stl")  or 0.0)
+            + (p.get("blk")  or 0.0)
+            - (p.get("tov")  or 0.0)
+            + (p.get("fg3m") or 0.0)
+        )
+
+    pool = sorted(players, key=_composite, reverse=True)[:n_rostered]
+    if not pool:
+        return {}
+
+    cols = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m",
+            "fgm_pg", "fga_pg", "ftm_pg", "fta_pg"]
+    result: dict[str, float] = {}
+    for col in cols:
+        vals = [p[col] for p in pool if p.get(col) is not None]
+        result[col] = sum(vals) / len(vals) if vals else 0.0
+    return result
+
+
+def _ctw_pct(player: dict, baselines: dict, league_size: int,
+             replacement: dict) -> dict[str, float]:
+    """
+    Return CTW% for each category for a given player.
+
+    Counting stats / TOV: delta vs replacement player, normalised by avg_winning_total.
+    FG%/FT%: marginal team rate delta (unchanged).
     """
     bl = baselines.get(league_size, {})
     pcts: dict[str, float] = {}
 
-    # Counting stats: weekly avg ≈ per-game avg × 3.5
+    # Counting stats + TOV: delta = player_weekly - replacement_weekly
     for cat, col in [
         ("pts", "pts"), ("reb", "reb"), ("ast", "ast"),
         ("stl", "stl"), ("blk", "blk"), ("tov", "tov"), ("fg3m", "fg3m"),
     ]:
         avg_winning = bl.get(cat, {}).get("avg_winning_total", 1.0)
-        player_weekly = (player.get(col) or 0.0) * 3.5
-        pcts[cat] = (player_weekly / avg_winning * 100.0) if avg_winning else 0.0
+        player_weekly      = (player.get(col)      or 0.0) * 3.5
+        replacement_weekly = (replacement.get(col) or 0.0) * 3.5
+        delta = player_weekly - replacement_weekly
+        pcts[cat] = (delta / avg_winning * 100.0) if avg_winning else 0.0
 
-    # FG% delta: marginal contribution against average team baseline
+    # FG%/FT%: marginal contribution against average team baseline (unchanged)
     for pct_cat, (made_col, att_col, base_made, base_att) in {
         "fg": ("fgm_pg", "fga_pg", "avg_team_fgm", "avg_team_fga"),
         "ft": ("ftm_pg", "fta_pg", "avg_team_ftm", "avg_team_fta"),
@@ -89,7 +132,6 @@ def _ctw_pct(player: dict, baselines: dict, league_size: int) -> dict[str, float
             pcts[pct_cat] = 0.0
             continue
 
-        # team baseline is already weekly (from simulation); player cols are per-game → ×3.5
         team_made = bl.get("_team_volume", {}).get(base_made, 0.0)
         team_att  = bl.get("_team_volume", {}).get(base_att,  1.0)
         p_made    = (player.get(made_col) or 0.0) * 3.5
@@ -136,11 +178,16 @@ def calculate_and_store(
         log.info("Period %s: %d qualifying players", period, len(players))
 
         for ls in league_sizes:
+            n_rostered = ls * ROSTER_SIZE
+            replacement = _replacement_stats(players, n_rostered)
+            log.info("Period %s ls=%d: replacement baseline from top %d players",
+                     period, ls, min(n_rostered, len(players)))
+
             for player in players:
                 slug = player["slug"]
-                pcts = _ctw_pct(player, baselines, ls)
+                pcts = _ctw_pct(player, baselines, ls, replacement)
 
-                # Look up expected wins from curves
+                # Look up expected wins from curves using delta-mode lookup
                 ew: dict[str, float] = {}
                 cat_map = {
                     "pts": "pts", "reb": "reb", "ast": "ast",
@@ -149,9 +196,9 @@ def calculate_and_store(
                 }
                 for cat_key, cat_name in cat_map.items():
                     try:
-                        ew[cat_key] = curve_store.lookup(cat_name, ls, pcts.get(cat_key, 0.0))
+                        ew[cat_key] = curve_store.lookup_delta(cat_name, ls, pcts.get(cat_key, 0.0))
                     except KeyError:
-                        ew[cat_key] = 0.5  # fallback if curve missing
+                        ew[cat_key] = 0.0  # fallback if curve missing
 
                 total_ew = sum(ew.values())
 
