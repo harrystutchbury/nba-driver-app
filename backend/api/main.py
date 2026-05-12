@@ -1229,35 +1229,58 @@ def get_game_log(
 ):
     """Return game-by-game log for a player across both periods, newest first."""
     conn = get_conn()
+
+    season_end = _current_season_end_year()
+    season = f"{season_end - 1}-{str(season_end)[2:]}"
+
     rows = conn.execute("""
+        WITH team_fg3 AS (
+            SELECT team, game_date, SUM(fg3m) AS fg3m_sum
+            FROM game_logs WHERE season = ?
+            GROUP BY team, game_date
+        ),
+        opp_fg3 AS (
+            SELECT team AS opp_team, game_date, SUM(fg3m) AS fg3m_sum
+            FROM game_logs WHERE season = ?
+            GROUP BY team, game_date
+        ),
+        opp_pts_allowed AS (
+            SELECT tg.team,
+                   AVG(2*tg.opp_fgm + COALESCE(of3.fg3m_sum, 0) + tg.opp_ftm) AS avg_pts_allowed
+            FROM team_games tg
+            LEFT JOIN opp_fg3 of3 ON of3.opp_team = tg.team AND of3.game_date = tg.game_date
+            WHERE tg.season = ?
+            GROUP BY tg.team
+        ),
+        league_avg AS (
+            SELECT AVG(avg_pts_allowed) AS avg_pts FROM opp_pts_allowed
+        )
         SELECT
             g.game_date,
             g.opponent,
             g.home_away,
             ROUND(g.min, 0)  AS min,
-            g.pts,
-            g.reb,
-            g.ast,
-            g.stl,
-            g.blk,
-            g.tov,
-            g.fgm,
-            g.fga,
-            g.fg3m,
-            g.fg3a,
-            g.ftm,
-            g.fta,
-            g.plus_minus
+            g.pts, g.reb, g.ast, g.stl, g.blk, g.tov,
+            g.fgm, g.fga, g.fg3m, g.fg3a, g.ftm, g.fta,
+            g.plus_minus,
+            ROUND(2*tg.team_fgm + COALESCE(tf3.fg3m_sum, 0) + tg.team_ftm) AS team_score,
+            ROUND(2*tg.opp_fgm  + COALESCE(of3.fg3m_sum, 0) + tg.opp_ftm)  AS opp_score,
+            ROUND(100.0 * (g.fga + 0.44*g.fta + g.tov) * (tg.minutes / 5.0) /
+                  NULLIF(g.min * (tg.team_fga + 0.44*tg.team_fta + tg.team_tov), 0), 1) AS usg_pct,
+            ROUND((opa.avg_pts_allowed / la.avg_pts - 1) * 100, 1) AS opp_ease
         FROM game_logs g
+        JOIN team_games tg ON tg.team = g.team AND tg.game_date = g.game_date
+        LEFT JOIN team_fg3  tf3 ON tf3.team     = g.team     AND tf3.game_date = g.game_date
+        LEFT JOIN opp_fg3   of3 ON of3.opp_team = g.opponent AND of3.game_date = g.game_date
+        LEFT JOIN opp_pts_allowed opa ON opa.team = g.opponent
+        LEFT JOIN league_avg la
         WHERE g.player_slug = ?
-          AND g.game_date  >= ?
-          AND g.game_date  <= ?
-          AND g.min         > 0
+          AND g.game_date   >= ?
+          AND g.game_date   <= ?
+          AND g.min          > 0
         ORDER BY g.game_date DESC
-    """, (player, pa_start, pb_end)).fetchall()
+    """, (season, season, season, player, pa_start, pb_end)).fetchall()
 
-    season_end = _current_season_end_year()
-    season = f"{season_end - 1}-{str(season_end)[2:]}"
     zp = _league_z_params(conn, season)
     conn.close()
 
@@ -1287,36 +1310,55 @@ def get_game_log(
 def get_player_games(player: str = Query(..., description="Player slug")):
     """Return full game-by-game log for a player, oldest first, with per-game fg_pct and z_total."""
     conn = get_conn()
-    rows = conn.execute("""
-        SELECT
-            game_date,
-            season,
-            opponent,
-            home_away,
-            ROUND(min, 0)  AS min,
-            pts,
-            reb,
-            ast,
-            stl,
-            blk,
-            tov,
-            fgm,
-            fga,
-            fg3m,
-            fg3a,
-            ftm,
-            fta,
-            plus_minus,
-            CASE WHEN fga > 0 THEN ROUND(fgm * 100.0 / fga, 1) ELSE NULL END AS fg_pct,
-            CASE WHEN fta > 0 THEN ROUND(ftm * 100.0 / fta, 1) ELSE NULL END AS ft_pct
-        FROM game_logs
-        WHERE player_slug = ? AND min > 0
-        ORDER BY game_date ASC
-    """, (player,)).fetchall()
 
-    # Compute per-game z_total using current-season league params
     season_end = _current_season_end_year()
     season = f"{season_end - 1}-{str(season_end)[2:]}"
+
+    rows = conn.execute("""
+        WITH team_fg3 AS (
+            SELECT team, game_date, SUM(fg3m) AS fg3m_sum
+            FROM game_logs WHERE season = ?
+            GROUP BY team, game_date
+        ),
+        opp_fg3 AS (
+            SELECT team AS opp_team, game_date, SUM(fg3m) AS fg3m_sum
+            FROM game_logs WHERE season = ?
+            GROUP BY team, game_date
+        ),
+        opp_pts_allowed AS (
+            SELECT tg.team,
+                   AVG(2*tg.opp_fgm + COALESCE(of3.fg3m_sum, 0) + tg.opp_ftm) AS avg_pts_allowed
+            FROM team_games tg
+            LEFT JOIN opp_fg3 of3 ON of3.opp_team = tg.team AND of3.game_date = tg.game_date
+            WHERE tg.season = ?
+            GROUP BY tg.team
+        ),
+        league_avg AS (
+            SELECT AVG(avg_pts_allowed) AS avg_pts FROM opp_pts_allowed
+        )
+        SELECT
+            g.game_date, g.season, g.opponent, g.home_away,
+            ROUND(g.min, 0) AS min,
+            g.pts, g.reb, g.ast, g.stl, g.blk, g.tov,
+            g.fgm, g.fga, g.fg3m, g.fg3a, g.ftm, g.fta,
+            g.plus_minus,
+            CASE WHEN g.fga > 0 THEN ROUND(g.fgm * 100.0 / g.fga, 1) ELSE NULL END AS fg_pct,
+            CASE WHEN g.fta > 0 THEN ROUND(g.ftm * 100.0 / g.fta, 1) ELSE NULL END AS ft_pct,
+            ROUND(2*tg.team_fgm + COALESCE(tf3.fg3m_sum, 0) + tg.team_ftm) AS team_score,
+            ROUND(2*tg.opp_fgm  + COALESCE(of3.fg3m_sum, 0) + tg.opp_ftm)  AS opp_score,
+            ROUND(100.0 * (g.fga + 0.44*g.fta + g.tov) * (tg.minutes / 5.0) /
+                  NULLIF(g.min * (tg.team_fga + 0.44*tg.team_fta + tg.team_tov), 0), 1) AS usg_pct,
+            ROUND((opa.avg_pts_allowed / la.avg_pts - 1) * 100, 1) AS opp_ease
+        FROM game_logs g
+        JOIN team_games tg ON tg.team = g.team AND tg.game_date = g.game_date
+        LEFT JOIN team_fg3  tf3 ON tf3.team     = g.team     AND tf3.game_date = g.game_date
+        LEFT JOIN opp_fg3   of3 ON of3.opp_team = g.opponent AND of3.game_date = g.game_date
+        LEFT JOIN opp_pts_allowed opa ON opa.team = g.opponent
+        LEFT JOIN league_avg la
+        WHERE g.player_slug = ? AND g.min > 0
+        ORDER BY g.game_date ASC
+    """, (season, season, season, player)).fetchall()
+
     zp = _league_z_params(conn, season)
     conn.close()
 

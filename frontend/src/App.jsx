@@ -7401,6 +7401,10 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <tr>
                             <th>Date</th>
                             <th>Opp</th>
+                            <th className="num">Score</th>
+                            <th className="num">Margin</th>
+                            <th className="num">USG%</th>
+                            <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
                             <th className="num">Min</th>
                             <th className="num">+/-</th>
                             <th className="num">Pts</th>
@@ -7431,6 +7435,22 @@ function AppMain({ onLogout, onOpenAccount }) {
                                   <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
                                   {g.opponent}
                                 </span>
+                              </td>
+                              <td className="num mono" style={{ whiteSpace: 'nowrap' }}>
+                                {g.team_score != null && g.opp_score != null
+                                  ? <span className={g.team_score > g.opp_score ? 'z-pos' : 'z-neg'}>
+                                      {g.team_score > g.opp_score ? 'W' : 'L'} {g.team_score}-{g.opp_score}
+                                    </span>
+                                  : '—'}
+                              </td>
+                              <td className="num mono">
+                                {g.team_score != null && g.opp_score != null
+                                  ? (() => { const m = g.team_score - g.opp_score; return <span className={m > 0 ? 'z-pos' : m < 0 ? 'z-neg' : ''}>{m > 0 ? '+' : ''}{m}</span> })()
+                                  : '—'}
+                              </td>
+                              <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
+                              <td className="num mono" style={{ color: g.opp_ease != null ? (g.opp_ease > 0 ? '#00e676' : '#ff6b6b') : '#888' }}>
+                                {g.opp_ease != null ? (g.opp_ease > 0 ? '+' : '') + g.opp_ease + '%' : '—'}
                               </td>
                               <td className="num mono">{g.min}</td>
                               <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
@@ -7712,6 +7732,10 @@ function AppMain({ onLogout, onOpenAccount }) {
                       <tr>
                         <th>Date</th>
                         <th>Opp</th>
+                        <th className="num">Score</th>
+                        <th className="num">Margin</th>
+                        <th className="num">USG%</th>
+                        <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
                         <th className="num">Min</th>
                         <th className="num">+/-</th>
                         <th className="num">Pts</th>
@@ -7742,6 +7766,22 @@ function AppMain({ onLogout, onOpenAccount }) {
                               <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
                               {g.opponent}
                             </span>
+                          </td>
+                          <td className="num mono" style={{ whiteSpace: 'nowrap' }}>
+                            {g.team_score != null && g.opp_score != null
+                              ? <span className={g.team_score > g.opp_score ? 'z-pos' : 'z-neg'}>
+                                  {g.team_score > g.opp_score ? 'W' : 'L'} {g.team_score}-{g.opp_score}
+                                </span>
+                              : '—'}
+                          </td>
+                          <td className="num mono">
+                            {g.team_score != null && g.opp_score != null
+                              ? (() => { const m = g.team_score - g.opp_score; return <span className={m > 0 ? 'z-pos' : m < 0 ? 'z-neg' : ''}>{m > 0 ? '+' : ''}{m}</span> })()
+                              : '—'}
+                          </td>
+                          <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
+                          <td className="num mono" style={{ color: g.opp_ease != null ? (g.opp_ease > 0 ? '#00e676' : '#ff6b6b') : '#888' }}>
+                            {g.opp_ease != null ? (g.opp_ease > 0 ? '+' : '') + g.opp_ease + '%' : '—'}
                           </td>
                           <td className="num mono">{g.min}</td>
                           <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
