@@ -4888,11 +4888,27 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .trend-title { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
 .trend-subtitle { margin: 0; font-size: 13px; color: var(--muted); }
 
-.trend-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.trend-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .trend-toggle-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+.trend-toggle-group-dim { opacity: 0.5; }
 .trend-toggle { padding: 7px 14px; background: none; border: none; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .trend-toggle:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 .trend-toggle.active { background: var(--skill); color: #000; }
+.trend-toggle-custom-active { color: var(--skill) !important; }
+
+.trend-date-filter {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.trend-date-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.trend-date-rows { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.trend-date-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 2px; }
 
 .trend-loading, .trend-empty { padding: 40px; text-align: center; color: var(--muted); }
 

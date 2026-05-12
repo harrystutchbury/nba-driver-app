@@ -2033,23 +2033,63 @@ const STAT_LABELS = {
 }
 
 
-function TrendingPage({ onSelectPlayer, ownership }) {
-  const [direction, setDirection] = useState('up')
-  const [window,    setWindow]    = useState(7)
-  const [data,      setData]      = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [faOnly,    setFaOnly]    = useState(false)
+const TRENDING_PRESETS = [
+  { label: 'Mar vs Apr', a: { start: '2026-03-01', end: '2026-03-31' }, b: { start: '2026-04-01', end: '2026-04-13' } },
+  { label: 'Feb vs Mar', a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+  { label: 'Jan vs Mar', a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+  { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-13' } },
+]
 
-  useEffect(() => {
+function TrendingPage({ onSelectPlayer, ownership }) {
+  const [direction,      setDirection]      = useState('up')
+  const [window,         setWindow]         = useState(7)
+  const [data,           setData]           = useState(null)
+  const [loading,        setLoading]        = useState(true)
+  const [faOnly,         setFaOnly]         = useState(false)
+  const [showDateFilter, setShowDateFilter] = useState(false)
+  const [periodA,        setPeriodA]        = useState({ start: '', end: '' })
+  const [periodB,        setPeriodB]        = useState({ start: '', end: '' })
+  const [customActive,   setCustomActive]   = useState(false)
+
+  const fetchTrending = (dir, win, custom, pA, pB) => {
     setLoading(true)
-    apiFetch(`/api/trending?window=${window}&direction=${direction}&limit=15`)
+    let url = `/api/trending?direction=${dir}&limit=15`
+    if (custom && pA.start && pA.end && pB.start && pB.end) {
+      url += `&baseline_start=${pA.start}&baseline_end=${pA.end}&comp_start=${pB.start}&comp_end=${pB.end}`
+    } else {
+      url += `&window=${win}`
+    }
+    apiFetch(url)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
       .catch(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchTrending(direction, window, false, periodA, periodB)
   }, [window, direction])
+
+  const handleApplyDates = () => {
+    if (!periodA.start || !periodA.end || !periodB.start || !periodB.end) return
+    setCustomActive(true)
+    fetchTrending(direction, window, true, periodA, periodB)
+  }
+
+  const handleClearDates = () => {
+    setCustomActive(false)
+    setPeriodA({ start: '', end: '' })
+    setPeriodB({ start: '', end: '' })
+    fetchTrending(direction, window, false, {}, {})
+  }
 
   const hasOwnership = Object.keys(ownership || {}).length > 0
   const players = (data?.players || []).filter(p => !faOnly || !ownership?.[p.slug])
+  const compLabel = customActive && data?.comp_start
+    ? `${data.comp_start} – ${data.comp_end}`
+    : `${window}d`
+  const baseLabel = customActive && data?.baseline_start
+    ? `${data.baseline_start} – ${data.baseline_end}`
+    : 'Season'
 
   return (
     <div className="trend-page">
@@ -2057,25 +2097,34 @@ function TrendingPage({ onSelectPlayer, ownership }) {
         <h2 className="trend-title">Trending Players</h2>
         <p className="trend-subtitle">
           Players whose recent stats are diverging from their season baseline.
-          ΔZ = window Z − season Z.
+          ΔZ = comparison Z − baseline Z.
         </p>
       </div>
 
       <div className="trend-controls">
         <div className="trend-toggle-group">
-          <button className={`trend-toggle${direction === 'up' ? ' active' : ''}`} onClick={() => setDirection('up')}>
+          <button className={`trend-toggle${direction === 'up' ? ' active' : ''}`} onClick={() => { setDirection('up'); fetchTrending('up', window, customActive, periodA, periodB) }}>
             Trending Up
           </button>
-          <button className={`trend-toggle${direction === 'down' ? ' active' : ''}`} onClick={() => setDirection('down')}>
+          <button className={`trend-toggle${direction === 'down' ? ' active' : ''}`} onClick={() => { setDirection('down'); fetchTrending('down', window, customActive, periodA, periodB) }}>
             Trending Down
           </button>
         </div>
-        <div className="trend-toggle-group">
+        <div className={`trend-toggle-group${customActive ? ' trend-toggle-group-dim' : ''}`}>
           {[7, 14, 30].map(d => (
-            <button key={d} className={`trend-toggle${window === d ? ' active' : ''}`} onClick={() => setWindow(d)}>
+            <button key={d} className={`trend-toggle${window === d && !customActive ? ' active' : ''}`}
+              onClick={() => { setCustomActive(false); setWindow(d) }}>
               {d}d
             </button>
           ))}
+        </div>
+        <div className="trend-toggle-group">
+          <button
+            className={`trend-toggle${showDateFilter ? ' active' : ''}${customActive ? ' trend-toggle-custom-active' : ''}`}
+            onClick={() => setShowDateFilter(v => !v)}
+          >
+            {customActive ? 'Custom ✓' : 'Date range'} {showDateFilter ? '▲' : '▼'}
+          </button>
         </div>
         {hasOwnership && (
           <div className="trend-toggle-group">
@@ -2085,6 +2134,45 @@ function TrendingPage({ onSelectPlayer, ownership }) {
           </div>
         )}
       </div>
+
+      {showDateFilter && (
+        <div className="trend-date-filter">
+          <div className="trend-date-presets">
+            {TRENDING_PRESETS.map(p => (
+              <button key={p.label} className="preset-btn" onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="trend-date-rows">
+            <div className="ctrl-group ctrl-period">
+              <span className="ctrl-label">Baseline period</span>
+              <div className="date-pair">
+                <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={e => setPeriodA(p => ({ ...p, start: e.target.value }))} />
+                <span className="date-sep">–</span>
+                <input className="ctrl-input date-input" type="date" value={periodA.end}   onChange={e => setPeriodA(p => ({ ...p, end:   e.target.value }))} />
+              </div>
+            </div>
+            <div className="ctrl-group ctrl-period">
+              <span className="ctrl-label">Comparison period</span>
+              <div className="date-pair">
+                <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={e => setPeriodB(p => ({ ...p, start: e.target.value }))} />
+                <span className="date-sep">–</span>
+                <input className="ctrl-input date-input" type="date" value={periodB.end}   onChange={e => setPeriodB(p => ({ ...p, end:   e.target.value }))} />
+              </div>
+            </div>
+            <div className="trend-date-actions">
+              <button className="analyse-btn" onClick={handleApplyDates}
+                disabled={!periodA.start || !periodA.end || !periodB.start || !periodB.end}>
+                Apply
+              </button>
+              {customActive && (
+                <button className="preset-btn" onClick={handleClearDates}>Clear</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && <div className="trend-loading">Loading…</div>}
 
@@ -2161,12 +2249,12 @@ function TrendingPage({ onSelectPlayer, ownership }) {
               {/* Z row */}
               <div className="trend-z-row">
                 <div className="trend-z-item">
-                  <span className="trend-z-label">Season Z</span>
+                  <span className="trend-z-label">{baseLabel} Z</span>
                   <span className={`trend-z-val ${p.season_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.season_z.toFixed(2)}</span>
                 </div>
                 <div className="trend-z-arrow">→</div>
                 <div className="trend-z-item">
-                  <span className="trend-z-label">{window}d Z</span>
+                  <span className="trend-z-label">{compLabel} Z</span>
                   <span className={`trend-z-val ${p.window_z >= 0 ? 'trend-pos' : 'trend-neg'}`}>{p.window_z.toFixed(2)}</span>
                 </div>
                 <div className="trend-z-item trend-z-games">

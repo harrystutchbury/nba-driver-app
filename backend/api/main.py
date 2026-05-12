@@ -8223,6 +8223,10 @@ def get_trending(
     window: int = 7,
     direction: str = "up",
     limit: int = 15,
+    baseline_start: str = Query(None),
+    baseline_end:   str = Query(None),
+    comp_start:     str = Query(None),
+    comp_end:       str = Query(None),
 ):
     conn = get_conn()
     try:
@@ -8230,7 +8234,8 @@ def get_trending(
         season = f"{season_year - 1}-{str(season_year)[2:]}"
 
         from datetime import date as _date, timedelta as _td
-        cutoff = (_date.today() - _td(days=window)).isoformat()
+        use_custom = all([baseline_start, baseline_end, comp_start, comp_end])
+        cutoff = comp_start if use_custom else (_date.today() - _td(days=window)).isoformat()
 
         # League params for Z-score normalisation (full season)
         league, _ = _league_data(conn, season=season, min_games=10)
@@ -8262,11 +8267,13 @@ def get_trending(
         for r in game_opp_rows:
             player_games.setdefault(r["player_slug"], []).append((r["game_date"], r["opponent"]))
 
-        def _ease(games_list, since=None):
+        def _ease(games_list, since=None, until=None):
             vals = [
                 pts_allowed[opp]
                 for d, opp in games_list
-                if opp in pts_allowed and (since is None or d >= since)
+                if opp in pts_allowed
+                and (since is None or d >= since)
+                and (until is None or d <= until)
             ]
             return round(sum(vals) / len(vals), 1) if vals else None
 
@@ -8287,8 +8294,17 @@ def get_trending(
                     "pa":   pts_allowed.get(opp),
                 })
 
-        # Season averages per player (min 10 games)
-        season_rows = conn.execute("""
+        # Baseline averages per player
+        if use_custom:
+            baseline_filter = "AND g.game_date >= ? AND g.game_date <= ?"
+            baseline_params = [season, season, baseline_start, baseline_end]
+            baseline_min_games = 3
+        else:
+            baseline_filter = ""
+            baseline_params = [season, season]
+            baseline_min_games = 10
+
+        season_rows = conn.execute(f"""
             SELECT
                 g.player_slug,
                 p.full_name,
@@ -8309,14 +8325,21 @@ def get_trending(
                 SUM(g.ftm)*100.0/NULLIF(SUM(g.fta),0) AS ft_pct
             FROM game_logs g
             JOIN players p ON p.slug = g.player_slug AND p.season = ?
-            WHERE g.season = ?
+            WHERE g.season = ? {baseline_filter}
             GROUP BY g.player_slug
-            HAVING COUNT(*) >= 10
-        """, [season, season]).fetchall()
+            HAVING COUNT(*) >= {baseline_min_games}
+        """, baseline_params).fetchall()
         season_map = {r["player_slug"]: dict(r) for r in season_rows}
 
-        # Window averages per player (min 2 games)
-        window_rows = conn.execute("""
+        # Comparison (window) averages per player
+        if use_custom:
+            window_date_filter = "AND game_date >= ? AND game_date <= ?"
+            window_params = [season, comp_start, comp_end]
+        else:
+            window_date_filter = "AND game_date >= ?"
+            window_params = [season, cutoff]
+
+        window_rows = conn.execute(f"""
             SELECT
                 player_slug,
                 COUNT(*)                  AS gp,
@@ -8334,10 +8357,10 @@ def get_trending(
                 SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
                 SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
             FROM game_logs
-            WHERE season = ? AND game_date >= ?
+            WHERE season = ? {window_date_filter}
             GROUP BY player_slug
             HAVING COUNT(*) >= 2
-        """, [season, cutoff]).fetchall()
+        """, window_params).fetchall()
         window_map = {r["player_slug"]: dict(r) for r in window_rows}
 
         # Compute fg_impact for window rows (needed for Z)
@@ -8369,8 +8392,12 @@ def get_trending(
             drivers_raw.sort(key=lambda x: abs(x['contribution']), reverse=True)
             top_drivers = drivers_raw[:5]
 
-            ease_s  = _ease(player_games.get(slug, []))
-            ease_w  = _ease(player_games.get(slug, []), since=cutoff)
+            if use_custom:
+                ease_s = _ease(player_games.get(slug, []), since=baseline_start, until=baseline_end)
+                ease_w = _ease(player_games.get(slug, []), since=comp_start,     until=comp_end)
+            else:
+                ease_s = _ease(player_games.get(slug, []))
+                ease_w = _ease(player_games.get(slug, []), since=cutoff)
             sustain = _sustainability(season_avgs, window_avgs, top_drivers, ease_w, ease_s, direction)
 
             s_min  = season_avgs.get('min_pg') or 0
@@ -8410,11 +8437,16 @@ def get_trending(
         results = results[:limit]
         pa_vals = list(pts_allowed.values())
         return {
-            "players":   results,
-            "window":    window,
-            "direction": direction,
-            "pa_min":    round(min(pa_vals), 1) if pa_vals else None,
-            "pa_max":    round(max(pa_vals), 1) if pa_vals else None,
+            "players":        results,
+            "window":         window,
+            "direction":      direction,
+            "use_custom":     use_custom,
+            "baseline_start": baseline_start,
+            "baseline_end":   baseline_end,
+            "comp_start":     comp_start,
+            "comp_end":       comp_end,
+            "pa_min":         round(min(pa_vals), 1) if pa_vals else None,
+            "pa_max":         round(max(pa_vals), 1) if pa_vals else None,
         }
     finally:
         conn.close()
