@@ -7449,8 +7449,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                                   : '—'}
                               </td>
                               <td className="num mono">{g.usg_pct != null ? g.usg_pct + '%' : '—'}</td>
-                              <td className="num mono" style={{ color: g.opp_ease != null ? (g.opp_ease > 0 ? '#00e676' : '#ff6b6b') : '#888' }}>
-                                {g.opp_ease != null ? (g.opp_ease > 0 ? '+' : '') + g.opp_ease + '%' : '—'}
+                              <td className="num mono" style={{ color: g.opp_ease == null ? '#888' : g.opp_ease > 3 ? '#00e676' : g.opp_ease < -3 ? '#ff6b6b' : '#888' }}>
+                                {g.opp_ease == null ? '—' : g.opp_ease > 3 ? 'High' : g.opp_ease < -3 ? 'Low' : 'Mid'}
                               </td>
                               <td className="num mono">{g.min}</td>
                               <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
