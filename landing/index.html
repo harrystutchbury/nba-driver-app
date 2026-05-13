@@ -833,6 +833,29 @@
       border-radius: 20px;
     }
 
+    .pricing-card-coming-soon {
+      opacity: 0.7;
+      position: relative;
+      overflow: hidden;
+    }
+    .pricing-coming-soon {
+      position: absolute;
+      top: 18px;
+      right: -28px;
+      background: #ff9f43;
+      color: #000;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 5px 36px;
+      transform: rotate(35deg);
+    }
+    .btn-pricing:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     .pricing-tier {
       font-family: var(--mono);
       font-size: 10px;
@@ -1269,7 +1292,7 @@
       <div class="pricing-card pro" data-animate>
         <div class="pricing-badge">Most popular</div>
         <p class="pricing-tier">Pro</p>
-        <div class="pricing-price"><sup>$</sup>5<span>/mo</span></div>
+        <div class="pricing-price"><sup>$</sup>20<span>/yr</span></div>
         <p class="pricing-tagline">Get the edge</p>
         <ul class="pricing-features">
           <li>Everything in Free</li>
@@ -1277,6 +1300,7 @@
           <li>ESPN and Yahoo league sync</li>
           <li>Matchup projection with variance modelling</li>
           <li>Real-time roster what-if engine</li>
+          <li>Trade analyser</li>
           <li>Schedule grid with ease ratings</li>
           <li>Projected standings</li>
           <li>Daily insights</li>
@@ -1284,19 +1308,21 @@
         <button class="btn-pricing btn-pricing-accent">Start Pro</button>
       </div>
 
-      <div class="pricing-card" data-animate>
+      <div class="pricing-card pricing-card-coming-soon" data-animate>
+        <div class="pricing-coming-soon">Coming soon</div>
         <p class="pricing-tier">Elite</p>
-        <div class="pricing-price"><sup>$</sup>10<span>/mo</span></div>
+        <div class="pricing-price"><sup>$</sup>40<span>/yr</span></div>
         <p class="pricing-tagline">Go all in</p>
         <ul class="pricing-features">
           <li>Everything in Pro</li>
           <div class="pricing-divider"></div>
+          <li>Chrome extension</li>
           <li>Automatic lineup setting</li>
-          <li>Trade analyser</li>
+          <li>Scheduled pick ups</li>
           <li>Admin projection overrides</li>
           <li>Priority support</li>
         </ul>
-        <button class="btn-pricing btn-pricing-outline">Start Elite</button>
+        <button class="btn-pricing btn-pricing-outline" disabled>Coming Soon</button>
       </div>
 
     </div>
