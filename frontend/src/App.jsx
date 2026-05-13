@@ -1109,11 +1109,11 @@ function ShotZoneCourt({ id, title, zones }) {
         <rect x={0} y={0} width={500} height={470} fill={zoneColor('above_break_3')} />
         <rect x={0} y={333.5} width={30} height={136.5} fill={zoneColor('corner_3')} />
         <rect x={470} y={333.5} width={30} height={136.5} fill={zoneColor('corner_3')} />
-        {/* mid_range: inside 3pt arc, sweep=0 bows upward away from basket */}
-        <path d="M 30,470 L 30,333.5 A 237.5,237.5 0 0,0 470,333.5 L 470,470 Z" fill={zoneColor('mid_range')} />
+        {/* mid_range: inside 3pt arc, sweep=1 */}
+        <path d="M 30,470 L 30,333.5 A 237.5,237.5 0 0,1 470,333.5 L 470,470 Z" fill={zoneColor('mid_range')} />
         <rect x={170} y={280} width={160} height={190} fill={zoneColor('paint_non_ra')} />
-        {/* restricted_area: D-shape, arc bows upward (sweep=0) */}
-        <path d="M 210,422.5 A 40,40 0 0,0 290,422.5 Z" fill={zoneColor('restricted_area')} />
+        {/* restricted_area: D-shape, sweep=1 */}
+        <path d="M 210,422.5 A 40,40 0 0,1 290,422.5 Z" fill={zoneColor('restricted_area')} />
 
         {/* Court lines */}
         <rect x={0} y={0} width={500} height={470} fill="none" stroke={lc} strokeWidth={2} />
@@ -1123,17 +1123,17 @@ function ShotZoneCourt({ id, title, zones }) {
         <rect x={190} y={280} width={120} height={190} fill="none" stroke={lc} strokeWidth={1} />
         {/* FT line */}
         <line x1={170} y1={280} x2={330} y2={280} stroke={lc} strokeWidth={1.5} />
-        {/* FT arc solid (bows upward into mid-range, sweep=0) */}
-        <path d="M 190,280 A 60,60 0 0,0 310,280" fill="none" stroke={lc} strokeWidth={1} />
-        {/* FT arc dashed (bows downward into paint, sweep=1) */}
-        <path d="M 190,280 A 60,60 0 0,1 310,280" fill="none" stroke={lc} strokeWidth={1} strokeDasharray="4 4" />
+        {/* FT arc solid (into mid-range, sweep=1) */}
+        <path d="M 190,280 A 60,60 0 0,1 310,280" fill="none" stroke={lc} strokeWidth={1} />
+        {/* FT arc dashed (into paint, sweep=0) */}
+        <path d="M 190,280 A 60,60 0 0,0 310,280" fill="none" stroke={lc} strokeWidth={1} strokeDasharray="4 4" />
         {/* Restricted area arc */}
-        <path d="M 210,422.5 A 40,40 0 0,0 290,422.5" fill="none" stroke={lc} strokeWidth={1.5} />
+        <path d="M 210,422.5 A 40,40 0 0,1 290,422.5" fill="none" stroke={lc} strokeWidth={1.5} />
         {/* Corner 3 straight lines */}
         <line x1={30} y1={470} x2={30} y2={333.5} stroke={lc} strokeWidth={1.5} />
         <line x1={470} y1={470} x2={470} y2={333.5} stroke={lc} strokeWidth={1.5} />
-        {/* 3pt arc (bows upward, sweep=0) */}
-        <path d="M 30,333.5 A 237.5,237.5 0 0,0 470,333.5" fill="none" stroke={lc} strokeWidth={1.5} />
+        {/* 3pt arc, sweep=1 */}
+        <path d="M 30,333.5 A 237.5,237.5 0 0,1 470,333.5" fill="none" stroke={lc} strokeWidth={1.5} />
         {/* Backboard + rim */}
         <line x1={220} y1={430} x2={280} y2={430} stroke={lc} strokeWidth={3} />
         <circle cx={250} cy={422.5} r={7.5} fill="none" stroke={lc} strokeWidth={2} />
