@@ -1892,6 +1892,43 @@
 .shot-table td.num.mono { font-family: var(--mono); font-size: 13px; }
 .shot-table tbody tr:hover td { background: var(--surface); }
 
+/* ── Shot zone courts ────────────────────────────────────── */
+.shot-zone-courts-row {
+  display: flex;
+  gap: 20px;
+  margin: 20px 0;
+}
+.shot-zone-court {
+  flex: 1;
+  min-width: 0;
+}
+.shot-zone-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.shot-zone-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.shot-zone-legend-neg {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #ff4d6a;
+}
+.shot-zone-legend-pos {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #00e676;
+}
+
 /* ── Game log ────────────────────────────────────────────── */
 .gamelog-section {
   margin-top: 40px;

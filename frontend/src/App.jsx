@@ -1073,6 +1073,99 @@ function NewsSection() {
   )
 }
 
+// ─── Shot Zone Court ──────────────────────────────────────────────────────────
+// SVG half-court using NBA coordinate system: origin = basket centre,
+// x: -250→250 (sideline to sideline), y: -47.5 (baseline) → 422.5 (half-court)
+// SVG transform: x_svg = x_court + 250,  y_svg = 422.5 - y_court
+// (basket at SVG 250,422.5 · FT line at y_svg 280 · 3pt junctions at y_svg 333.5)
+
+function ShotZoneCourt({ id, title, zones }) {
+  const byZone = Object.fromEntries((zones || []).map(z => [z.zone, z]))
+  const absVals = (zones || []).map(z => Math.abs(z.delta))
+  const maxDelta = absVals.length > 0 ? Math.max(...absVals) : 1
+
+  function zoneColor(key) {
+    const z = byZone[key]
+    if (!z || Math.abs(z.delta) < 0.0001) return '#141828'
+    const t = Math.min(Math.abs(z.delta) / maxDelta, 1)
+    const bg = [20, 24, 40]
+    const fg = z.delta > 0 ? [0, 230, 118] : [255, 77, 106]
+    return `rgb(${Math.round(bg[0]+(fg[0]-bg[0])*t)},${Math.round(bg[1]+(fg[1]-bg[1])*t)},${Math.round(bg[2]+(fg[2]-bg[2])*t)})`
+  }
+
+  function lbl(key) { return byZone[key]?.label || '' }
+
+  const lc = '#2a3055'
+  const gradId = `szg-${id}`
+  const maxLabel = zones.length > 0 ? (zones[0]?.unit === 'pp'
+    ? `${(maxDelta * 100).toFixed(1)}pp`
+    : `${(maxDelta * 100).toFixed(1)}%`) : ''
+
+  return (
+    <div className="shot-zone-court">
+      <div className="shot-zone-title">{title}</div>
+      <svg viewBox="0 0 500 470" style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {/* Zone fills — layered back to front */}
+        <rect x={0} y={0} width={500} height={470} fill={zoneColor('above_break_3')} />
+        <rect x={0} y={333.5} width={30} height={136.5} fill={zoneColor('corner_3')} />
+        <rect x={470} y={333.5} width={30} height={136.5} fill={zoneColor('corner_3')} />
+        {/* mid_range: inside 3pt arc, sweep=0 bows upward away from basket */}
+        <path d="M 30,470 L 30,333.5 A 237.5,237.5 0 0,0 470,333.5 L 470,470 Z" fill={zoneColor('mid_range')} />
+        <rect x={170} y={280} width={160} height={190} fill={zoneColor('paint_non_ra')} />
+        {/* restricted_area: D-shape, arc bows upward (sweep=0) */}
+        <path d="M 210,422.5 A 40,40 0 0,0 290,422.5 Z" fill={zoneColor('restricted_area')} />
+
+        {/* Court lines */}
+        <rect x={0} y={0} width={500} height={470} fill="none" stroke={lc} strokeWidth={2} />
+        <line x1={0} y1={0} x2={500} y2={0} stroke={lc} strokeWidth={1} strokeDasharray="4 4" />
+        {/* Paint outer + inner */}
+        <rect x={170} y={280} width={160} height={190} fill="none" stroke={lc} strokeWidth={1.5} />
+        <rect x={190} y={280} width={120} height={190} fill="none" stroke={lc} strokeWidth={1} />
+        {/* FT line */}
+        <line x1={170} y1={280} x2={330} y2={280} stroke={lc} strokeWidth={1.5} />
+        {/* FT arc solid (bows upward into mid-range, sweep=0) */}
+        <path d="M 190,280 A 60,60 0 0,0 310,280" fill="none" stroke={lc} strokeWidth={1} />
+        {/* FT arc dashed (bows downward into paint, sweep=1) */}
+        <path d="M 190,280 A 60,60 0 0,1 310,280" fill="none" stroke={lc} strokeWidth={1} strokeDasharray="4 4" />
+        {/* Restricted area arc */}
+        <path d="M 210,422.5 A 40,40 0 0,0 290,422.5" fill="none" stroke={lc} strokeWidth={1.5} />
+        {/* Corner 3 straight lines */}
+        <line x1={30} y1={470} x2={30} y2={333.5} stroke={lc} strokeWidth={1.5} />
+        <line x1={470} y1={470} x2={470} y2={333.5} stroke={lc} strokeWidth={1.5} />
+        {/* 3pt arc (bows upward, sweep=0) */}
+        <path d="M 30,333.5 A 237.5,237.5 0 0,0 470,333.5" fill="none" stroke={lc} strokeWidth={1.5} />
+        {/* Backboard + rim */}
+        <line x1={220} y1={430} x2={280} y2={430} stroke={lc} strokeWidth={3} />
+        <circle cx={250} cy={422.5} r={7.5} fill="none" stroke={lc} strokeWidth={2} />
+
+        {/* Zone labels */}
+        <text x={250} y={413} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('restricted_area')}</text>
+        <text x={250} y={355} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('paint_non_ra')}</text>
+        <text x={250} y={250} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('mid_range')}</text>
+        <text x={250} y={150} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('above_break_3')}</text>
+        <text x={15} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(-90,15,402)">{lbl('corner_3')}</text>
+        <text x={485} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(90,485,402)">{lbl('corner_3')}</text>
+      </svg>
+
+      {/* Gradient legend */}
+      <div className="shot-zone-legend">
+        <span className="shot-zone-legend-neg">−{maxLabel}</span>
+        <svg width="120" height="14" style={{ display: 'block', flexShrink: 0 }}>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stopColor="rgb(255,77,106)" />
+              <stop offset="50%"  stopColor="#141828" />
+              <stop offset="100%" stopColor="rgb(0,230,118)" />
+            </linearGradient>
+          </defs>
+          <rect x={0} y={1} width={120} height={12} rx={2} fill={`url(#${gradId})`} />
+        </svg>
+        <span className="shot-zone-legend-pos">+{maxLabel}</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Depth Charts Page ────────────────────────────────────────────────────────
 
 const DEPTH_POS_ORDER = ['PG', 'SG', 'SF', 'PF', 'C']
@@ -6800,6 +6893,11 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <div className="shot-diet-charts">
                             <div className="shot-diet-chart-wrap"><div className="shot-chart-title">Shot distribution by zone</div><Bar data={selChartData} options={zoneChartOpts('% of FGA')} /></div>
                             <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
+                          </div>
+
+                          <div className="shot-zone-courts-row">
+                            <ShotZoneCourt id="freq" title="Shot distribution change" zones={zoneRows.map(z => ({ zone: z.zone, delta: z.freq_b - z.freq_a, unit: 'pct', label: `${(z.freq_b - z.freq_a) >= 0 ? '+' : ''}${((z.freq_b - z.freq_a)*100).toFixed(1)}%` }))} />
+                            <ShotZoneCourt id="fg" title="FG% change by zone" zones={zoneRows.map(z => ({ zone: z.zone, delta: (z.fga_a > 0 || z.fga_b > 0) ? z.fg_pct_b - z.fg_pct_a : 0, unit: 'pp', label: (z.fga_a > 0 || z.fga_b > 0) ? `${(z.fg_pct_b - z.fg_pct_a) >= 0 ? '+' : ''}${((z.fg_pct_b - z.fg_pct_a)*100).toFixed(1)}pp` : '' }))} />
                           </div>
 
                           <table className="shot-table">
