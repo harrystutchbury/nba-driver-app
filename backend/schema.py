@@ -329,6 +329,21 @@ def init_db():
         pass  # already exists
 
     try:
+        conn.execute("ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'")
+    except Exception:
+        pass  # already exists
+
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+    except Exception:
+        pass  # already exists
+
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT")
+    except Exception:
+        pass  # already exists
+
+    try:
         conn.execute("ALTER TABLE fantasy_player_map ADD COLUMN position TEXT")
     except Exception:
         pass  # already exists

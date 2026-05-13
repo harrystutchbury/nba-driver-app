@@ -309,8 +309,14 @@ router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 # Allow the React dev server to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://roto-intel-landing.onrender.com"],
-    allow_methods=["GET"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://roto-intel-landing.onrender.com",
+        "https://app.rotointel.com",
+        "https://www.rotointel.com",
+    ],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -3196,12 +3202,16 @@ def register(body: dict = Body(...)):
 def get_me(current_user: str = Depends(get_current_user)):
     conn = get_conn()
     row = conn.execute(
-        "SELECT username, display_name FROM users WHERE username = ?", [current_user]
+        "SELECT username, display_name, tier FROM users WHERE username = ?", [current_user]
     ).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"email": row["username"], "display_name": row["display_name"] or ""}
+    return {
+        "email": row["username"],
+        "display_name": row["display_name"] or "",
+        "tier": row["tier"] or "free",
+    }
 
 
 @auth_router.patch("/me")
@@ -7371,6 +7381,121 @@ def search_br_players(q: str = Query(..., min_length=2),
 app.include_router(admin_router)
 app.include_router(fantasy_router)
 app.include_router(auth_router)
+
+# ── Stripe ────────────────────────────────────────────────────────────────────
+
+import stripe as _stripe
+
+_STRIPE_SECRET_KEY      = os.environ.get("STRIPE_SECRET_KEY", "")
+_STRIPE_WEBHOOK_SECRET  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+_STRIPE_PRO_PRICE       = os.environ.get("STRIPE_PRO_PRICE", "")
+_STRIPE_ELITE_PRICE     = os.environ.get("STRIPE_ELITE_PRICE", "")
+
+_PRICE_TO_TIER = {}
+if _STRIPE_PRO_PRICE:
+    _PRICE_TO_TIER[_STRIPE_PRO_PRICE] = "pro"
+if _STRIPE_ELITE_PRICE:
+    _PRICE_TO_TIER[_STRIPE_ELITE_PRICE] = "elite"
+
+stripe_router = APIRouter(prefix="/api/stripe")
+
+
+@stripe_router.post("/create-checkout-session")
+def create_checkout_session(
+    body: dict = Body(...),
+    current_user: str = Depends(get_current_user),
+):
+    tier = body.get("tier", "").lower()
+    price_id = _STRIPE_PRO_PRICE if tier == "pro" else _STRIPE_ELITE_PRICE if tier == "elite" else None
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Invalid tier. Must be 'pro' or 'elite'.")
+    if not _STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    _stripe.api_key = _STRIPE_SECRET_KEY
+    app_url = os.environ.get("APP_URL", "https://app.rotointel.com").rstrip("/")
+
+    try:
+        session = _stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            metadata={"username": current_user},
+            client_reference_id=current_user,
+            customer_email=current_user,
+            success_url=f"{app_url}/?upgraded=1",
+            cancel_url=f"{app_url}/?upgrade_cancelled=1",
+        )
+    except _stripe.error.StripeError as e:
+        logger.error("Stripe checkout error: %s", e)
+        raise HTTPException(status_code=502, detail="Stripe error")
+
+    return {"url": session.url}
+
+
+@stripe_router.post("/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    if not _STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhook not configured")
+
+    _stripe.api_key = _STRIPE_SECRET_KEY
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig_header, _STRIPE_WEBHOOK_SECRET)
+    except _stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    except Exception as e:
+        logger.error("Webhook parse error: %s", e)
+        raise HTTPException(status_code=400, detail="Webhook parse error")
+
+    etype = event["type"]
+    data  = event["data"]["object"]
+
+    conn = get_conn()
+    try:
+        if etype == "checkout.session.completed":
+            username    = data.get("metadata", {}).get("username") or data.get("client_reference_id")
+            customer_id = data.get("customer")
+            sub_id      = data.get("subscription")
+            # Determine tier from the subscription's price
+            tier = "pro"  # fallback
+            if sub_id:
+                _stripe.api_key = _STRIPE_SECRET_KEY
+                sub = _stripe.Subscription.retrieve(sub_id)
+                price_id = sub["items"]["data"][0]["price"]["id"]
+                tier = _PRICE_TO_TIER.get(price_id, "pro")
+            if username:
+                conn.execute(
+                    "UPDATE users SET tier=?, stripe_customer_id=?, stripe_subscription_id=? WHERE username=?",
+                    [tier, customer_id, sub_id, username],
+                )
+                conn.commit()
+                logger.info("Upgraded %s to %s (sub=%s)", username, tier, sub_id)
+
+        elif etype == "customer.subscription.deleted":
+            sub_id      = data.get("id")
+            customer_id = data.get("customer")
+            conn.execute(
+                "UPDATE users SET tier='free', stripe_subscription_id=NULL WHERE stripe_subscription_id=?",
+                [sub_id],
+            )
+            conn.commit()
+            logger.info("Subscription cancelled: sub=%s customer=%s", sub_id, customer_id)
+
+        elif etype == "invoice.payment_failed":
+            customer_id = data.get("customer")
+            sub_id      = data.get("subscription")
+            logger.warning("Payment failed: customer=%s sub=%s", customer_id, sub_id)
+            # Don't downgrade immediately — Stripe retries; handle subscription.deleted instead
+
+    finally:
+        conn.close()
+
+    return {"received": True}
+
+
+app.include_router(stripe_router)
 
 # ── Moderation ────────────────────────────────────────────────────────────────
 

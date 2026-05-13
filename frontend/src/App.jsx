@@ -150,6 +150,7 @@ function AccountModal({ onClose, onTokenRefresh }) {
   const [newPw,       setNewPw]       = useState('')
   const [saving,      setSaving]      = useState(false)
   const [msg,         setMsg]         = useState(null) // {type:'ok'|'err', text}
+  const [upgrading,   setUpgrading]   = useState(null) // 'pro' | 'elite' | null
 
   useEffect(() => {
     apiFetch('/api/auth/me').then(r => r.json()).then(d => {
@@ -158,6 +159,23 @@ function AccountModal({ onClose, onTokenRefresh }) {
       setDisplayName(d.display_name || '')
     }).catch(() => {})
   }, [])
+
+  async function handleUpgrade(tier) {
+    setUpgrading(tier)
+    try {
+      const res = await apiFetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'err', text: data.detail || 'Checkout failed' }); setUpgrading(null); return }
+      window.location.href = data.url
+    } catch {
+      setMsg({ type: 'err', text: 'Request failed — please try again' })
+      setUpgrading(null)
+    }
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -223,6 +241,50 @@ function AccountModal({ onClose, onTokenRefresh }) {
             </button>
           </form>
         )}
+
+        {me && (
+          <div className="acct-plan-section">
+            <div className="acct-plan-header">
+              <span className="acct-plan-label">Plan</span>
+              <span className={`acct-tier-badge acct-tier-${me.tier || 'free'}`}>
+                {(me.tier || 'free').charAt(0).toUpperCase() + (me.tier || 'free').slice(1)}
+              </span>
+            </div>
+            {(me.tier === 'free' || !me.tier) && (
+              <div className="acct-upgrade-row">
+                <div className="acct-upgrade-card">
+                  <div className="acct-upgrade-name">Pro</div>
+                  <div className="acct-upgrade-price">$20<span>/yr</span></div>
+                  <button
+                    className="acct-upgrade-btn"
+                    onClick={() => handleUpgrade('pro')}
+                    disabled={!!upgrading}
+                  >
+                    {upgrading === 'pro' ? 'Redirecting…' : 'Upgrade to Pro'}
+                  </button>
+                </div>
+                <div className="acct-upgrade-card">
+                  <div className="acct-upgrade-name">Elite</div>
+                  <div className="acct-upgrade-price">$40<span>/yr</span></div>
+                  <button
+                    className="acct-upgrade-btn acct-upgrade-btn-elite"
+                    onClick={() => handleUpgrade('elite')}
+                    disabled={!!upgrading}
+                  >
+                    {upgrading === 'elite' ? 'Redirecting…' : 'Upgrade to Elite'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {me.tier === 'pro' && (
+              <p className="acct-plan-note">You're on Pro. Email us to upgrade to Elite or manage your subscription.</p>
+            )}
+            {me.tier === 'elite' && (
+              <p className="acct-plan-note">You're on Elite — the best plan. Email us to manage your subscription.</p>
+            )}
+          </div>
+        )}
+
         <FantasyConnectionsSection />
       </div>
     </div>
@@ -7905,8 +7967,9 @@ function AppMain({ onLogout, onOpenAccount }) {
 }
 
 export default function App() {
+  const _qs = new URLSearchParams(window.location.search)
   const [token,       setToken]       = useState(() => localStorage.getItem('nba_token'))
-  const [showAccount, setShowAccount] = useState(false)
+  const [showAccount, setShowAccount] = useState(() => _qs.get('upgraded') === '1')
 
   function handleLogin(t)      { localStorage.setItem('nba_token', t); setToken(t) }
   function handleLogout()      { localStorage.removeItem('nba_token'); setToken(null) }
@@ -7917,8 +7980,8 @@ export default function App() {
     <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} />
     {showAccount && (
       <AccountModal
-        onClose={() => setShowAccount(false)}
-        onTokenRefresh={t => { handleTokenRefresh(t); setShowAccount(false) }}
+        onClose={() => { setShowAccount(false); window.history.replaceState({}, '', '/') }}
+        onTokenRefresh={t => { handleTokenRefresh(t); setShowAccount(false); window.history.replaceState({}, '', '/') }}
       />
     )}
   </>

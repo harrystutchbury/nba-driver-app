@@ -467,6 +467,102 @@
   margin-top: 4px;
 }
 
+/* ── Account plan section ───────────────────────────────────── */
+
+.acct-plan-section {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.acct-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.acct-plan-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.acct-tier-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 2px 8px;
+  text-transform: capitalize;
+}
+
+.acct-tier-free  { background: #1e2433; color: var(--muted); }
+.acct-tier-pro   { background: #1a3a5c; color: #60a5fa; }
+.acct-tier-elite { background: #3a1a5c; color: #c084fc; }
+
+.acct-upgrade-row {
+  display: flex;
+  gap: 12px;
+}
+
+.acct-upgrade-card {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.acct-upgrade-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.acct-upgrade-price {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.acct-upgrade-price span {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.acct-upgrade-btn {
+  margin-top: 4px;
+  width: 100%;
+  background: var(--accent);
+  color: #0a0e1a;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.acct-upgrade-btn:hover:not(:disabled) { opacity: 0.85; }
+.acct-upgrade-btn:disabled { opacity: 0.5; cursor: default; }
+
+.acct-upgrade-btn-elite {
+  background: #c084fc;
+}
+
+.acct-plan-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
 /* ── Header search ───────────────────────────────────────── */
 
 .header-search-wrap {
