@@ -7471,27 +7471,26 @@ function AppMain({ onLogout, onOpenAccount }) {
                   )
                   return (
                     <>
-                    <div className="mpg-slider-row">
-                      <span className="ctrl-label">From</span>
-                      <input
-                        type="range"
-                        min={0} max={glEnd} step={10}
+                    <div className="gl-range-wrap">
+                      <div className="gl-range-track" />
+                      <div className="gl-range-fill" style={{
+                        left: `${(glStart / (playerGames.length - 1)) * 100}%`,
+                        right: `${((playerGames.length - 1 - glEnd) / (playerGames.length - 1)) * 100}%`,
+                      }} />
+                      <input type="range" className="gl-thumb"
+                        min={0} max={playerGames.length - 1} step={1}
                         value={glStart}
-                        onChange={e => setGlStart(+e.target.value)}
-                        className="mpg-slider"
+                        onChange={e => setGlStart(Math.min(+e.target.value, glEnd))}
                       />
-                      <span className="mpg-value">{playerGames.length - glStart} games ago</span>
-                    </div>
-                    <div className="mpg-slider-row">
-                      <span className="ctrl-label">To</span>
-                      <input
-                        type="range"
-                        min={glStart} max={playerGames.length - 1} step={10}
+                      <input type="range" className="gl-thumb"
+                        min={0} max={playerGames.length - 1} step={1}
                         value={glEnd}
-                        onChange={e => setGlEnd(+e.target.value)}
-                        className="mpg-slider"
+                        onChange={e => setGlEnd(Math.max(+e.target.value, glStart))}
                       />
-                      <span className="mpg-value">{playerGames.length - 1 - glEnd === 0 ? 'latest' : `${playerGames.length - 1 - glEnd} games ago`}</span>
+                    </div>
+                    <div className="gl-range-labels">
+                      <span className="mpg-value">{playerGames.length - glStart} games ago</span>
+                      <span className="mpg-value">{glEnd === playerGames.length - 1 ? 'latest' : `${playerGames.length - 1 - glEnd} games ago`}</span>
                     </div>
                     <div className="table-scroll">
                       <table className="gamelog-table">

@@ -1187,6 +1187,64 @@
 .hist-mode-btn.active { background: var(--surface-2); color: var(--text); }
 .hist-mode-btn:hover:not(.active) { color: var(--text); }
 
+/* ── Game log dual-thumb range slider ───────────────────── */
+.gl-range-wrap {
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  width: 220px;
+  margin-bottom: 6px;
+}
+.gl-range-track {
+  position: absolute;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+}
+.gl-range-fill {
+  position: absolute;
+  height: 4px;
+  background: var(--skill);
+  border-radius: 2px;
+}
+.gl-thumb {
+  position: absolute;
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  pointer-events: none;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+}
+.gl-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--skill);
+  cursor: pointer;
+  pointer-events: all;
+  border: 2px solid var(--bg);
+}
+.gl-thumb::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--skill);
+  cursor: pointer;
+  pointer-events: all;
+  border: 2px solid var(--bg);
+}
+.gl-range-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 220px;
+  margin-bottom: 16px;
+}
+
 .mpg-slider-row {
   display: flex;
   align-items: center;
