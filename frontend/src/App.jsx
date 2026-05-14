@@ -5351,6 +5351,31 @@ function ScheduleGrid({ provider = 'espn' }) {
 }
 
 
+// ── Pro gating ────────────────────────────────────────────────────────────────
+
+function SectionLock({ onUpgrade }) {
+  return (
+    <div className="progate-section">
+      <span className="progate-lock-icon">🔒</span>
+      <span className="progate-lock-label">Pro feature</span>
+      <button className="progate-lock-btn" onClick={onUpgrade}>Upgrade to Pro · $20/yr</button>
+    </div>
+  )
+}
+
+function PageLock({ onUpgrade }) {
+  return (
+    <div className="progate-page">
+      <div className="progate-page-card">
+        <div className="progate-page-icon">🔒</div>
+        <h2 className="progate-page-title">Pro feature</h2>
+        <p className="progate-page-sub">Upgrade to Pro to unlock this — $20/yr.</p>
+        <button className="progate-page-btn" onClick={onUpgrade}>Upgrade to Pro</button>
+      </div>
+    </div>
+  )
+}
+
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
@@ -5616,6 +5641,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [fantasyTab, setFantasyTab]   = useState('dashboard')
   const [blogInitSlug, setBlogInitSlug] = useState(null)
   const [isAdmin, setIsAdmin]           = useState(false)
+  const [tier,    setTier]              = useState('free')
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -5669,12 +5695,15 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [cmpShow,     setCmpShow]     = useState(false)
   const [cmpPlayers,  setCmpPlayers]  = useState([]) // [{player, stats}]
 
+  const isPro = tier === 'pro' || tier === 'elite'
+
   const searchRef   = useRef(null)
   const debounceRef = useRef(null)
 
   useEffect(() => {
     if (yahooConnected) window.history.replaceState({}, '', '/')
     apiFetch('/api/adjustments/is-admin').then(r => r.ok ? r.json() : null).then(d => { if (d?.is_admin) setIsAdmin(true) }).catch(() => {})
+    apiFetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.tier) setTier(d.tier) }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -6427,13 +6456,19 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
-      {page === 'projections' && <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
+      {page === 'projections' && (isPro
+        ? <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />
+        : <PageLock onUpgrade={onOpenAccount} />
+      )}
 
       {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'fantasy' && <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />}
+      {page === 'fantasy' && (isPro
+        ? <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />
+        : <PageLock onUpgrade={onOpenAccount} />
+      )}
 
       {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
@@ -6992,10 +7027,10 @@ function AppMain({ onLogout, onOpenAccount }) {
             {schedProj && schedProj.games.length > 0 && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setSchedExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Upcoming Games</h3>
+                  <h3 className="panel-title">Upcoming Games {!isPro && <span className="pro-badge">PRO</span>}</h3>
                   <span className="proj-toggle">{schedExpanded ? '▲' : '▼'}</span>
                 </div>
-                {schedExpanded && (() => {
+                {schedExpanded && (isPro ? (() => {
                   const SCHED_COLS = [
                     { key: 'pts',  label: 'PTS' },
                     { key: 'reb',  label: 'REB' },
@@ -7187,7 +7222,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                       </div>
                     </div>
                   )
-                })()}
+                })() : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
             )}
 
@@ -7288,10 +7323,10 @@ function AppMain({ onLogout, onOpenAccount }) {
               return (
                 <div className="projection-section">
                   <div className="projection-header" onClick={() => setUsageExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                    <h3 className="panel-title">Usage Projector</h3>
+                    <h3 className="panel-title">Usage Projector {!isPro && <span className="pro-badge">PRO</span>}</h3>
                     <span className="proj-toggle">{usageExpanded ? '▲' : '▼'}</span>
                   </div>
-                  {usageExpanded && (
+                  {usageExpanded && (isPro ? (
                     <>
                     <div className="usage-sliders-row">
                       <div className="usage-sliders">
@@ -7400,7 +7435,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                       {changed && effUsg !== baseUsg && ` → ${effUsg.toFixed(1)}% USG`}
                     </p>
                     </>
-                  )}
+                  ) : <SectionLock onUpgrade={onOpenAccount} />)}
                 </div>
               )
             })()}
@@ -7409,11 +7444,11 @@ function AppMain({ onLogout, onOpenAccount }) {
             {projection && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setProjExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Career Projection</h3>
+                  <h3 className="panel-title">Career Projection {!isPro && <span className="pro-badge">PRO</span>}</h3>
                   <span className="proj-toggle">{projExpanded ? '▲' : '▼'}</span>
                 </div>
 
-                {projExpanded && <>
+                {projExpanded && (isPro ? <>
                 <div className="proj-scenario-row">
                   {['pessimistic', 'baseline', 'optimistic'].map(s => (
                     <button
@@ -7465,7 +7500,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 <div className="trend-chart-wrap">
                   {trendChartData && <Line data={trendChartData} options={trendChartOptions} />}
                 </div>
-                </>}
+                </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
             )}
 
@@ -7473,11 +7508,11 @@ function AppMain({ onLogout, onOpenAccount }) {
             {playerGames && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setMaExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Form</h3>
+                  <h3 className="panel-title">Form {!isPro && <span className="pro-badge">PRO</span>}</h3>
                   <span className="proj-toggle">{maExpanded ? '▲' : '▼'}</span>
                 </div>
 
-                {maExpanded && <>
+                {maExpanded && (isPro ? <>
                 <div className="trend-controls">
                   <span className="ctrl-label">Stat</span>
                   <select className="ctrl-input" value={maStat} onChange={e => setMaStat(e.target.value)}>
@@ -7515,7 +7550,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 <div className="trend-chart-wrap" style={{ height: '260px' }}>
                   {maChartData && <Line data={maChartData} options={maChartOptions} />}
                 </div>
-                </>}
+                </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
             )}
 
