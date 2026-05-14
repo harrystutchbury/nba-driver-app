@@ -142,7 +142,7 @@ function FantasyConnectionsSection() {
   )
 }
 
-function AccountModal({ onClose, onTokenRefresh }) {
+function AccountModal({ onClose, onTokenRefresh, autoUpgrade = null }) {
   const [me,          setMe]          = useState(null)
   const [displayName, setDisplayName] = useState('')
   const [email,       setEmail]       = useState('')
@@ -157,6 +157,9 @@ function AccountModal({ onClose, onTokenRefresh }) {
       setMe(d)
       setEmail(d.email)
       setDisplayName(d.display_name || '')
+      if (autoUpgrade && (d.tier === 'free' || !d.tier)) {
+        handleUpgrade(autoUpgrade)
+      }
     }).catch(() => {})
   }, [])
 
@@ -8002,21 +8005,29 @@ function AppMain({ onLogout, onOpenAccount }) {
 }
 
 export default function App() {
-  const _qs = new URLSearchParams(window.location.search)
-  const [token,       setToken]       = useState(() => localStorage.getItem('nba_token'))
-  const [showAccount, setShowAccount] = useState(() => _qs.get('upgraded') === '1')
+  const _qs            = new URLSearchParams(window.location.search)
+  const _upgradeParam  = _qs.get('upgrade')   // 'pro' | 'elite' | null
+  const [token,            setToken]            = useState(() => localStorage.getItem('nba_token'))
+  const [showAccount,      setShowAccount]      = useState(() => _qs.get('upgraded') === '1' || !!_upgradeParam)
+  const [autoUpgradeTier,  setAutoUpgradeTier]  = useState(() => _upgradeParam)
 
-  function handleLogin(t)      { localStorage.setItem('nba_token', t); setToken(t) }
-  function handleLogout()      { localStorage.removeItem('nba_token'); setToken(null) }
+  function handleLogin(t) {
+    localStorage.setItem('nba_token', t)
+    setToken(t)
+    if (_upgradeParam) { setShowAccount(true); setAutoUpgradeTier(_upgradeParam) }
+  }
+  function handleLogout()        { localStorage.removeItem('nba_token'); setToken(null) }
   function handleTokenRefresh(t) { localStorage.setItem('nba_token', t); setToken(t) }
+  function closeAccount()        { setShowAccount(false); setAutoUpgradeTier(null); window.history.replaceState({}, '', '/') }
 
   if (!token) return <LoginPage onLogin={handleLogin} />
   return <>
     <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} />
     {showAccount && (
       <AccountModal
-        onClose={() => { setShowAccount(false); window.history.replaceState({}, '', '/') }}
-        onTokenRefresh={t => { handleTokenRefresh(t); setShowAccount(false); window.history.replaceState({}, '', '/') }}
+        onClose={closeAccount}
+        onTokenRefresh={t => { handleTokenRefresh(t); closeAccount() }}
+        autoUpgrade={autoUpgradeTier}
       />
     )}
   </>
