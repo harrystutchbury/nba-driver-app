@@ -3598,7 +3598,7 @@ function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings'
 
 // ── Roster Analysis tab ────────────────────────────────────────────────────────
 
-function RosterAnalysis({ data, dwData, onSelectPlayer }) {
+function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
   const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
@@ -3762,6 +3762,10 @@ function RosterAnalysis({ data, dwData, onSelectPlayer }) {
       </div>
 
       {/* ── Decisive Wins ── */}
+      {dwErr && <div className="login-error" style={{margin:'0 0 16px'}}>{dwErr}</div>}
+      {dwData && dwData.players && dwData.players.length === 0 && (
+        <div className="dash-empty" style={{marginBottom:16}}>Decisive wins: no remaining matchups found in your league schedule.</div>
+      )}
       {dwData && dwData.players && dwData.players.length > 0 && (() => {
         const dwCats = dwData.tracked_cats || []
         const dwNeg  = new Set(dwData.neg_cats || [])
@@ -5546,7 +5550,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         {tab === 'roster' && (rosterErr
           ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
           : !rosterData ? <div className="dash-empty">Loading…</div>
-          : <RosterAnalysis data={rosterData} dwData={dwData} onSelectPlayer={onSelectPlayer} />
+          : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} onSelectPlayer={onSelectPlayer} />
         )}
       </div>
     )
@@ -5567,7 +5571,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       {tab === 'roster' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <RosterAnalysis data={rosterData} dwData={dwData} onSelectPlayer={onSelectPlayer} />
+        : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
