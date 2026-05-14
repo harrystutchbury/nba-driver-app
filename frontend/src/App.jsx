@@ -3598,7 +3598,7 @@ function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings'
 
 // ── Roster Analysis tab ────────────────────────────────────────────────────────
 
-function RosterAnalysis({ data, onSelectPlayer }) {
+function RosterAnalysis({ data, dwData, onSelectPlayer }) {
   const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
@@ -3760,6 +3760,74 @@ function RosterAnalysis({ data, onSelectPlayer }) {
           </tbody>
         </table>
       </div>
+
+      {/* ── Decisive Wins ── */}
+      {dwData && dwData.players && dwData.players.length > 0 && (() => {
+        const dwCats = dwData.tracked_cats || []
+        const dwNeg  = new Set(dwData.neg_cats || [])
+        function dwRate(r) {
+          if (r == null) return '—'
+          const pct = Math.round(r * 100)
+          return pct + '%'
+        }
+        function dwCls(r) {
+          if (r == null) return ''
+          if (r >= 0.6) return 'ra-z-pos'
+          if (r >= 0.3) return ''
+          if (r > 0)    return 'ra-z-neu'
+          return 'ra-z-neg'
+        }
+        const maxTotal = Math.max(...dwData.players.map(p => p.total || 0), 0.01)
+        return (
+          <>
+            <div className="ra-section-title" style={{display:'flex',alignItems:'center',gap:8}}>
+              Decisive Wins
+              <span className="ra-dw-sub">
+                {dwData.weeks_remaining} week{dwData.weeks_remaining !== 1 ? 's' : ''} remaining · % of matchups where this player is the difference-maker
+              </span>
+            </div>
+            <div className="dash-card ra-card-wide" style={{overflowX:'auto',marginBottom:24}}>
+              <table className="dash-table ra-table">
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th style={{whiteSpace:'nowrap'}}>Total</th>
+                    {dwCats.map(c => (
+                      <th key={c} title={dwNeg.has(c) ? `${c} (lower=better)` : c}>{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dwData.players.map(p => (
+                    <tr key={p.slug}>
+                      <td
+                        className={`ra-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                        onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
+                      >{p.name}</td>
+                      <td style={{whiteSpace:'nowrap'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontFamily:'var(--mono)',fontWeight:600,fontSize:13}}>
+                            {p.total != null ? p.total.toFixed(1) : '—'}
+                          </span>
+                          <div className="ra-dw-bar" style={{width: Math.round((p.total / maxTotal) * 60)}} />
+                        </div>
+                      </td>
+                      {dwCats.map(c => {
+                        const r = p.by_category?.[c]
+                        return (
+                          <td key={c} className={dwCls(r)} style={{fontFamily:'var(--mono)',fontSize:12,textAlign:'center'}}>
+                            {dwRate(r)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }
@@ -5386,6 +5454,8 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [tab,         setTab]         = useState(initialTab)
   const [rosterData,  setRosterData]  = useState(null)
   const [rosterErr,   setRosterErr]   = useState(null)
+  const [dwData,      setDwData]      = useState(null)
+  const [dwErr,       setDwErr]       = useState(null)
 
   function loadStatus() {
     apiFetch('/api/fantasy/status')
@@ -5413,6 +5483,19 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         .then(d => setRosterData(d))
         .catch(() => setRosterErr('Failed to load Yahoo roster data'))
     }
+  }, [status?.espn?.team_key, status?.yahoo?.league_key])
+
+  // Fetch decisive-wins (works for both ESPN and Yahoo)
+  useEffect(() => {
+    if (!status) return
+    const espn  = status.espn  || {}
+    const yahoo = status.yahoo || {}
+    const hasLeague = (espn.connected && espn.team_key) || (yahoo.connected && yahoo.league_key)
+    if (!hasLeague) return
+    apiFetch('/api/fantasy/decisive-wins')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setDwData(d))
+      .catch(() => setDwErr('Failed to load decisive wins data'))
   }, [status?.espn?.team_key, status?.yahoo?.league_key])
 
   if (!status) return <div className="dash-empty">Loading…</div>
@@ -5463,7 +5546,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         {tab === 'roster' && (rosterErr
           ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
           : !rosterData ? <div className="dash-empty">Loading…</div>
-          : <RosterAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
+          : <RosterAnalysis data={rosterData} dwData={dwData} onSelectPlayer={onSelectPlayer} />
         )}
       </div>
     )
@@ -5484,7 +5567,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       {tab === 'roster' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <RosterAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
+        : <RosterAnalysis data={rosterData} dwData={dwData} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>

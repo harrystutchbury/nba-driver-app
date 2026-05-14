@@ -7140,6 +7140,355 @@ def espn_free_agents(size: int = Query(150, le=300),
     return {"free_agents": result}
 
 
+@fantasy_router.get("/decisive-wins")
+def get_decisive_wins(current_user: str = Depends(get_current_user)):
+    """
+    Per-player decisive-win rates across remaining matchup weeks.
+
+    A 'decisive win' in category C for a matchup week: my team is projected to WIN
+    category C (margin > 0) AND the player's above-replacement contribution in C
+    exceeds that margin. Rate = decisive_count / total_remaining_weeks per category.
+    Replacement baseline = avg stats of top-5 available free agents.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+
+    # ── Load season averages + name map ────────────────────────────────────
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    slug_to_name = {v: k for k, v in name_to_slug.items()}
+    all_names    = list(name_to_slug.keys())
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    # ── Shared helpers ──────────────────────────────────────────────────────
+    def _project_team(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg: continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts": pts, "reb": reb, "ast": ast, "stl": stl,
+            "blk": blk, "tov": tov, "fg3m": fg3m,
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0,
+            "_fgm": fgm_sum, "_fga": fga_sum,
+            "_ftm": ftm_sum, "_fta": fta_sum,
+        }
+
+    def _above_repl(slug, repl, my_ts):
+        """Return {stat_key: above_replacement} — positive means player helps."""
+        avg = player_avgs.get(slug) or {}
+        ar = {}
+        for key in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]:
+            ar[key] = (avg.get(key) or 0) - (repl.get(key) or 0)
+        # FG%: swap player out, swap replacement in, see how team FG% changes
+        p_fga = avg.get("fga_pg") or 0
+        p_fgm = p_fga * (avg.get("fg_pct") or 0) / 100
+        r_fga = repl.get("fga_pg") or 0
+        r_fgm = r_fga * (repl.get("fg_pct") or 0) / 100
+        new_fga = my_ts["_fga"] - p_fga + r_fga
+        new_fgm = my_ts["_fgm"] - p_fgm + r_fgm
+        ar["fg_pct"] = my_ts["fg_pct"] - ((new_fgm / new_fga * 100) if new_fga else 0)
+        # FT%
+        p_fta = avg.get("fta_pg") or 0
+        p_ftm = p_fta * (avg.get("ft_pct") or 0) / 100
+        r_fta = repl.get("fta_pg") or 0
+        r_ftm = r_fta * (repl.get("ft_pct") or 0) / 100
+        new_fta = my_ts["_fta"] - p_fta + r_fta
+        new_ftm = my_ts["_ftm"] - p_ftm + r_ftm
+        ar["ft_pct"] = my_ts["ft_pct"] - ((new_ftm / new_fta * 100) if new_fta else 0)
+        return ar
+
+    def _compute_dw(my_slugs, my_ts, opp_stats_list, repl, tracked_cats, neg_set, snm):
+        """Return {slug: {by_category: {cat: rate}, total: float}}."""
+        n = len(opp_stats_list)
+        if n == 0:
+            return {}
+        result = {}
+        for slug in my_slugs:
+            if not player_avgs.get(slug):
+                continue
+            ar = _above_repl(slug, repl, my_ts)
+            by_cat = {}
+            total  = 0.0
+            for cat in tracked_cats:
+                key    = snm.get(cat)
+                if not key: continue
+                is_neg = cat in neg_set
+                ar_adj = -(ar.get(key, 0)) if is_neg else ar.get(key, 0)
+                decisive = 0
+                for opp in opp_stats_list:
+                    my_v  = my_ts.get(key, 0)
+                    opp_v = opp.get(key, 0)
+                    margin = (opp_v - my_v) if is_neg else (my_v - opp_v)
+                    if margin > 0 and ar_adj > margin:
+                        decisive += 1
+                rate = round(decisive / n, 3)
+                by_cat[cat] = rate
+                total += rate
+            result[slug] = {"by_category": by_cat, "total": round(total, 2)}
+        return result
+
+    def _build_repl(all_rostered_slugs):
+        """Average stats of top-5 available free agents by composite value."""
+        def _val(slug):
+            avg = player_avgs.get(slug)
+            if not avg: return 0.0
+            return ((avg.get("pts") or 0) + (avg.get("reb") or 0) + (avg.get("ast") or 0)
+                    + 1.5*(avg.get("stl") or 0) + 1.5*(avg.get("blk") or 0)
+                    + (avg.get("fg3m") or 0))
+        fa_slugs = sorted(
+            [s for s in player_avgs if s not in all_rostered_slugs],
+            key=_val, reverse=True
+        )[:5]
+        repl = {}
+        if not fa_slugs:
+            return {k: 0 for k in ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct","fga_pg","fta_pg"]}
+        for key in ["pts","reb","ast","stl","blk","tov","fg3m","fga_pg","fta_pg"]:
+            repl[key] = sum(player_avgs[s].get(key) or 0 for s in fa_slugs) / len(fa_slugs)
+        fgm = sum((player_avgs[s].get("fga_pg") or 0)*(player_avgs[s].get("fg_pct") or 0)/100 for s in fa_slugs)
+        fga = sum(player_avgs[s].get("fga_pg") or 0 for s in fa_slugs)
+        ftm = sum((player_avgs[s].get("fta_pg") or 0)*(player_avgs[s].get("ft_pct") or 0)/100 for s in fa_slugs)
+        fta = sum(player_avgs[s].get("fta_pg") or 0 for s in fa_slugs)
+        repl["fg_pct"] = (fgm / fga * 100) if fga else 0
+        repl["ft_pct"] = (ftm / fta * 100) if fta else 0
+        return repl
+
+    # ── ESPN path ────────────────────────────────────────────────────────────
+    fc_espn = conn.execute(
+        "SELECT team_key, scoring_settings FROM fantasy_connections WHERE username=? AND provider='espn'",
+        [current_user]
+    ).fetchone()
+
+    if fc_espn and fc_espn["team_key"]:
+        scoring = _json.loads(fc_espn["scoring_settings"]) if fc_espn["scoring_settings"] else {}
+        my_team_id   = str(fc_espn["team_key"])
+        scoring_type = scoring.get("scoring_type", "H2H_CATEGORY")
+        if scoring_type != "H2H_CATEGORY":
+            conn.close()
+            raise HTTPException(status_code=400, detail="Decisive wins requires H2H category scoring")
+        NEG_CATS = {"TO", "TOV"}
+        stat_name_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+            "BLK": "blk", "TO": "tov", "TOV": "tov", "3PM": "fg3m",
+            "FG%": "fg_pct", "FT%": "ft_pct",
+        }
+        items = scoring.get("items", [])
+        tracked_cats = [it["stat"] for it in items if it.get("points", 0) != 0] if items else \
+                       ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+
+        espn_id_to_slug = {
+            r["provider_id"]: r["br_slug"]
+            for r in conn.execute(
+                "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='espn' AND br_slug IS NOT NULL"
+            ).fetchall()
+        }
+        conn.close()
+
+        conn2 = get_conn()
+        try:
+            league = _espn_league(conn2, current_user)
+        finally:
+            conn2.close()
+
+        def _resolve_espn(player):
+            return espn_id_to_slug.get(str(player.playerId)) or _slug_by_name(player.name)
+
+        all_team_stats = {}
+        my_slugs = []
+        for team in league.teams:
+            tid   = str(team.team_id)
+            slugs = [s for p in team.roster if (s := _resolve_espn(p))]
+            all_team_stats[tid] = {"slugs": slugs, "stats": _project_team(slugs)}
+            if tid == my_team_id:
+                my_slugs = slugs
+
+        my_ts = _project_team(my_slugs)
+
+        # Remaining matchups for my team from the schedule
+        opp_stats_list = []
+        try:
+            for matchup in league.schedule:
+                winner = getattr(matchup, "winner", None)
+                if winner and str(winner).upper() not in ("UNDECIDED", "NONE", ""):
+                    continue
+                h = str(getattr(matchup.home_team, "team_id", ""))
+                a = str(getattr(matchup.away_team, "team_id", ""))
+                if h == my_team_id:
+                    opp_id = a
+                elif a == my_team_id:
+                    opp_id = h
+                else:
+                    continue
+                if opp_id in all_team_stats:
+                    opp_stats_list.append(all_team_stats[opp_id]["stats"])
+        except Exception:
+            logger.exception("ESPN schedule parse failed for decisive wins")
+
+        all_rostered = set(s for d in all_team_stats.values() for s in d["slugs"])
+        repl = _build_repl(all_rostered)
+        dw   = _compute_dw(my_slugs, my_ts, opp_stats_list, repl, tracked_cats, NEG_CATS, stat_name_map)
+
+        players_out = sorted([
+            {"slug": s, "name": slug_to_name.get(s, s), "total": d["total"], "by_category": d["by_category"]}
+            for s, d in dw.items()
+        ], key=lambda x: -x["total"])
+
+        return {
+            "weeks_remaining": len(opp_stats_list),
+            "tracked_cats":    tracked_cats,
+            "neg_cats":        [c for c in tracked_cats if c in NEG_CATS],
+            "players":         players_out,
+            "provider":        "espn",
+        }
+
+    # ── Yahoo path ───────────────────────────────────────────────────────────
+    fc_yahoo = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    conn.close()
+
+    if not fc_yahoo or not fc_yahoo["league_key"]:
+        raise HTTPException(status_code=400, detail="No fantasy league connected")
+
+    league_key  = fc_yahoo["league_key"]
+    my_team_key = fc_yahoo["team_key"]
+
+    conn3 = get_conn()
+    yahoo_id_to_slug = {
+        r["provider_id"]: r["br_slug"]
+        for r in conn3.execute(
+            "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='yahoo' AND br_slug IS NOT NULL"
+        ).fetchall()
+    }
+    conn3.close()
+
+    conn4 = get_conn()
+    try:
+        token           = _refresh_yahoo_token(conn4, current_user)
+        cats_def        = _yahoo_get_stat_cats(token, league_key)
+        rosters_data    = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        scoreboard_data = _yahoo_api(token, f"league/{league_key}/scoreboard")
+    except HTTPException:
+        conn4.close(); raise
+    except Exception as e:
+        conn4.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+    finally:
+        conn4.close()
+
+    tracked_cats  = [c["display"] for c in cats_def]
+    neg_cats_list = [c["display"] for c in cats_def if c["is_neg"]]
+    stat_name_map = {c["display"]: c["db_key"] for c in cats_def}
+    NEG_SET       = set(neg_cats_list)
+
+    # Parse all rosters
+    all_team_stats = {}
+    my_slugs = []
+    try:
+        league_arr  = rosters_data["fantasy_content"]["league"]
+        teams_entry = next((x for x in league_arr if isinstance(x, dict) and "teams" in x), {})
+        for tk, tv in teams_entry.get("teams", {}).items():
+            if tk == "count": continue
+            team_list    = tv.get("team", [{}, {}])
+            team_info    = team_list[0] if isinstance(team_list[0], list) else []
+            team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+            roster_obj   = team_list[1].get("roster", {}) if len(team_list) > 1 else {}
+            players_raw  = roster_obj.get("0", {}).get("players", {})
+            slugs = []
+            for pk, pv in players_raw.items():
+                if pk == "count": continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list): continue
+                name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                pid  = next((d["player_id"] for d in p_list if isinstance(d, dict) and "player_id" in d), None)
+                if not name: continue
+                slug = (yahoo_id_to_slug.get(str(pid)) if pid else None) or _slug_by_name(name)
+                if slug: slugs.append(slug)
+            if team_key_val:
+                all_team_stats[team_key_val] = {"slugs": slugs, "stats": _project_team(slugs)}
+                if team_key_val == my_team_key:
+                    my_slugs = slugs
+    except Exception:
+        logger.exception("Yahoo roster parse failed for decisive wins")
+
+    my_ts = _project_team(my_slugs)
+
+    # Get current + total weeks from scoreboard for weeks_remaining
+    current_week = 1
+    total_weeks  = 22
+    try:
+        sb_league = scoreboard_data["fantasy_content"]["league"]
+        sb_entry  = next((x for x in sb_league if isinstance(x, dict) and "scoreboard" in x), {})
+        current_week = int(sb_entry.get("scoreboard", {}).get("week", 1))
+        league_info  = next((x for x in sb_league if isinstance(x, dict) and "end_week" in x), {})
+        total_weeks  = int(league_info.get("end_week", 22))
+    except Exception:
+        pass
+    weeks_remaining = max(0, total_weeks - current_week)
+
+    # For Yahoo, use all other teams as the opponent set (one slot per remaining week,
+    # cycling through teams to approximate a uniform schedule)
+    other_team_stats = [d["stats"] for k, d in all_team_stats.items() if k != my_team_key]
+    if weeks_remaining > 0 and other_team_stats:
+        # Repeat/cycle other teams to fill weeks_remaining slots
+        import itertools as _it
+        opp_stats_list = list(_it.islice(_it.cycle(other_team_stats), weeks_remaining))
+    else:
+        opp_stats_list = other_team_stats
+
+    all_rostered = set(s for d in all_team_stats.values() for s in d["slugs"])
+    repl = _build_repl(all_rostered)
+    dw   = _compute_dw(my_slugs, my_ts, opp_stats_list, repl, tracked_cats, NEG_SET, stat_name_map)
+
+    players_out = sorted([
+        {"slug": s, "name": slug_to_name.get(s, s), "total": d["total"], "by_category": d["by_category"]}
+        for s, d in dw.items()
+    ], key=lambda x: -x["total"])
+
+    return {
+        "weeks_remaining": weeks_remaining,
+        "tracked_cats":    tracked_cats,
+        "neg_cats":        neg_cats_list,
+        "players":         players_out,
+        "provider":        "yahoo",
+    }
+
+
 @fantasy_router.post("/player-map/populate")
 def populate_player_map(provider: str = Query(..., regex="^(espn|yahoo)$"),
                         current_user: str = Depends(get_current_user)):
