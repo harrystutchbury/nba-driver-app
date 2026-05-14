@@ -7358,6 +7358,11 @@ def get_decisive_wins(current_user: str = Depends(get_current_user)):
         except Exception:
             logger.exception("ESPN schedule parse failed for decisive wins")
 
+        # If no remaining matchups (season over), evaluate against every other team
+        season_complete = len(opp_stats_list) == 0
+        if season_complete:
+            opp_stats_list = [d["stats"] for tid, d in all_team_stats.items() if tid != my_team_id]
+
         all_rostered = set(s for d in all_team_stats.values() for s in d["slugs"])
         repl = _build_repl(all_rostered)
         dw   = _compute_dw(my_slugs, my_ts, opp_stats_list, repl, tracked_cats, NEG_CATS, stat_name_map)
@@ -7368,11 +7373,12 @@ def get_decisive_wins(current_user: str = Depends(get_current_user)):
         ], key=lambda x: -x["total"])
 
         return {
-            "weeks_remaining": len(opp_stats_list),
-            "tracked_cats":    tracked_cats,
-            "neg_cats":        [c for c in tracked_cats if c in NEG_CATS],
-            "players":         players_out,
-            "provider":        "espn",
+            "weeks_remaining":  len(opp_stats_list),
+            "season_complete":  season_complete,
+            "tracked_cats":     tracked_cats,
+            "neg_cats":         [c for c in tracked_cats if c in NEG_CATS],
+            "players":          players_out,
+            "provider":         "espn",
         }
 
     # ── Yahoo path ───────────────────────────────────────────────────────────

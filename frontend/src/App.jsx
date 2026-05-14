@@ -3763,9 +3763,6 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
 
       {/* ── Decisive Wins ── */}
       {dwErr && <div className="login-error" style={{margin:'0 0 16px'}}>{dwErr}</div>}
-      {dwData && dwData.players && dwData.players.length === 0 && (
-        <div className="dash-empty" style={{marginBottom:16}}>Decisive wins: no remaining matchups found in your league schedule.</div>
-      )}
       {dwData && dwData.players && dwData.players.length > 0 && (() => {
         const dwCats = dwData.tracked_cats || []
         const dwNeg  = new Set(dwData.neg_cats || [])
@@ -3787,7 +3784,10 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
             <div className="ra-section-title" style={{display:'flex',alignItems:'center',gap:8}}>
               Decisive Wins
               <span className="ra-dw-sub">
-                {dwData.weeks_remaining} week{dwData.weeks_remaining !== 1 ? 's' : ''} remaining · % of matchups where this player is the difference-maker
+                {dwData.season_complete
+                  ? `Season complete · evaluated vs all ${dwData.weeks_remaining} league teams`
+                  : `${dwData.weeks_remaining} week${dwData.weeks_remaining !== 1 ? 's' : ''} remaining`
+                } · % of matchups where this player is the difference-maker
               </span>
             </div>
             <div className="dash-card ra-card-wide" style={{overflowX:'auto',marginBottom:24}}>
