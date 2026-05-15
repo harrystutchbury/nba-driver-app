@@ -4084,7 +4084,7 @@ function CTWBarChart({ data, freeAgents }) {
 
 // ── Trade Analysis tab ─────────────────────────────────────────────────────────
 
-function TradeAnalysis({ data, freeAgents: freeAgentsProp, onSelectPlayer }) {
+function TradeAnalysis({ data, onSelectPlayer }) {
   // Unified "leaving my roster" list — used by both trade and waiver
   const [outSlugs,   setOutSlugs]   = useState([])  // {slug, name} — trade outs
   const [dropSlugs,  setDropSlugs]  = useState([])  // {slug, name} — pure drops
@@ -4095,8 +4095,8 @@ function TradeAnalysis({ data, freeAgents: freeAgentsProp, onSelectPlayer }) {
   const [getSlugs,   setGetSlugs]   = useState([])  // getting from team 1
   const [getSlugs2,  setGetSlugs2]  = useState([])  // getting from team 2
 
-  // Waiver — use free agents from parent (already fetched at FantasyPage level)
-  const freeAgents = freeAgentsProp || []
+  // Waiver
+  const [freeAgents, setFreeAgents] = useState(null)
   const [faLoading,  setFaLoading]  = useState(false)
   const [faSearch,   setFaSearch]   = useState('')
   const [pickSlugs,  setPickSlugs]  = useState([])  // FAs adding
@@ -4110,6 +4110,12 @@ function TradeAnalysis({ data, freeAgents: freeAgentsProp, onSelectPlayer }) {
   const [dragging,   setDragging]   = useState(null)
 
   useEffect(() => {
+    setFaLoading(true)
+    apiFetch('/api/fantasy/espn/free-agents')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setFreeAgents(d.free_agents || []))
+      .catch(() => setFreeAgents([]))
+      .finally(() => setFaLoading(false))
     // Fetch baseline projected standings (no roster changes)
     apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -5898,7 +5904,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <TradeAnalysis data={rosterData} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
+        : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
     </div>
