@@ -6563,7 +6563,7 @@ def espn_roster_analysis(current_user: str = Depends(get_current_user)):
                 "espn_name": p.name,
                 "br_slug":   slug,
                 "stats": {k: round(avg[k] or 0, 1) for k in
-                          ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]} if avg else None,
+                          ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct","fga_pg","fta_pg"]} if avg else None,
             }
             team_players.append(pdata)
             if tid == my_team_id:
@@ -7242,7 +7242,7 @@ def espn_free_agents(size: int = Query(150, le=300),
                 slug = name_to_slug[m[0]]
         avg = player_avgs.get(slug) if slug else None
         stats = {k: round(avg[k] or 0, 1) for k in
-                 ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct"]} if avg else None
+                 ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct","fga_pg","fta_pg"]} if avg else None
         # Composite fantasy value: weighted sum across counting + % stats
         value = 0.0
         if stats:

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Bar, Line, Radar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -3851,6 +3851,180 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
   )
 }
 
+// ── Category Landscape chart ───────────────────────────────────────────────────
+
+const PLAYER_COLORS = [
+  '#4fc3f7','#81c784','#ffb74d','#f06292','#ba68c8',
+  '#4db6ac','#dce775','#ff8a65','#90a4ae','#a1887f','#80deea','#ffe082',
+]
+
+function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
+  const [toggledOut, setToggledOut] = useState(new Set())
+  const [replMode,   setReplMode]   = useState(false)
+
+  const { my_roster, teams, tracked_cats, neg_cats, stat_name_map } = data
+  const negSet  = new Set(neg_cats || [])
+  const cats    = tracked_cats || []
+  const catToKey = {}
+  cats.forEach(c => { if (stat_name_map[c]) catToKey[c] = stat_name_map[c] })
+
+  const activePlayers = (my_roster || []).filter(p => p.br_slug && p.stats)
+
+  // Replacement = avg of top-5 FAs by value (already sorted)
+  const repl = useMemo(() => {
+    const top5 = (freeAgents || []).filter(fa => fa.stats).slice(0, 5)
+    if (!top5.length) return null
+    const r = {}
+    for (const k of ['pts','reb','ast','stl','blk','tov','fg3m'])
+      r[k] = top5.reduce((s, fa) => s + (fa.stats[k] || 0), 0) / top5.length
+    const fgm = top5.reduce((s, fa) => s + (fa.stats.fga_pg||0)*(fa.stats.fg_pct||0)/100, 0)
+    const fga = top5.reduce((s, fa) => s + (fa.stats.fga_pg||0), 0)
+    const ftm = top5.reduce((s, fa) => s + (fa.stats.fta_pg||0)*(fa.stats.ft_pct||0)/100, 0)
+    const fta = top5.reduce((s, fa) => s + (fa.stats.fta_pg||0), 0)
+    r.fga_pg = fga / top5.length
+    r.fta_pg = fta / top5.length
+    r.fg_pct = fga ? fgm/fga*100 : 0
+    r.ft_pct = fta ? ftm/fta*100 : 0
+    return r
+  }, [freeAgents])
+
+  function togglePlayer(slug) {
+    setToggledOut(prev => { const n = new Set(prev); n.has(slug) ? n.delete(slug) : n.add(slug); return n })
+  }
+
+  // Compute team totals given current toggle state
+  function teamTotals() {
+    let pts=0,reb=0,ast=0,stl=0,blk=0,tov=0,fg3m=0,fgm=0,fga=0,ftm=0,fta=0
+    for (const p of activePlayers) {
+      const s = toggledOut.has(p.br_slug) ? (replMode ? repl : null) : p.stats
+      if (!s) continue
+      pts+=s.pts||0; reb+=s.reb||0; ast+=s.ast||0; stl+=s.stl||0
+      blk+=s.blk||0; tov+=s.tov||0; fg3m+=s.fg3m||0
+      const fa=s.fga_pg||0, ta=s.fta_pg||0
+      fgm+=fa*(s.fg_pct||0)/100; fga+=fa
+      ftm+=ta*(s.ft_pct||0)/100; fta+=ta
+    }
+    return { pts,reb,ast,stl,blk,tov,fg3m,
+             fg_pct: fga?fgm/fga*100:0, ft_pct: fta?ftm/fta*100:0,
+             _fgm:fgm,_fga:fga,_ftm:ftm,_fta:fta }
+  }
+
+  // A single player's contribution to a category (additive for stacking)
+  function playerSeg(p, key, ts) {
+    const s = toggledOut.has(p.br_slug) ? (replMode ? repl : null) : p.stats
+    if (!s) return 0
+    if (key === 'fg_pct') return ts._fga ? (s.fga_pg||0)*(s.fg_pct||0)/100/ts._fga*100 : 0
+    if (key === 'ft_pct') return ts._fta ? (s.fta_pg||0)*(s.ft_pct||0)/100/ts._fta*100 : 0
+    return s[key] || 0
+  }
+
+  const ts = teamTotals()
+
+  // Per-category max across all teams (including modified my team), for y-axis scaling
+  const maxVals = {}
+  for (const cat of cats) {
+    const key = catToKey[cat]; if (!key) continue
+    const vals = [...(teams||[]).map(t => t.stats?.[key]||0), ts[key]||0]
+    maxVals[cat] = Math.max(...vals, 0.001)
+  }
+
+  const chartH=180, barW=44, barGap=18, leftM=6, topM=12, botM=22
+  const svgW = leftM + cats.length*(barW+barGap) - barGap + 6
+  const svgH = chartH + topM + botM
+  const otherTeams = (teams||[]).filter(t => !t.is_my_team)
+
+  return (
+    <div className="dash-card" style={{marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+        <div className="ra-section-title" style={{margin:0}}>Category Landscape</div>
+        <div style={{display:'flex',borderRadius:4,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)'}}>
+          <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
+                          background:!replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
+                  onClick={()=>setReplMode(false)}>Remove</button>
+          <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
+                          background:replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
+                  onClick={()=>setReplMode(true)}>FA Avg</button>
+        </div>
+        {toggledOut.size>0 && (
+          <button style={{fontSize:11,padding:'2px 8px',background:'transparent',cursor:'pointer',
+                          border:'1px solid rgba(255,255,255,0.14)',borderRadius:3,color:'rgba(255,255,255,0.45)'}}
+                  onClick={()=>setToggledOut(new Set())}>Reset</button>
+        )}
+      </div>
+
+      <div style={{overflowX:'auto'}}>
+        <svg width={svgW} height={svgH} style={{display:'block'}}>
+          {cats.map((cat, i) => {
+            const key = catToKey[cat]; if (!key) return null
+            const isNeg = negSet.has(cat)
+            const x = leftM + i*(barW+barGap)
+            const maxV = maxVals[cat]
+
+            // Stacked player segments, bottom to top
+            const segs = []; let top = topM + chartH
+            for (const [pi, p] of activePlayers.entries()) {
+              const seg = playerSeg(p, key, ts)
+              const h = Math.max(0, (seg/maxV)*chartH)
+              if (h > 0.3) {
+                segs.push(
+                  <rect key={p.br_slug} x={x} y={top-h} width={barW} height={h}
+                        fill={PLAYER_COLORS[pi%PLAYER_COLORS.length]}
+                        opacity={toggledOut.has(p.br_slug)?0.25:0.82} />
+                )
+              }
+              top -= h
+            }
+
+            return (
+              <g key={cat}>
+                {/* Track background */}
+                <rect x={x} y={topM} width={barW} height={chartH} fill="rgba(255,255,255,0.025)" rx={2}/>
+                {/* Stacked bars */}
+                {segs}
+                {/* Other teams' lines */}
+                {otherTeams.map((t, li) => {
+                  const val = t.stats?.[key]||0
+                  const ly = topM + chartH - (val/maxV)*chartH
+                  return <line key={li} x1={x} y1={ly} x2={x+barW} y2={ly}
+                               stroke="rgba(210,210,210,0.22)" strokeWidth={1}/>
+                })}
+                {/* Category label */}
+                <text x={x+barW/2} y={svgH-5} textAnchor="middle"
+                      fill="rgba(255,255,255,0.42)" fontSize={10} fontFamily="sans-serif">
+                  {cat}{isNeg?' ↓':''}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+
+      {/* Player toggle chips */}
+      <div style={{display:'flex',flexWrap:'wrap',gap:5,marginTop:10}}>
+        {activePlayers.map((p, i) => {
+          const isOut = toggledOut.has(p.br_slug)
+          const col   = PLAYER_COLORS[i%PLAYER_COLORS.length]
+          return (
+            <div key={p.br_slug}
+                 style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',borderRadius:4,
+                         cursor:'pointer',userSelect:'none',
+                         background: isOut?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.05)',
+                         border:`1px solid ${isOut?'rgba(255,255,255,0.08)':col+'55'}`,
+                         opacity: isOut?0.4:1}}
+                 onClick={()=>togglePlayer(p.br_slug)}>
+              <div style={{width:9,height:9,borderRadius:2,background:col,flexShrink:0}}/>
+              <span style={{fontSize:11,color:'rgba(255,255,255,0.8)',
+                            textDecoration:isOut?'line-through':'none'}}>
+                {p.espn_name}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Trade Analysis tab ─────────────────────────────────────────────────────────
 
 function TradeAnalysis({ data, onSelectPlayer }) {
@@ -4077,6 +4251,9 @@ function TradeAnalysis({ data, onSelectPlayer }) {
 
   return (
     <div className="fantasy-wrap">
+
+      {/* ── Category Landscape ── */}
+      <CTWBarChart data={data} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
 
       {/* ── Player Movement — 3-column layout ── */}
       <div className="dash-card" style={{marginBottom:12}}>
