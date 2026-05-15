@@ -3804,7 +3804,7 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
                 <thead>
                   <tr>
                     <th>Player</th>
-                    <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Total</th>
+                    <th style={{whiteSpace:'nowrap',textAlign:'left'}}>Total</th>
                     {dwCats.map(c => (
                       <th key={c} title={dwNeg.has(c) ? `${c} (lower=better)` : c} style={{textAlign:'center'}}>{c}</th>
                     ))}
@@ -3817,7 +3817,7 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
                         className={`ra-player-name${p.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
                         onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
                       >{p.name}</td>
-                      <td style={{whiteSpace:'nowrap',textAlign:'center'}}>
+                      <td style={{whiteSpace:'nowrap',textAlign:'left'}}>
                         <div style={{display:'inline-flex',alignItems:'center',gap:6}}>
                           <span style={{
                             fontFamily:'var(--mono)',fontWeight:600,fontSize:13,
