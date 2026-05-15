@@ -4372,6 +4372,60 @@ function TradeAnalysis({ data, onSelectPlayer }) {
                            beforeTotals={simResult.orig_stats} beforeRanks={cat_ranks} />
             </div>
 
+            {/* CTW Impact */}
+            {(simResult.ctw_before || simResult.ctw_after) && (() => {
+              const ctwB = simResult.ctw_before || {}
+              const ctwA = simResult.ctw_after  || {}
+              const slugToName = {}
+              my_roster.forEach(p => { if (p.br_slug) slugToName[p.br_slug] = p.espn_name })
+              addedPlayers.forEach(p => { slugToName[p.slug] = p.name })
+              const allSlugs = new Set([...Object.keys(ctwB), ...Object.keys(ctwA)])
+              const rows = [...allSlugs].map(slug => {
+                const before   = ctwB[slug]?.total ?? null
+                const after    = ctwA[slug]?.total ?? null
+                const delta    = (before != null && after != null) ? after - before : null
+                const isAdded   = ctwB[slug] == null
+                const isDropped = ctwA[slug] == null
+                return { slug, name: slugToName[slug] || slug, before, after, delta, isAdded, isDropped }
+              }).sort((a, b) => Math.abs(b.delta ?? (b.after ?? b.before ?? 0)) - Math.abs(a.delta ?? (a.after ?? a.before ?? 0)))
+              const fmtNet = v => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1)
+              const netCls = v => v == null ? '' : v >= 0.3 ? 'ra-z-pos' : v <= -0.3 ? 'ra-z-neg' : ''
+              const deltaCls = v => v == null ? '' : v > 0.05 ? 'ra-z-pos' : v < -0.05 ? 'ra-z-neg' : ''
+              return (
+                <div style={{marginTop:24}}>
+                  <div className="ra-section-title">CTW Impact · Net Contribution to Winning</div>
+                  <div className="dash-card" style={{overflowX:'auto'}}>
+                    <table className="dash-table ra-table">
+                      <thead>
+                        <tr>
+                          <th>Player</th>
+                          <th style={{textAlign:'center'}}>Before</th>
+                          <th style={{textAlign:'center'}}>After</th>
+                          <th style={{textAlign:'center'}}>Δ Change</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => (
+                          <tr key={r.slug} className={r.isAdded ? 'ra-player-added' : r.isDropped ? 'ra-player-out' : ''}>
+                            <td className="ra-player-name">
+                              {r.name}
+                              {r.isAdded   && <span className="ra-out-badge" style={{background:'var(--skill)',color:'#000'}}> IN</span>}
+                              {r.isDropped && <span className="ra-out-badge"> OUT</span>}
+                            </td>
+                            <td style={{textAlign:'center'}} className={netCls(r.before)}>{fmtNet(r.before)}</td>
+                            <td style={{textAlign:'center'}} className={netCls(r.after)}>{fmtNet(r.after)}</td>
+                            <td style={{textAlign:'center'}} className={deltaCls(r.delta)}>
+                              <strong>{fmtNet(r.delta)}</strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })()}
+
           </div>
         )
       })()}

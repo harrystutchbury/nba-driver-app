@@ -7013,6 +7013,124 @@ def espn_roster_simulate(body: dict = Body(...),
         raw = (v - m) / s
         new_cat_z[cat] = round(-raw if cat in NEG_CATS else raw, 2)
 
+    # ── CTW (decisive wins) before and after ─────────────────────────────────
+    def _project_team_ext(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_s = fga_s = ftm_s = fta_s = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg: continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_s += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_s += fga_pg
+            ftm_s += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_s += fta_pg
+        return {
+            "pts": pts, "reb": reb, "ast": ast, "stl": stl,
+            "blk": blk, "tov": tov, "fg3m": fg3m,
+            "fg_pct": (fgm_s / fga_s * 100) if fga_s else 0,
+            "ft_pct": (ftm_s / fta_s * 100) if fta_s else 0,
+            "_fgm": fgm_s, "_fga": fga_s, "_ftm": ftm_s, "_fta": fta_s,
+        }
+
+    def _above_repl_ctw(slug, repl, my_ts):
+        avg = player_avgs.get(slug) or {}
+        ar = {}
+        for key in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]:
+            ar[key] = (avg.get(key) or 0) - (repl.get(key) or 0)
+        p_fga = avg.get("fga_pg") or 0
+        p_fgm = p_fga * (avg.get("fg_pct") or 0) / 100
+        r_fga = repl.get("fga_pg") or 0
+        r_fgm = r_fga * (repl.get("fg_pct") or 0) / 100
+        new_fga = my_ts["_fga"] - p_fga + r_fga
+        new_fgm = my_ts["_fgm"] - p_fgm + r_fgm
+        ar["fg_pct"] = my_ts["fg_pct"] - ((new_fgm / new_fga * 100) if new_fga else 0)
+        p_fta = avg.get("fta_pg") or 0
+        p_ftm = p_fta * (avg.get("ft_pct") or 0) / 100
+        r_fta = repl.get("fta_pg") or 0
+        r_ftm = r_fta * (repl.get("ft_pct") or 0) / 100
+        new_fta = my_ts["_fta"] - p_fta + r_fta
+        new_ftm = my_ts["_ftm"] - p_ftm + r_ftm
+        ar["ft_pct"] = my_ts["ft_pct"] - ((new_ftm / new_fta * 100) if new_fta else 0)
+        return ar
+
+    def _compute_ctw(my_slugs, my_ts, opp_stats_list, repl):
+        n = len(opp_stats_list)
+        if n == 0:
+            return {}
+        result = {}
+        for slug in my_slugs:
+            if not player_avgs.get(slug):
+                continue
+            ar = _above_repl_ctw(slug, repl, my_ts)
+            by_cat = {}
+            total_wins = total_losses = 0.0
+            for cat in tracked_cats:
+                key = stat_name_map.get(cat)
+                if not key: continue
+                is_neg = cat in NEG_CATS
+                ar_adj = -(ar.get(key, 0)) if is_neg else ar.get(key, 0)
+                wins = losses = 0
+                for opp in opp_stats_list:
+                    my_v   = my_ts.get(key, 0)
+                    opp_v  = opp.get(key, 0)
+                    margin = (opp_v - my_v) if is_neg else (my_v - opp_v)
+                    if margin > 0 and ar_adj > margin:
+                        wins += 1
+                    elif ar_adj < margin < 0:
+                        losses += 1
+                win_rate  = 0.0 if wins  == 0 else round(wins  / n, 3)
+                loss_rate = 0.0 if losses == 0 else round(losses / n, 3)
+                by_cat[cat] = {"win": win_rate, "loss": loss_rate, "net": round(win_rate - loss_rate, 3)}
+                total_wins   += win_rate
+                total_losses += loss_rate
+            result[slug] = {
+                "by_category":  by_cat,
+                "total":        round(total_wins - total_losses, 2),
+                "total_wins":   round(total_wins,   2),
+                "total_losses": round(total_losses, 2),
+            }
+        return result
+
+    def _build_repl_ctw(all_rostered_slugs):
+        def _val(slug):
+            avg = player_avgs.get(slug)
+            if not avg: return 0.0
+            return ((avg.get("pts") or 0) + (avg.get("reb") or 0) + (avg.get("ast") or 0)
+                    + 1.5*(avg.get("stl") or 0) + 1.5*(avg.get("blk") or 0)
+                    + (avg.get("fg3m") or 0))
+        fa_slugs = sorted(
+            [s for s in player_avgs if s not in all_rostered_slugs],
+            key=_val, reverse=True
+        )[:5]
+        if not fa_slugs:
+            return {k: 0 for k in ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct","fga_pg","fta_pg"]}
+        repl = {}
+        for key in ["pts","reb","ast","stl","blk","tov","fg3m","fga_pg","fta_pg"]:
+            repl[key] = sum(player_avgs[s].get(key) or 0 for s in fa_slugs) / len(fa_slugs)
+        fgm = sum((player_avgs[s].get("fga_pg") or 0)*(player_avgs[s].get("fg_pct") or 0)/100 for s in fa_slugs)
+        fga = sum(player_avgs[s].get("fga_pg") or 0 for s in fa_slugs)
+        ftm = sum((player_avgs[s].get("fta_pg") or 0)*(player_avgs[s].get("ft_pct") or 0)/100 for s in fa_slugs)
+        fta = sum(player_avgs[s].get("fta_pg") or 0 for s in fa_slugs)
+        repl["fg_pct"] = (fgm / fga * 100) if fga else 0
+        repl["ft_pct"] = (ftm / fta * 100) if fta else 0
+        return repl
+
+    all_rostered_ctw = set(s for slugs in all_team_slugs.values() for s in slugs)
+    repl_ctw   = _build_repl_ctw(all_rostered_ctw)
+    ts_before  = _project_team_ext(orig_slugs)
+    ts_after   = _project_team_ext(new_slugs)
+    ctw_before = _compute_ctw(orig_slugs, ts_before, other_stats, repl_ctw)
+    ctw_after  = _compute_ctw(new_slugs,  ts_after,  other_stats, repl_ctw)
+
     return {
         "orig_stats":      {k: round(v, 2) for k, v in orig_stats.items()},
         "new_stats":       {k: round(v, 2) for k, v in new_stats.items()},
@@ -7026,6 +7144,8 @@ def espn_roster_simulate(body: dict = Body(...),
         "my_proj_wins":        my_new.get("proj_wins"),
         "tracked_cats":    tracked_cats,
         "neg_cats":        list(NEG_CATS),
+        "ctw_before":      ctw_before,
+        "ctw_after":       ctw_after,
     }
 
 
