@@ -4526,6 +4526,20 @@ td.bs-pos {
   margin-left: 4px;
 }
 
+.ctw-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: .05em;
+}
+.ctw-tag-in  { background: rgba(76,175,100,0.18); color: var(--skill); border: 1px solid rgba(76,175,100,0.35); }
+.ctw-tag-out { background: rgba(255,107,107,0.1);  color: #ff8080;     border: 1px solid rgba(255,107,107,0.25); }
+.ctw-row-out td { background: rgba(255,107,107,0.04); }
+
 /* Row for a dropped player in the after-roster table */
 .ra-player-out td {
   opacity: 0.45;
