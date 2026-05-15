@@ -3766,16 +3766,21 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
       {dwData && dwData.players && dwData.players.length > 0 && (() => {
         const dwCats = dwData.tracked_cats || []
         const dwNeg  = new Set(dwData.neg_cats || [])
+        function dwNet(cat_data) {
+          if (cat_data == null) return null
+          const v = typeof cat_data === 'number' ? cat_data : cat_data?.net
+          return (v == null || !isFinite(v)) ? null : v
+        }
         function dwRate(cat_data) {
-          if (cat_data == null) return '—'
-          const net = cat_data.net ?? cat_data
+          const net = dwNet(cat_data)
+          if (net == null) return '—'
           const pct = Math.round(net * 100)
           if (pct === 0) return '0%'
           return (pct > 0 ? '+' : '') + pct + '%'
         }
         function dwCls(cat_data) {
           if (cat_data == null) return ''
-          const net = cat_data.net ?? cat_data
+          const net = dwNet(cat_data)
           if (net >= 0.4)  return 'ra-z-pos'
           if (net >= 0.1)  return 'ra-dw-pos-dim'
           if (net > -0.1)  return 'ra-z-neu'

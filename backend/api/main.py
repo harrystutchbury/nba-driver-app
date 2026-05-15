@@ -7258,9 +7258,11 @@ def get_decisive_wins(current_user: str = Depends(get_current_user)):
                         wins += 1
                     elif ar_adj < margin < 0:
                         losses += 1
-                win_rate  = round(wins   / n, 3)
-                loss_rate = round(losses / n, 3)
-                by_cat[cat] = {"win": win_rate, "loss": loss_rate, "net": round(win_rate - loss_rate, 3)}
+                import math as _m
+                win_rate  = 0.0 if (wins  == 0 or _m.isnan(wins  / n)) else round(wins  / n, 3)
+                loss_rate = 0.0 if (losses == 0 or _m.isnan(losses / n)) else round(losses / n, 3)
+                net_rate  = round(win_rate - loss_rate, 3)
+                by_cat[cat] = {"win": win_rate, "loss": loss_rate, "net": net_rate}
                 total_wins   += win_rate
                 total_losses += loss_rate
             result[slug] = {
