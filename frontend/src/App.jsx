@@ -3858,19 +3858,30 @@ const PLAYER_COLORS = [
   '#4db6ac','#dce775','#ff8a65','#90a4ae','#a1887f','#80deea','#ffe082',
 ]
 
-function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
+function CTWBarChart({ data, freeAgents }) {
   const [toggledOut, setToggledOut] = useState(new Set())
   const [replMode,   setReplMode]   = useState(false)
+  const [hoverSlug,  setHoverSlug]  = useState(null)
+  const [tooltip,    setTooltip]    = useState(null)
+  const containerRef = useRef(null)
+  const [containerW, setContainerW] = useState(800)
 
-  const { my_roster, teams, tracked_cats, neg_cats, stat_name_map } = data
-  const negSet  = new Set(neg_cats || [])
-  const cats    = tracked_cats || []
-  const catToKey = {}
+  useEffect(() => {
+    if (!containerRef.current) return
+    setContainerW(containerRef.current.clientWidth)
+    const ro = new ResizeObserver(([e]) => setContainerW(e.contentRect.width))
+    ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const { my_roster, teams, tracked_cats, neg_cats, stat_name_map, cat_ranks } = data
+  const negSet     = new Set(neg_cats || [])
+  const cats       = tracked_cats || []
+  const catToKey   = {}
   cats.forEach(c => { if (stat_name_map[c]) catToKey[c] = stat_name_map[c] })
-
   const activePlayers = (my_roster || []).filter(p => p.br_slug && p.stats)
+  const otherTeams    = (teams || []).filter(t => !t.is_my_team)
 
-  // Replacement = avg of top-5 FAs by value (already sorted)
   const repl = useMemo(() => {
     const top5 = (freeAgents || []).filter(fa => fa.stats).slice(0, 5)
     if (!top5.length) return null
@@ -3881,18 +3892,16 @@ function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
     const fga = top5.reduce((s, fa) => s + (fa.stats.fga_pg||0), 0)
     const ftm = top5.reduce((s, fa) => s + (fa.stats.fta_pg||0)*(fa.stats.ft_pct||0)/100, 0)
     const fta = top5.reduce((s, fa) => s + (fa.stats.fta_pg||0), 0)
-    r.fga_pg = fga / top5.length
-    r.fta_pg = fta / top5.length
+    r.fga_pg = fga/top5.length; r.fta_pg = fta/top5.length
     r.fg_pct = fga ? fgm/fga*100 : 0
     r.ft_pct = fta ? ftm/fta*100 : 0
     return r
   }, [freeAgents])
 
   function togglePlayer(slug) {
-    setToggledOut(prev => { const n = new Set(prev); n.has(slug) ? n.delete(slug) : n.add(slug); return n })
+    setToggledOut(prev => { const n = new Set(prev); n.has(slug)?n.delete(slug):n.add(slug); return n })
   }
 
-  // Compute team totals given current toggle state
   function teamTotals() {
     let pts=0,reb=0,ast=0,stl=0,blk=0,tov=0,fg3m=0,fgm=0,fga=0,ftm=0,fta=0
     for (const p of activePlayers) {
@@ -3905,33 +3914,44 @@ function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
       ftm+=ta*(s.ft_pct||0)/100; fta+=ta
     }
     return { pts,reb,ast,stl,blk,tov,fg3m,
-             fg_pct: fga?fgm/fga*100:0, ft_pct: fta?ftm/fta*100:0,
+             fg_pct:fga?fgm/fga*100:0, ft_pct:fta?ftm/fta*100:0,
              _fgm:fgm,_fga:fga,_ftm:ftm,_fta:fta }
   }
 
-  // A single player's contribution to a category (additive for stacking)
   function playerSeg(p, key, ts) {
     const s = toggledOut.has(p.br_slug) ? (replMode ? repl : null) : p.stats
     if (!s) return 0
-    if (key === 'fg_pct') return ts._fga ? (s.fga_pg||0)*(s.fg_pct||0)/100/ts._fga*100 : 0
-    if (key === 'ft_pct') return ts._fta ? (s.fta_pg||0)*(s.ft_pct||0)/100/ts._fta*100 : 0
+    if (key==='fg_pct') return ts._fga ? (s.fga_pg||0)*(s.fg_pct||0)/100/ts._fga*100 : 0
+    if (key==='ft_pct') return ts._fta ? (s.fta_pg||0)*(s.ft_pct||0)/100/ts._fta*100 : 0
     return s[key] || 0
   }
 
   const ts = teamTotals()
 
-  // Per-category max across all teams (including modified my team), for y-axis scaling
   const maxVals = {}
   for (const cat of cats) {
     const key = catToKey[cat]; if (!key) continue
-    const vals = [...(teams||[]).map(t => t.stats?.[key]||0), ts[key]||0]
-    maxVals[cat] = Math.max(...vals, 0.001)
+    maxVals[cat] = Math.max(...(teams||[]).map(t=>t.stats?.[key]||0), ts[key]||0, 0.001)
   }
 
-  const chartH=180, barW=44, barGap=18, leftM=6, topM=12, botM=22
-  const svgW = leftM + cats.length*(barW+barGap) - barGap + 6
+  function modRank(cat) {
+    const key = catToKey[cat]; if (!key) return null
+    const isNeg = negSet.has(cat), myVal = ts[key]||0
+    const rank = otherTeams.filter(t => isNeg ? (t.stats?.[key]||0)<myVal : (t.stats?.[key]||0)>myVal).length + 1
+    return { rank, total: otherTeams.length + 1 }
+  }
+
+  function rankFill(rank, total) {
+    if (rank <= Math.ceil(total/3))  return 'var(--skill)'
+    if (rank > total-Math.ceil(total/3)) return '#ff6b6b'
+    return 'rgba(255,255,255,0.4)'
+  }
+
+  // Dynamic bar width — fill the container
+  const numCats = cats.length
+  const leftM=6, barGap=12, chartH=180, topM=12, botM=42
+  const barW = numCats>0 ? Math.max(24, (containerW - leftM*2 - barGap*(numCats-1)) / numCats) : 44
   const svgH = chartH + topM + botM
-  const otherTeams = (teams||[]).filter(t => !t.is_my_team)
 
   return (
     <div className="dash-card" style={{marginBottom:16}}>
@@ -3940,10 +3960,10 @@ function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
         <div style={{display:'flex',borderRadius:4,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)'}}>
           <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
                           background:!replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
-                  onClick={()=>setReplMode(false)}>Remove</button>
+                  onClick={()=>setReplMode(false)}>No Replacement</button>
           <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
                           background:replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
-                  onClick={()=>setReplMode(true)}>FA Avg</button>
+                  onClick={()=>setReplMode(true)}>Replacement</button>
         </div>
         {toggledOut.size>0 && (
           <button style={{fontSize:11,padding:'2px 8px',background:'transparent',cursor:'pointer',
@@ -3952,24 +3972,45 @@ function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
         )}
       </div>
 
-      <div style={{overflowX:'auto'}}>
-        <svg width={svgW} height={svgH} style={{display:'block'}}>
+      <div ref={containerRef} style={{width:'100%',position:'relative'}}>
+        <svg width={containerW} height={svgH} style={{display:'block'}}>
           {cats.map((cat, i) => {
             const key = catToKey[cat]; if (!key) return null
             const isNeg = negSet.has(cat)
             const x = leftM + i*(barW+barGap)
             const maxV = maxVals[cat]
+            const orig = cat_ranks?.[cat]
+            const mod  = modRank(cat)
+            const origR = orig?.rank, total = mod?.total || orig?.total || 1
+            const modR  = mod?.rank
+            const rankChanged = toggledOut.size>0 && origR!=null && modR!=null && origR!==modR
+            const displayR = modR ?? origR
+            const rankLabel = rankChanged
+              ? `#${origR}→#${modR}`
+              : displayR ? `#${displayR}` : ''
+            const rankImproved = rankChanged && modR < origR
+            const rankWorsened = rankChanged && modR > origR
+            const rfill = rankChanged
+              ? (rankImproved ? 'var(--skill)' : '#ff6b6b')
+              : rankFill(displayR, total)
 
-            // Stacked player segments, bottom to top
+            // Stacked segments, bottom to top
             const segs = []; let top = topM + chartH
             for (const [pi, p] of activePlayers.entries()) {
               const seg = playerSeg(p, key, ts)
               const h = Math.max(0, (seg/maxV)*chartH)
               if (h > 0.3) {
+                const col = PLAYER_COLORS[pi%PLAYER_COLORS.length]
+                const isHov = hoverSlug===p.br_slug
+                const dimmed = hoverSlug && !isHov
                 segs.push(
                   <rect key={p.br_slug} x={x} y={top-h} width={barW} height={h}
-                        fill={PLAYER_COLORS[pi%PLAYER_COLORS.length]}
-                        opacity={toggledOut.has(p.br_slug)?0.25:0.82} />
+                        fill={col}
+                        opacity={toggledOut.has(p.br_slug)?0.2 : dimmed?0.28 : isHov?1 : 0.82}
+                        style={{cursor:'pointer'}}
+                        onMouseEnter={e=>{setHoverSlug(p.br_slug);setTooltip({x:e.clientX,y:e.clientY,name:p.espn_name,cat,val:seg})}}
+                        onMouseMove={e=>setTooltip(t=>t?{...t,x:e.clientX,y:e.clientY}:null)}
+                        onMouseLeave={()=>{setHoverSlug(null);setTooltip(null)}} />
                 )
               }
               top -= h
@@ -3977,44 +4018,57 @@ function CTWBarChart({ data, freeAgents, onSelectPlayer }) {
 
             return (
               <g key={cat}>
-                {/* Track background */}
                 <rect x={x} y={topM} width={barW} height={chartH} fill="rgba(255,255,255,0.025)" rx={2}/>
-                {/* Stacked bars */}
                 {segs}
-                {/* Other teams' lines */}
-                {otherTeams.map((t, li) => {
-                  const val = t.stats?.[key]||0
-                  const ly = topM + chartH - (val/maxV)*chartH
+                {otherTeams.map((t,li) => {
+                  const val=t.stats?.[key]||0
+                  const ly=topM+chartH-(val/maxV)*chartH
                   return <line key={li} x1={x} y1={ly} x2={x+barW} y2={ly}
                                stroke="rgba(210,210,210,0.22)" strokeWidth={1}/>
                 })}
-                {/* Category label */}
-                <text x={x+barW/2} y={svgH-5} textAnchor="middle"
+                <text x={x+barW/2} y={svgH-26} textAnchor="middle"
                       fill="rgba(255,255,255,0.42)" fontSize={10} fontFamily="sans-serif">
                   {cat}{isNeg?' ↓':''}
+                </text>
+                <text x={x+barW/2} y={svgH-10} textAnchor="middle"
+                      fill={rfill} fontSize={9} fontFamily="sans-serif" fontWeight="600">
+                  {rankLabel}
                 </text>
               </g>
             )
           })}
         </svg>
+
+        {tooltip && (
+          <div style={{position:'fixed',left:tooltip.x+14,top:tooltip.y-40,
+                       background:'rgba(18,20,30,0.94)',border:'1px solid rgba(255,255,255,0.13)',
+                       borderRadius:5,padding:'5px 10px',fontSize:12,pointerEvents:'none',
+                       zIndex:9999,whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(0,0,0,0.5)'}}>
+            <strong style={{color:'#fff'}}>{tooltip.name}</strong>
+            <span style={{color:'rgba(255,255,255,0.45)',marginLeft:8}}>
+              {tooltip.cat}: {typeof tooltip.val==='number' ? tooltip.val.toFixed(1) : tooltip.val}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Player toggle chips */}
       <div style={{display:'flex',flexWrap:'wrap',gap:5,marginTop:10}}>
         {activePlayers.map((p, i) => {
           const isOut = toggledOut.has(p.br_slug)
           const col   = PLAYER_COLORS[i%PLAYER_COLORS.length]
+          const isHov = hoverSlug===p.br_slug
           return (
             <div key={p.br_slug}
                  style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',borderRadius:4,
-                         cursor:'pointer',userSelect:'none',
-                         background: isOut?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.05)',
+                         cursor:'pointer',userSelect:'none',transition:'background 0.1s',
+                         background:isHov?'rgba(255,255,255,0.09)':isOut?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.05)',
                          border:`1px solid ${isOut?'rgba(255,255,255,0.08)':col+'55'}`,
-                         opacity: isOut?0.4:1}}
-                 onClick={()=>togglePlayer(p.br_slug)}>
+                         opacity:isOut?0.4:1}}
+                 onClick={()=>togglePlayer(p.br_slug)}
+                 onMouseEnter={()=>setHoverSlug(p.br_slug)}
+                 onMouseLeave={()=>setHoverSlug(null)}>
               <div style={{width:9,height:9,borderRadius:2,background:col,flexShrink:0}}/>
-              <span style={{fontSize:11,color:'rgba(255,255,255,0.8)',
-                            textDecoration:isOut?'line-through':'none'}}>
+              <span style={{fontSize:11,color:'rgba(255,255,255,0.8)',textDecoration:isOut?'line-through':'none'}}>
                 {p.espn_name}
               </span>
             </div>
