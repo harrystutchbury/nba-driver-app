@@ -7233,7 +7233,7 @@ def get_decisive_wins(current_user: str = Depends(get_current_user)):
         return ar
 
     def _compute_dw(my_slugs, my_ts, opp_stats_list, repl, tracked_cats, neg_set, snm):
-        """Return {slug: {by_category: {cat: rate}, total: float}}."""
+        """Return {slug: {by_category: {cat: {win,loss,net}}, total, total_wins, total_losses}}."""
         n = len(opp_stats_list)
         if n == 0:
             return {}
@@ -7243,23 +7243,32 @@ def get_decisive_wins(current_user: str = Depends(get_current_user)):
                 continue
             ar = _above_repl(slug, repl, my_ts)
             by_cat = {}
-            total  = 0.0
+            total_wins = total_losses = 0.0
             for cat in tracked_cats:
                 key    = snm.get(cat)
                 if not key: continue
                 is_neg = cat in neg_set
                 ar_adj = -(ar.get(key, 0)) if is_neg else ar.get(key, 0)
-                decisive = 0
+                wins = losses = 0
                 for opp in opp_stats_list:
-                    my_v  = my_ts.get(key, 0)
-                    opp_v = opp.get(key, 0)
+                    my_v   = my_ts.get(key, 0)
+                    opp_v  = opp.get(key, 0)
                     margin = (opp_v - my_v) if is_neg else (my_v - opp_v)
                     if margin > 0 and ar_adj > margin:
-                        decisive += 1
-                rate = round(decisive / n, 3)
-                by_cat[cat] = rate
-                total += rate
-            result[slug] = {"by_category": by_cat, "total": round(total, 2)}
+                        wins += 1
+                    elif ar_adj < margin < 0:
+                        losses += 1
+                win_rate  = round(wins   / n, 3)
+                loss_rate = round(losses / n, 3)
+                by_cat[cat] = {"win": win_rate, "loss": loss_rate, "net": round(win_rate - loss_rate, 3)}
+                total_wins   += win_rate
+                total_losses += loss_rate
+            result[slug] = {
+                "by_category":  by_cat,
+                "total":        round(total_wins - total_losses, 2),
+                "total_wins":   round(total_wins,   2),
+                "total_losses": round(total_losses, 2),
+            }
         return result
 
     def _build_repl(all_rostered_slugs):

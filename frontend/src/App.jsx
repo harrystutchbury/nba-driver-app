@@ -3766,19 +3766,23 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
       {dwData && dwData.players && dwData.players.length > 0 && (() => {
         const dwCats = dwData.tracked_cats || []
         const dwNeg  = new Set(dwData.neg_cats || [])
-        function dwRate(r) {
-          if (r == null) return '—'
-          const pct = Math.round(r * 100)
-          return pct + '%'
+        function dwRate(cat_data) {
+          if (cat_data == null) return '—'
+          const net = cat_data.net ?? cat_data
+          const pct = Math.round(net * 100)
+          if (pct === 0) return '0%'
+          return (pct > 0 ? '+' : '') + pct + '%'
         }
-        function dwCls(r) {
-          if (r == null) return ''
-          if (r >= 0.6) return 'ra-z-pos'
-          if (r >= 0.3) return ''
-          if (r > 0)    return 'ra-z-neu'
+        function dwCls(cat_data) {
+          if (cat_data == null) return ''
+          const net = cat_data.net ?? cat_data
+          if (net >= 0.4)  return 'ra-z-pos'
+          if (net >= 0.1)  return 'ra-dw-pos-dim'
+          if (net > -0.1)  return 'ra-z-neu'
+          if (net > -0.4)  return 'ra-dw-neg-dim'
           return 'ra-z-neg'
         }
-        const maxTotal = Math.max(...dwData.players.map(p => p.total || 0), 0.01)
+        const maxAbs = Math.max(...dwData.players.map(p => Math.abs(p.total || 0)), 0.01)
         return (
           <>
             <div className="ra-section-title" style={{display:'flex',alignItems:'center',gap:8}}>
@@ -3810,10 +3814,16 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
                       >{p.name}</td>
                       <td style={{whiteSpace:'nowrap',textAlign:'center'}}>
                         <div style={{display:'inline-flex',alignItems:'center',gap:6}}>
-                          <span style={{fontFamily:'var(--mono)',fontWeight:600,fontSize:13}}>
-                            {p.total != null ? p.total.toFixed(1) : '—'}
+                          <span style={{
+                            fontFamily:'var(--mono)',fontWeight:600,fontSize:13,
+                            color: p.total > 0 ? 'var(--skill)' : p.total < 0 ? '#ff6b6b' : undefined
+                          }}>
+                            {p.total != null ? (p.total > 0 ? '+' : '') + p.total.toFixed(1) : '—'}
                           </span>
-                          <div className="ra-dw-bar" style={{width: Math.round((p.total / maxTotal) * 60)}} />
+                          <div className="ra-dw-bar" style={{
+                            width: Math.round((Math.abs(p.total) / maxAbs) * 60),
+                            background: p.total >= 0 ? 'var(--skill)' : '#ff6b6b'
+                          }} />
                         </div>
                       </td>
                       {dwCats.map(c => {

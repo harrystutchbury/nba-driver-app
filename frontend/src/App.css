@@ -4048,6 +4048,8 @@ td.bs-pos {
   border-radius: 3px;
   opacity: 0.7;
 }
+.ra-dw-pos-dim { color: #4caf64; opacity: 0.6; }
+.ra-dw-neg-dim { color: #ff6b6b; opacity: 0.6; }
 
 /* Simulate panel */
 .ra-sim-controls {
