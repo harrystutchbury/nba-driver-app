@@ -3598,7 +3598,7 @@ function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings'
 
 // ── Roster Analysis tab ────────────────────────────────────────────────────────
 
-function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
+function RosterAnalysis({ data, dwData, dwErr, freeAgents, onSelectPlayer }) {
   const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
@@ -3760,6 +3760,9 @@ function RosterAnalysis({ data, dwData, dwErr, onSelectPlayer }) {
           </tbody>
         </table>
       </div>
+
+      {/* ── Category Landscape ── */}
+      <CTWBarChart data={data} freeAgents={freeAgents} />
 
       {/* ── Decisive Wins ── */}
       {dwErr && <div className="login-error" style={{margin:'0 0 16px'}}>{dwErr}</div>}
@@ -4081,7 +4084,7 @@ function CTWBarChart({ data, freeAgents }) {
 
 // ── Trade Analysis tab ─────────────────────────────────────────────────────────
 
-function TradeAnalysis({ data, onSelectPlayer }) {
+function TradeAnalysis({ data, freeAgents: freeAgentsProp, onSelectPlayer }) {
   // Unified "leaving my roster" list — used by both trade and waiver
   const [outSlugs,   setOutSlugs]   = useState([])  // {slug, name} — trade outs
   const [dropSlugs,  setDropSlugs]  = useState([])  // {slug, name} — pure drops
@@ -4092,8 +4095,8 @@ function TradeAnalysis({ data, onSelectPlayer }) {
   const [getSlugs,   setGetSlugs]   = useState([])  // getting from team 1
   const [getSlugs2,  setGetSlugs2]  = useState([])  // getting from team 2
 
-  // Waiver
-  const [freeAgents, setFreeAgents] = useState(null)
+  // Waiver — use free agents from parent (already fetched at FantasyPage level)
+  const freeAgents = freeAgentsProp || []
   const [faLoading,  setFaLoading]  = useState(false)
   const [faSearch,   setFaSearch]   = useState('')
   const [pickSlugs,  setPickSlugs]  = useState([])  // FAs adding
@@ -4107,13 +4110,6 @@ function TradeAnalysis({ data, onSelectPlayer }) {
   const [dragging,   setDragging]   = useState(null)
 
   useEffect(() => {
-    // Fetch free agents
-    setFaLoading(true)
-    apiFetch('/api/fantasy/espn/free-agents')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => setFreeAgents(d.free_agents || []))
-      .catch(() => setFreeAgents([]))
-      .finally(() => setFaLoading(false))
     // Fetch baseline projected standings (no roster changes)
     apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4305,9 +4301,6 @@ function TradeAnalysis({ data, onSelectPlayer }) {
 
   return (
     <div className="fantasy-wrap">
-
-      {/* ── Category Landscape ── */}
-      <CTWBarChart data={data} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
 
       {/* ── Player Movement — 3-column layout ── */}
       <div className="dash-card" style={{marginBottom:12}}>
@@ -5779,6 +5772,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [rosterErr,   setRosterErr]   = useState(null)
   const [dwData,      setDwData]      = useState(null)
   const [dwErr,       setDwErr]       = useState(null)
+  const [freeAgents,  setFreeAgents]  = useState(null)
 
   function loadStatus() {
     apiFetch('/api/fantasy/status')
@@ -5820,6 +5814,15 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       .then(d => setDwData(d))
       .catch(() => setDwErr('Failed to load decisive wins data'))
   }, [status?.espn?.team_key, status?.yahoo?.league_key])
+
+  // Fetch free agents (ESPN only — used by Roster Analysis chart + Trade Analysis picker)
+  useEffect(() => {
+    if (!status?.espn?.team_key) return
+    apiFetch('/api/fantasy/espn/free-agents')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setFreeAgents(d.free_agents || []))
+      .catch(() => setFreeAgents([]))
+  }, [status?.espn?.team_key])
 
   if (!status) return <div className="dash-empty">Loading…</div>
 
@@ -5869,7 +5872,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         {tab === 'roster' && (rosterErr
           ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
           : !rosterData ? <div className="dash-empty">Loading…</div>
-          : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} onSelectPlayer={onSelectPlayer} />
+          : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
         )}
       </div>
     )
@@ -5890,12 +5893,12 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       {tab === 'roster' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} onSelectPlayer={onSelectPlayer} />
+        : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'trade' && (rosterErr
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
-        : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
+        : <TradeAnalysis data={rosterData} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
       )}
       {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
     </div>
