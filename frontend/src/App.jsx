@@ -3965,8 +3965,11 @@ function CTWBarChart({ data, freeAgents }) {
                           background:!replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
                   onClick={()=>setReplMode(false)}>No Replacement</button>
           <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
-                          background:replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
-                  onClick={()=>setReplMode(true)}>Replacement</button>
+                          background:replMode?'rgba(255,255,255,0.13)':'transparent',
+                          color:repl?'#ccc':'rgba(255,255,255,0.3)',
+                          cursor:repl?'pointer':'not-allowed'}}
+                  title={repl?undefined:'Free agent data not available'}
+                  onClick={()=>repl&&setReplMode(true)}>Replacement</button>
         </div>
         {toggledOut.size>0 && (
           <button style={{fontSize:11,padding:'2px 8px',background:'transparent',cursor:'pointer',
@@ -4009,7 +4012,7 @@ function CTWBarChart({ data, freeAgents }) {
                 segs.push(
                   <rect key={p.br_slug} x={x} y={top-h} width={barW} height={h}
                         fill={col}
-                        opacity={toggledOut.has(p.br_slug)?0.2 : dimmed?0.28 : isHov?1 : 0.82}
+                        opacity={toggledOut.has(p.br_slug)?(replMode&&repl?0.55:0.12) : dimmed?0.28 : isHov?1 : 0.82}
                         style={{cursor:'pointer'}}
                         onMouseEnter={e=>{setHoverSlug(p.br_slug);setTooltip({x:e.clientX,y:e.clientY,name:p.espn_name,cat,val:seg})}}
                         onMouseMove={e=>setTooltip(t=>t?{...t,x:e.clientX,y:e.clientY}:null)}
