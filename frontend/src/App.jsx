@@ -5777,6 +5777,7 @@ function PageLock({ onUpgrade }) {
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [status,      setStatus]      = useState(null)
   const [tab,         setTab]         = useState(initialTab)
+  useEffect(() => { setTab(initialTab) }, [initialTab])
   const [rosterData,  setRosterData]  = useState(null)
   const [rosterErr,   setRosterErr]   = useState(null)
   const [dwData,      setDwData]      = useState(null)
