@@ -4009,12 +4009,14 @@ function CTWBarChart({ data, freeAgents }) {
                 const col = PLAYER_COLORS[pi%PLAYER_COLORS.length]
                 const isHov = hoverSlug===p.br_slug
                 const dimmed = hoverSlug && !isHov
+                const pStats = toggledOut.has(p.br_slug) ? (replMode ? repl : null) : p.stats
+                const tipVal = (key==='fg_pct'||key==='ft_pct') ? (pStats?.[key]||0) : seg
                 segs.push(
                   <rect key={p.br_slug} x={x} y={top-h} width={barW} height={h}
                         fill={col}
                         opacity={toggledOut.has(p.br_slug)?(replMode&&repl?0.55:0.12) : dimmed?0.28 : isHov?1 : 0.82}
                         style={{cursor:'pointer'}}
-                        onMouseEnter={e=>{setHoverSlug(p.br_slug);setTooltip({x:e.clientX,y:e.clientY,name:p.espn_name,cat,val:seg})}}
+                        onMouseEnter={e=>{setHoverSlug(p.br_slug);setTooltip({x:e.clientX,y:e.clientY,name:p.espn_name,cat,val:tipVal})}}
                         onMouseMove={e=>setTooltip(t=>t?{...t,x:e.clientX,y:e.clientY}:null)}
                         onMouseLeave={()=>{setHoverSlug(null);setTooltip(null)}} />
                 )
