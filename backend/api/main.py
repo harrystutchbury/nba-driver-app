@@ -7192,7 +7192,8 @@ def espn_free_agents(size: int = Query(150, le=300),
                AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
                AVG(fg3m) AS fg3m,
                SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
-               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
         FROM game_logs WHERE season=? AND min>5
         GROUP BY player_slug HAVING COUNT(*)>=5
     """, [season]).fetchall()
