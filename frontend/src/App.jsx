@@ -5868,11 +5868,6 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
     )
     return (
       <div>
-        <div className="fantasy-tabs">
-          <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
-          <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
-          <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
-        </div>
         {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} provider="yahoo" />}
         {tab === 'standings' && <ProjectedStandings endpoint="/api/fantasy/yahoo/projected-standings" />}
         {tab === 'roster' && (rosterErr
@@ -5887,13 +5882,6 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   // ESPN connected (full feature set)
   return (
     <div>
-      <div className="fantasy-tabs">
-        <button className={`fantasy-tab${tab === 'dashboard' ? ' active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
-        <button className={`fantasy-tab${tab === 'standings' ? ' active' : ''}`} onClick={() => setTab('standings')}>Projected Standings</button>
-        <button className={`fantasy-tab${tab === 'roster'    ? ' active' : ''}`} onClick={() => setTab('roster')}>Roster Analysis</button>
-        <button className={`fantasy-tab${tab === 'trade'     ? ' active' : ''}`} onClick={() => setTab('trade')}>Trade Analysis</button>
-        <button className={`fantasy-tab${tab === 'matchup'   ? ' active' : ''}`} onClick={() => setTab('matchup')}>Matchup</button>
-      </div>
       {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
       {tab === 'standings' && <ProjectedStandings />}
       {tab === 'roster' && (rosterErr

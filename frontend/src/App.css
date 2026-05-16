@@ -2707,7 +2707,13 @@
     padding: 0 0 0 16px;
     background: transparent;
     margin-bottom: 4px;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: none;
   }
+
+  .nav-chevron { display: none; }
 
   .nav-drop-item {
     font-size: 14px;
