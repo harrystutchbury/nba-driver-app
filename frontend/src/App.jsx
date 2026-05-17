@@ -5777,9 +5777,12 @@ function PageLock({ onUpgrade }) {
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
-  const [status,      setStatus]      = useState(null)
-  const [tab,         setTab]         = useState(initialTab)
+  const [status,        setStatus]      = useState(null)
+  const [tab,           setTab]         = useState(initialTab)
   useEffect(() => { setTab(initialTab) }, [initialTab])
+  const [activeProvider, setActiveProvider] = useState(
+    () => localStorage.getItem('activeFantasyProvider') || null
+  )
   const [rosterData,  setRosterData]  = useState(null)
   const [rosterErr,   setRosterErr]   = useState(null)
   const [dwData,      setDwData]      = useState(null)
@@ -5792,54 +5795,74 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
       .then(d => { if (d) setStatus(d) })
       .catch(() => {})
   }
-
   useEffect(() => { loadStatus() }, [])
 
-  // Fetch roster-analysis once (shared between Roster Analysis + Trade Analysis tabs)
-  // Supports both ESPN and Yahoo — load after status is known
+  const espn  = status?.espn  || {}
+  const yahoo = status?.yahoo || {}
+
+  // Resolve which provider is actually active, falling back gracefully
+  const effectiveProvider = (() => {
+    if (!status) return null
+    const espnReady  = espn.connected  && espn.team_key
+    const yahooReady = yahoo.connected && yahoo.league_key
+    if (activeProvider === 'espn'  && (espn.connected))  return 'espn'
+    if (activeProvider === 'yahoo' && (yahoo.connected)) return 'yahoo'
+    if (espnReady)  return 'espn'
+    if (yahooReady) return 'yahoo'
+    if (espn.connected)  return 'espn'
+    if (yahoo.connected) return 'yahoo'
+    return null
+  })()
+
+  function switchProvider(p) {
+    setActiveProvider(p)
+    localStorage.setItem('activeFantasyProvider', p)
+    setRosterData(null); setRosterErr(null)
+    setDwData(null); setDwErr(null)
+    setFreeAgents(null)
+  }
+
+  // Fetch roster-analysis when provider or league changes
   useEffect(() => {
-    if (!status) return
-    const espn  = status.espn  || {}
-    const yahoo = status.yahoo || {}
-    if (espn.connected && espn.team_key) {
+    if (!effectiveProvider) return
+    if (effectiveProvider === 'espn' && espn.team_key) {
+      setRosterData(null); setRosterErr(null)
       apiFetch('/api/fantasy/espn/roster-analysis')
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => setRosterData(d))
         .catch(() => setRosterErr('Failed to load roster — is ESPN connected?'))
-    } else if (yahoo.connected && yahoo.league_key) {
+    } else if (effectiveProvider === 'yahoo' && yahoo.league_key) {
+      setRosterData(null); setRosterErr(null)
       apiFetch('/api/fantasy/yahoo/roster-analysis')
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => setRosterData(d))
         .catch(() => setRosterErr('Failed to load Yahoo roster data'))
     }
-  }, [status?.espn?.team_key, status?.yahoo?.league_key])
+  }, [effectiveProvider, status?.espn?.team_key, status?.yahoo?.league_key])
 
-  // Fetch decisive-wins (works for both ESPN and Yahoo)
+  // Fetch decisive-wins
   useEffect(() => {
-    if (!status) return
-    const espn  = status.espn  || {}
-    const yahoo = status.yahoo || {}
+    if (!effectiveProvider) return
     const hasLeague = (espn.connected && espn.team_key) || (yahoo.connected && yahoo.league_key)
     if (!hasLeague) return
+    setDwData(null); setDwErr(null)
     apiFetch('/api/fantasy/decisive-wins')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setDwData(d))
       .catch(() => setDwErr('Failed to load decisive wins data'))
-  }, [status?.espn?.team_key, status?.yahoo?.league_key])
+  }, [effectiveProvider, status?.espn?.team_key, status?.yahoo?.league_key])
 
-  // Fetch free agents (ESPN only — used by Roster Analysis chart + Trade Analysis picker)
+  // Fetch free agents (ESPN only)
   useEffect(() => {
-    if (!status?.espn?.team_key) return
+    if (effectiveProvider !== 'espn' || !espn.team_key) return
+    setFreeAgents(null)
     apiFetch('/api/fantasy/espn/free-agents')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setFreeAgents(d.free_agents || []))
       .catch(() => setFreeAgents([]))
-  }, [status?.espn?.team_key])
+  }, [effectiveProvider, status?.espn?.team_key])
 
   if (!status) return <div className="dash-empty">Loading…</div>
-
-  const espn  = status.espn  || {}
-  const yahoo = status.yahoo || {}
 
   // Neither connected
   if (!espn.connected && !yahoo.connected) return (
@@ -5851,43 +5874,68 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
     </div>
   )
 
-  // ESPN connected but no team picked yet
-  if (espn.connected && !espn.team_key) return (
-    <EspnTeamPicker
-      onPicked={loadStatus}
-      onDisconnect={async () => {
-        await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
-        loadStatus()
-      }}
-    />
+  // Provider switcher — shown whenever multiple providers are connected
+  const connectedProviders = ['espn', 'yahoo'].filter(p => status[p]?.connected)
+  const providerSwitcher = connectedProviders.length > 1 && (
+    <div style={{display:'flex',gap:6,padding:'12px 24px',borderBottom:'1px solid var(--border)'}}>
+      {connectedProviders.map(p => (
+        <button key={p} onClick={() => switchProvider(p)}
+          style={{padding:'4px 16px',fontSize:12,fontWeight:700,borderRadius:20,border:'1px solid',
+                  cursor:'pointer',letterSpacing:'0.04em',
+                  background: effectiveProvider===p ? 'var(--skill)' : 'transparent',
+                  color:      effectiveProvider===p ? '#000' : 'var(--muted)',
+                  borderColor:effectiveProvider===p ? 'var(--skill)' : 'var(--border)'}}>
+          {p.toUpperCase()}
+        </button>
+      ))}
+    </div>
   )
 
-  // Yahoo only (no ESPN)
-  if (!espn.connected && yahoo.connected) {
-    if (!yahoo.league_key) return (
+  // ESPN not set up yet
+  if (effectiveProvider === 'espn' && !espn.team_key) return (
+    <>
+      {providerSwitcher}
+      <EspnTeamPicker
+        onPicked={loadStatus}
+        onDisconnect={async () => {
+          await apiFetch('/api/fantasy/espn/disconnect', { method: 'DELETE' })
+          loadStatus()
+        }}
+      />
+    </>
+  )
+
+  // Yahoo not set up yet
+  if (effectiveProvider === 'yahoo' && !yahoo.league_key) return (
+    <>
+      {providerSwitcher}
       <div className="fantasy-wrap">
         <div className="fantasy-connect-card">
           <h2 className="fantasy-connect-title">Yahoo connected</h2>
           <p className="fantasy-connect-sub">Select a league in <strong>Account</strong> to continue.</p>
         </div>
       </div>
-    )
-    return (
-      <div>
-        {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} provider="yahoo" />}
-        {tab === 'standings' && <ProjectedStandings endpoint="/api/fantasy/yahoo/projected-standings" />}
-        {tab === 'roster' && (rosterErr
-          ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
-          : !rosterData ? <div className="dash-empty">Loading…</div>
-          : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
-        )}
-      </div>
-    )
-  }
+    </>
+  )
 
-  // ESPN connected (full feature set)
+  // Yahoo (dashboard / standings / roster only)
+  if (effectiveProvider === 'yahoo') return (
+    <div>
+      {providerSwitcher}
+      {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} provider="yahoo" />}
+      {tab === 'standings' && <ProjectedStandings endpoint="/api/fantasy/yahoo/projected-standings" />}
+      {tab === 'roster' && (rosterErr
+        ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+        : !rosterData ? <div className="dash-empty">Loading…</div>
+        : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
+      )}
+    </div>
+  )
+
+  // ESPN — full feature set
   return (
     <div>
+      {providerSwitcher}
       {tab === 'dashboard' && <ManagerDashboard onSelectPlayer={onSelectPlayer} />}
       {tab === 'standings' && <ProjectedStandings />}
       {tab === 'roster' && (rosterErr
@@ -5900,7 +5948,7 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} />
       )}
-      {tab === 'matchup'  && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
+      {tab === 'matchup' && <MatchupProjection onSelectPlayer={onSelectPlayer} />}
     </div>
   )
 }
