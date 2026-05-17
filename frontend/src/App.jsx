@@ -2342,7 +2342,6 @@ function TrendingPage({ onSelectPlayer, ownership }) {
   return (
     <div className="trend-page">
       <div className="trend-header">
-        <h2 className="trend-title">Trending Players</h2>
         <p className="trend-subtitle">
           Players whose recent stats are diverging from their season baseline.
           ΔZ = comparison Z − baseline Z.
@@ -6159,7 +6158,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     boxscores:         'Box Scores',
     injuries:          'Injury Report',
     depth:             'Depth Charts',
-    'weekly-schedule': 'Schedule',
+    'weekly-schedule': 'Weekly Schedule',
     'season-schedule': 'Season Schedule',
     blog:              'Blog',
     adjustments:       'Player Adjustments',
@@ -6170,7 +6169,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     standings:  'Projected Standings',
     roster:     'Roster Analysis',
     trade:      'Trade Analysis',
-    matchup:    'Matchup',
+    matchup:    'Matchup Analysis',
   }
   const pageTitle = page === 'fantasy'
     ? (FANTASY_TAB_TITLES[fantasyTab] ?? 'Fantasy')
@@ -6895,7 +6894,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                   <div className="nav-dropdown">
                     <button className="nav-drop-item" onClick={() => go('rankings')}>Rankings</button>
                     <button className="nav-drop-item" onClick={() => go('projections')}>Projections</button>
-                    <button className="nav-drop-item" onClick={() => go('trending')}>Trending</button>
+                    <button className="nav-drop-item" onClick={() => go('trending')}>Trending Players</button>
                     <button className="nav-drop-item" onClick={() => go('depth')}>Depth Charts</button>
                   </div>
                 </div>
@@ -6921,7 +6920,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('standings');  go('fantasy') }}>Projected Standings</button>
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('roster');     go('fantasy') }}>Roster Analysis</button>
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('trade');      go('fantasy') }}>Trade Analysis</button>
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('matchup');    go('fantasy') }}>Matchup</button>
+                    <button className="nav-drop-item" onClick={() => { setFantasyTab('matchup');    go('fantasy') }}>Matchup Analysis</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
                   </div>
                 </div>
