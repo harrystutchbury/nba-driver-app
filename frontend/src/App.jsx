@@ -1522,7 +1522,10 @@ function BoxScorePage({ onSelectPlayer, ownership }) {
 
   const fetchScores = useCallback(() => {
     apiFetch(`/api/box-score?date=${date}`)
-      .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
+      .then(r => r.ok ? r.json() : r.text().then(t => {
+        try { const e = JSON.parse(t); return Promise.reject(e.detail || 'Failed to load box scores') }
+        catch { return Promise.reject('Failed to load box scores') }
+      }))
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [date])
@@ -1536,7 +1539,7 @@ function BoxScorePage({ onSelectPlayer, ownership }) {
     if (date !== todayEt) return
 
     // Use SSE for live updates — single backend poll shared across all users
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('nba_token')
     if (!token) return
     const es = new EventSource(`/api/box-score/stream?token=${encodeURIComponent(token)}`)
     es.onmessage = e => {
