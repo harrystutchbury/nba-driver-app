@@ -364,20 +364,42 @@
       box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.04);
     }
 
-    .hero-screenshot-wrap {
+    .hero-screenshots-float {
       position: relative;
       z-index: 2;
       width: 100%;
       max-width: 1000px;
+      padding-bottom: 120px; /* space for the floating card */
+    }
+
+    .hero-screenshot-main {
       border: 1px solid var(--border-2);
       border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.04);
+      box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,230,118,0.06);
     }
+
+    .hero-screenshot-float {
+      position: absolute;
+      bottom: 0;
+      right: -24px;
+      width: 62%;
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,230,118,0.08);
+      transform: translateY(20px);
+    }
+
     .hero-screenshot {
       display: block;
       width: 100%;
       height: auto;
+    }
+
+    @media (max-width: 640px) {
+      .hero-screenshots-float { padding-bottom: 80px; }
+      .hero-screenshot-float  { right: -12px; width: 68%; }
     }
 
     .mock-bar {
@@ -1168,15 +1190,26 @@
       </div>
     </div>
 
-    <!-- APP SCREENSHOT -->
-    <div class="hero-screenshot-wrap">
-      <div class="mock-bar">
-        <div class="mock-dot"></div>
-        <div class="mock-dot"></div>
-        <div class="mock-dot"></div>
-        <div class="mock-url">app.rotointel.com/fantasy/matchup</div>
+    <!-- APP SCREENSHOTS -->
+    <div class="hero-screenshots-float">
+      <div class="hero-screenshot-main">
+        <div class="mock-bar">
+          <div class="mock-dot"></div>
+          <div class="mock-dot"></div>
+          <div class="mock-dot"></div>
+          <div class="mock-url">app.rotointel.com/matchup</div>
+        </div>
+        <img src="screenshot-matchup.png" alt="Roto Intel matchup projection" class="hero-screenshot" />
       </div>
-      <img src="screenshot.png" alt="Roto Intel matchup projection" class="hero-screenshot" />
+      <div class="hero-screenshot-float">
+        <div class="mock-bar">
+          <div class="mock-dot"></div>
+          <div class="mock-dot"></div>
+          <div class="mock-dot"></div>
+          <div class="mock-url">app.rotointel.com/trending</div>
+        </div>
+        <img src="screenshot-trending.png" alt="Roto Intel trending players" class="hero-screenshot" />
+      </div>
     </div>
   </div>
 </section>
