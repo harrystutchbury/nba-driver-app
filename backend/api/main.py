@@ -469,13 +469,15 @@ def _avg_row(rows, team_game_map=None):
     }
 
 
-def _league_data(conn, season=None, cutoff=None, min_games=10):
+def _league_data(conn, season=None, cutoff=None, min_games=20, min_mpg=15):
     """
     Fetch per-player averages for all qualifying players in a period.
     Returns (stats_dict, player_rows) where:
       stats_dict  — {stat: (mean, std)} for Z-score computation
       player_rows — list of dicts with player_slug + per-stat averages
     fg_pct and ft_pct are on the 0-100 scale to match _avg_row.
+    Baseline population: players averaging >=min_mpg minutes over >=min_games
+    games — excludes garbage-time specialists without over-restricting the pool.
     """
     clauses = ["min > 0"]
     params  = []
@@ -505,15 +507,11 @@ def _league_data(conn, season=None, cutoff=None, min_games=10):
         FROM game_logs
         WHERE {where}
         GROUP BY player_slug
-        HAVING COUNT(*) >= ?
-    """, params + [min_games]).fetchall()
+        HAVING COUNT(*) >= ? AND AVG(min) >= ?
+    """, params + [min_games, min_mpg]).fetchall()
     rows = [dict(r) for r in rows]
 
-    # Limit baseline population to top 200 by minutes — roughly the relevant
-    # fantasy player universe (~12 teams × 13–15 roster spots). Including
-    # bench/garbage-time players inflates std and compresses elite z-scores.
-    rows.sort(key=lambda r: r['min_pg'] or 0, reverse=True)
-    baseline_rows = rows[:200]
+    baseline_rows = rows
 
     if len(baseline_rows) < 2:
         return None, rows
@@ -838,8 +836,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     if current_season and current_season in rows_by_season:
         p30_rows = [_row_to_p30(r) for r in rows_by_season[current_season]]
         p30_rows = [r for r in p30_rows if r is not None]
-        p30_baseline = sorted(p30_rows, key=lambda r: r.get('min_pg') or 0, reverse=True)[:200]
-        p30_league = _p30_league_stats(p30_baseline)
+        p30_league = _p30_league_stats(p30_rows)
         if p30_league:
             player_p30 = next((r for r in p30_rows if r['player_slug'] == player), None)
             if player_p30:
