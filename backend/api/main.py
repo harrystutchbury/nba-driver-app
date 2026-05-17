@@ -469,7 +469,7 @@ def _avg_row(rows, team_game_map=None):
     }
 
 
-def _league_data(conn, season=None, cutoff=None, min_games=20, min_mpg=15):
+def _league_data(conn, season=None, cutoff=None, min_games=20, min_mpg=20):
     """
     Fetch per-player averages for all qualifying players in a period.
     Returns (stats_dict, player_rows) where:
