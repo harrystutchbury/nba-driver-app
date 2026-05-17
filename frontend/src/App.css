@@ -4967,6 +4967,22 @@ td.bs-pos {
 
 /* Outcome distribution */
 .mp-outcome-section { width: 230px; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .mp-wrap { padding: 8px 0; }
+
+  /* Stack controls vertically and full-width */
+  .mp-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .mp-controls-row { align-items: stretch; }
+  .mp-week-select { min-width: 0; width: 100%; }
+
+  /* Wrap the Results through day buttons */
+  .mp-asof-row { flex-wrap: wrap; gap: 6px; }
+
+  /* Stack outcome chart below the category table */
+  .mp-cats-outcome-row { flex-direction: column; }
+  .mp-outcome-section { width: 100%; }
+}
 .mp-outcomes { display: flex; flex-direction: column; gap: 4px; }
 .mp-outcome-row {
   display: flex; align-items: center; gap: 6px;
