@@ -3424,17 +3424,21 @@ def fantasy_status(current_user: str = Depends(get_current_user)):
 
 @fantasy_router.get("/leagues")
 def get_leagues(current_user: str = Depends(get_current_user)):
-    """Return user's Yahoo Fantasy Basketball leagues for the current season."""
+    """Return user's Yahoo Fantasy Basketball leagues across all seasons."""
     conn = get_conn()
     try:
         token = _refresh_yahoo_token(conn, current_user)
-        data = _yahoo_api(token, "users;use_login=1/games;game_keys=nba/leagues")
+        # is_available=1 returns all games the user is registered in,
+        # including pre-draft leagues for upcoming seasons
+        data = _yahoo_api(token, "users;use_login=1/games;is_available=1/leagues")
     except HTTPException:
         conn.close(); raise
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
     conn.close()
+
+    logger.info(f"Yahoo leagues raw response for {current_user}: {data}")
 
     leagues = []
     try:
@@ -3454,6 +3458,7 @@ def get_leagues(current_user: str = Depends(get_current_user)):
                     "name": league["name"],
                     "num_teams": league.get("num_teams"),
                     "season": league.get("season"),
+                    "draft_status": league.get("draft_status"),
                 })
     except Exception as e:
         logger.exception("Failed to parse Yahoo leagues response")
