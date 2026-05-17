@@ -135,6 +135,14 @@
   letter-spacing: 0.06em;
   margin: 0 0 14px;
 }
+.dash-card-subtitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 10px;
+}
 
 .dash-loading, .dash-empty {
   color: var(--muted);
