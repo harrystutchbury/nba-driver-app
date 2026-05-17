@@ -37,13 +37,15 @@ function apiFetch(url, opts = {}) {
 // ── Fantasy connections section (inside Account modal) ─────────────────────────
 
 function FantasyConnectionsSection() {
-  const [status,   setStatus]   = useState(null)
-  const [espnS2,   setEspnS2]   = useState('')
-  const [swid,     setSwid]     = useState('')
-  const [leagueId, setLeagueId] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [loading,  setLoading]  = useState(false)
-  const [msg,      setMsg]      = useState(null)
+  const [status,       setStatus]      = useState(null)
+  const [espnS2,       setEspnS2]      = useState('')
+  const [swid,         setSwid]        = useState('')
+  const [leagueId,     setLeagueId]    = useState('')
+  const [showForm,     setShowForm]    = useState(false)
+  const [loading,      setLoading]     = useState(false)
+  const [msg,          setMsg]         = useState(null)
+  const [yahooLeagues, setYahooLeagues] = useState(null)
+  const [yahooLoading, setYahooLoading] = useState(false)
 
   useEffect(() => { loadStatus() }, [])
 
@@ -138,6 +140,55 @@ function FantasyConnectionsSection() {
           </button>
         )}
       </div>
+
+      {/* Yahoo league picker — shown when connected but no league selected */}
+      {yahoo.connected && (
+        <div style={{marginTop:8,paddingLeft:4}}>
+          {yahoo.league_key ? (
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:13,color:'var(--muted)'}}>League selected ✓</span>
+              <button className="acct-disconnect-btn" onClick={() => {
+                setYahooLeagues(null)
+                setYahooLoading(true)
+                apiFetch('/api/fantasy/leagues').then(r => r.ok ? r.json() : Promise.reject()).then(d => setYahooLeagues(d)).catch(() => setYahooLeagues([])).finally(() => setYahooLoading(false))
+              }}>Change league</button>
+            </div>
+          ) : (
+            <div>
+              <p style={{fontSize:13,color:'var(--muted)',marginBottom:8}}>Select your Yahoo Fantasy Basketball league:</p>
+              {!yahooLeagues && !yahooLoading && (
+                <button className="acct-connect-btn" onClick={() => {
+                  setYahooLoading(true)
+                  apiFetch('/api/fantasy/leagues').then(r => r.ok ? r.json() : Promise.reject()).then(d => setYahooLeagues(d)).catch(() => setYahooLeagues([])).finally(() => setYahooLoading(false))
+                }}>Load my leagues</button>
+              )}
+              {yahooLoading && <span style={{fontSize:13,color:'var(--muted)'}}>Loading leagues…</span>}
+              {yahooLeagues && yahooLeagues.length === 0 && <span style={{fontSize:13,color:'var(--muted)'}}>No NBA leagues found.</span>}
+              {yahooLeagues && yahooLeagues.length > 0 && yahooLeagues.map(l => (
+                <div key={l.league_key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                                                padding:'8px 12px',marginBottom:4,borderRadius:6,
+                                                background:'var(--surface-2)',border:'1px solid var(--border)'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>{l.name}</div>
+                    <div style={{fontSize:11,color:'var(--muted)'}}>{l.num_teams} teams · {l.season}</div>
+                  </div>
+                  <button className="acct-connect-btn" style={{marginLeft:12}} onClick={async () => {
+                    setYahooLoading(true); setMsg(null)
+                    try {
+                      const res = await apiFetch('/api/fantasy/select-league', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({league_key:l.league_key}) })
+                      if (!res.ok) { const d=await res.json(); throw new Error(d.detail||'Failed') }
+                      setMsg({ type:'ok', text:'League selected!' })
+                      setYahooLeagues(null)
+                      loadStatus()
+                    } catch(e) { setMsg({ type:'err', text:e.message }) }
+                    setYahooLoading(false)
+                  }}>Select</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
