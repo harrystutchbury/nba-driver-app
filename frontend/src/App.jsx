@@ -3409,12 +3409,13 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
           ) : (
             <table className="dash-table">
               <thead>
-                <tr><th style={{textAlign:'left'}}>Player</th><th style={{textAlign:'center'}}>Pos</th><th>Status</th></tr>
+                <tr><th style={{textAlign:'left'}}>Player</th><th style={{textAlign:'center'}}>Pos</th><th style={{textAlign:'left'}}>Status</th></tr>
               </thead>
               <tbody>
                 {(roster.players || []).map((p, i) => {
                   const dbInj   = (playerFeed?.injuries || []).find(inj => inj.slug === p.br_slug)
-                  const status  = p.injury_status || 'Active'
+                  const STATUS_LABELS = { 'Day-To-Day': 'DTD', 'Day_To_Day': 'DTD', 'Questionable': 'Q', 'Doubtful': 'DBT' }
+                  const status  = STATUS_LABELS[p.injury_status] ?? p.injury_status ?? 'Active'
                   const isOut   = status !== 'Active'
                   const retDate = p.return_date || dbInj?.return_date
                   const fmtDate = d => {

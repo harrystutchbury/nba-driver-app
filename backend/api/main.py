@@ -4591,10 +4591,12 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         "INJURY_RESERVE":  "IR",
         "DOUBTFUL":        "Doubtful",
         "QUESTIONABLE":    "Questionable",
+        "DAY_TO_DAY":      "DTD",
         "PROBABLE":        "Probable",
         "SUSPENSION":      "Suspended",
         "NA":              "N/A",
     }
+    _POS_ORDER = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
 
     # Fetch expectedReturnDate directly from ESPN raw API — espn_api's mRoster
     # view doesn't include it, but mRoster + mTeam raw JSON does in playerPoolEntry.
@@ -4638,10 +4640,13 @@ def espn_roster(current_user: str = Depends(get_current_user)):
         raw_status = getattr(p, "injuryStatus", None) or "ACTIVE"
         slug = _resolve(p)
         pid  = str(p.playerId)
+        eligible = getattr(p, "eligibleSlots", None) or []
+        base_pos = sorted([s for s in eligible if s in _POS_ORDER], key=lambda s: _POS_ORDER[s])
+        position = "/".join(base_pos) if base_pos else getattr(p, "position", None)
         players.append({
             "name": p.name,
             "br_slug": slug,
-            "position": getattr(p, "position", None),
+            "position": position,
             "team": getattr(p, "proTeam", None),
             "injury_status": _ESPN_STATUS.get(raw_status, raw_status.title()),
             "return_date": return_date_by_pid.get(pid),
