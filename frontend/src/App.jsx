@@ -6850,7 +6850,7 @@ function AppMain({ onLogout, onOpenAccount }) {
         <div className="site-header-inner">
           <div className="site-logo" onClick={() => setPage('dashboard')} style={{ cursor: 'pointer' }}>
             <span className="site-logo-icon">🏀</span>
-            <h1 className="site-brand">Roto Intel</h1>
+            <h1 className="site-brand">Roto <span className="site-brand-intel">Intel</span></h1>
           </div>
           <button className="hamburger-btn" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Menu">
             <span className={`hamburger-icon${mobileMenuOpen ? ' open' : ''}`}>
