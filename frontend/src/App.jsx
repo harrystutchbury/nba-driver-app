@@ -3491,7 +3491,7 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
       </div>
 
       {/* Roster Updates — injuries + news */}
-      {playerFeed && (playerFeed.injuries?.length > 0 || playerFeed.news?.length > 0) && (() => {
+      {(() => {
         const slugToName = Object.fromEntries((roster?.players || []).map(p => [p.br_slug, p.name]))
         const INJ_BADGE = {
           'Out':          { bg: '#ff4444', text: '#fff' },
@@ -3505,6 +3505,8 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
           const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
           return `${months[+parts[1]-1]} ${+parts[2]}`
         }
+        const injuries = playerFeed?.injuries || []
+        const news     = playerFeed?.news     || []
         return (
           <div className="dash-card" style={{ marginTop: 16 }}>
             <div className="dash-card-title">Roster Updates</div>
@@ -3513,10 +3515,10 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
               {/* Injuries */}
               <div className="dash-updates-col">
                 <div className="dash-card-subtitle">Injuries</div>
-                {playerFeed.injuries.length === 0
+                {injuries.length === 0
                   ? <div className="dash-empty" style={{ fontSize: 13 }}>No injuries reported</div>
                   : <div className="dash-inj-list">
-                      {playerFeed.injuries.map((inj, i) => {
+                      {injuries.map((inj, i) => {
                         const badge = INJ_BADGE[inj.designation] || { bg: 'var(--surface-3)', text: 'var(--muted)' }
                         return (
                           <div key={i} className="dash-inj-item">
@@ -3539,10 +3541,10 @@ function ManagerDashboard({ onSelectPlayer, provider = 'espn' }) {
               {/* News */}
               <div className="dash-updates-col">
                 <div className="dash-card-subtitle">Recent News</div>
-                {playerFeed.news.length === 0
+                {news.length === 0
                   ? <div className="dash-empty" style={{ fontSize: 13 }}>No recent news</div>
                   : <div className="dash-news-list">
-                      {playerFeed.news.slice(0, 8).map((item, i) => {
+                      {news.slice(0, 8).map((item, i) => {
                         const names = item.slugs.map(s => slugToName[s] || s).filter(Boolean)
                         return (
                           <div key={i} className="dash-news-item">
@@ -6242,7 +6244,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     moderation:        'Moderation',
   }
   const FANTASY_TAB_TITLES = {
-    dashboard:  'Fantasy Dashboard',
+    dashboard:  'Dashboard',
     standings:  'Projected Standings',
     roster:     'Roster Analysis',
     trade:      'Trade Analysis',
