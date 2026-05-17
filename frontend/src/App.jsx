@@ -6151,7 +6151,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [fantasyTab, setFantasyTab]   = useState('dashboard')
 
   const PAGE_TITLES = {
-    dashboard:         'Dashboard',
+    dashboard:         'Home',
     rankings:          'Rankings',
     projections:       'Projections',
     trending:          'Trending Players',
