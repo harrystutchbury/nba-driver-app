@@ -509,15 +509,22 @@ def _league_data(conn, season=None, cutoff=None, min_games=10):
     """, params + [min_games]).fetchall()
     rows = [dict(r) for r in rows]
 
-    if len(rows) < 2:
+    # Limit baseline population to top 200 by minutes — roughly the relevant
+    # fantasy player universe (~12 teams × 13–15 roster spots). Including
+    # bench/garbage-time players inflates std and compresses elite z-scores.
+    rows.sort(key=lambda r: r['min_pg'] or 0, reverse=True)
+    baseline_rows = rows[:200]
+
+    if len(baseline_rows) < 2:
         return None, rows
 
-    # League-mean FG%/FT% for volume-weighted impact calculation
-    fg_vals = [r['fg_pct'] for r in rows if r['fg_pct'] is not None]
-    ft_vals = [r['ft_pct'] for r in rows if r['ft_pct'] is not None]
+    # League-mean FG%/FT% computed from baseline population only
+    fg_vals = [r['fg_pct'] for r in baseline_rows if r['fg_pct'] is not None]
+    ft_vals = [r['ft_pct'] for r in baseline_rows if r['ft_pct'] is not None]
     league_mean_fg = sum(fg_vals) / len(fg_vals) if fg_vals else None
     league_mean_ft = sum(ft_vals) / len(ft_vals) if ft_vals else None
 
+    # Compute impact values on all rows (so any player can be scored later)
     for r in rows:
         r['fg_impact'] = (
             (r['fg_pct'] - league_mean_fg) * r['fga_pg']
@@ -528,14 +535,15 @@ def _league_data(conn, season=None, cutoff=None, min_games=10):
             if r['ft_pct'] is not None and league_mean_ft is not None else None
         )
 
+    # Mean/std derived from baseline population only
     stats = {'_fg_mean': league_mean_fg, '_ft_mean': league_mean_ft}
     for key in Z_KEYS:
         if key == 'fg_pct':
-            vals = [r['fg_impact'] for r in rows if r['fg_impact'] is not None]
+            vals = [r['fg_impact'] for r in baseline_rows if r['fg_impact'] is not None]
         elif key == 'ft_pct':
-            vals = [r['ft_impact'] for r in rows if r['ft_impact'] is not None]
+            vals = [r['ft_impact'] for r in baseline_rows if r['ft_impact'] is not None]
         else:
-            vals = [r[key] for r in rows if r[key] is not None]
+            vals = [r[key] for r in baseline_rows if r[key] is not None]
         if len(vals) < 2:
             stats[key] = (None, None)
             continue
@@ -830,7 +838,8 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     if current_season and current_season in rows_by_season:
         p30_rows = [_row_to_p30(r) for r in rows_by_season[current_season]]
         p30_rows = [r for r in p30_rows if r is not None]
-        p30_league = _p30_league_stats(p30_rows)
+        p30_baseline = sorted(p30_rows, key=lambda r: r.get('min_pg') or 0, reverse=True)[:200]
+        p30_league = _p30_league_stats(p30_baseline)
         if p30_league:
             player_p30 = next((r for r in p30_rows if r['player_slug'] == player), None)
             if player_p30:
