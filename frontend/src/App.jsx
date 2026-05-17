@@ -6150,6 +6150,31 @@ function AppMain({ onLogout, onOpenAccount }) {
   }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
   const [fantasyTab, setFantasyTab]   = useState('dashboard')
+
+  const PAGE_TITLES = {
+    dashboard:         'Dashboard',
+    rankings:          'Rankings',
+    projections:       'Projections',
+    trending:          'Trending Players',
+    boxscores:         'Box Scores',
+    injuries:          'Injury Report',
+    depth:             'Depth Charts',
+    'weekly-schedule': 'Schedule',
+    'season-schedule': 'Season Schedule',
+    blog:              'Blog',
+    adjustments:       'Player Adjustments',
+    moderation:        'Moderation',
+  }
+  const FANTASY_TAB_TITLES = {
+    dashboard:  'Fantasy Dashboard',
+    standings:  'Projected Standings',
+    roster:     'Roster Analysis',
+    trade:      'Trade Analysis',
+    matchup:    'Matchup',
+  }
+  const pageTitle = page === 'fantasy'
+    ? (FANTASY_TAB_TITLES[fantasyTab] ?? 'Fantasy')
+    : PAGE_TITLES[page]
   const [blogInitSlug, setBlogInitSlug] = useState(null)
   const [isAdmin, setIsAdmin]           = useState(false)
   const [tier,    setTier]              = useState('free')
@@ -6957,6 +6982,11 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {/* ── Page body ──────────────────────────────────────── */}
       <main className="page-body">
+      {pageTitle && page !== 'player' && (
+        <div className="page-title-bar">
+          <h2 className="page-title">{pageTitle}</h2>
+        </div>
+      )}
 
       {page === 'dashboard' && <DashboardPage
         onSelectPlayer={p => { selectPlayer(p); setPage('player') }}

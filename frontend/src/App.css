@@ -1827,9 +1827,23 @@
 
 /* ── Page body ───────────────────────────────────────────── */
 .page-body {
-  padding: 24px 32px 80px;
+  padding: 0 32px 80px;
   max-width: 1600px;
   margin: 0 auto;
+}
+
+.page-title-bar {
+  padding: 20px 0 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.3px;
 }
 
 /* ── Error ───────────────────────────────────────────────── */
@@ -2745,6 +2759,9 @@
   .site-header { padding: 0 16px; }
   .site-brand { font-size: 15px; }
   .site-logo-icon { font-size: 22px; }
+
+  .page-body { padding: 0 16px 60px; }
+  .page-title { font-size: 17px; }
 
   .main-layout { padding: 12px 16px; }
 
