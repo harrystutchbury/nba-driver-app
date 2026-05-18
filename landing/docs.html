@@ -943,7 +943,7 @@
 
   <div class="subsection">
     <div class="sub-title">What it's for</div>
-    <p>Z-scores are how Roto Intel measures how good a player's stats are relative to the entire player pool. Rather than saying "LeBron averages 7 assists" — which tells you nothing without context — a z-score tells you how many standard deviations above or below average that figure is. A z-score of +2.0 means elite. A z-score of −1.0 means below average. Zero is exactly average.</p>
+    <p>A z-score tells you how many standard deviations above or below average a player's stat is. One standard deviation covers 68% of the player pool — so a z-score between −1 and +1 is genuinely average. Two standard deviations covers 95%, meaning anything above +2 or below −2 puts a player in the top or bottom 2.5% of the league. Zero is exactly average.</p>
   </div>
 
   <div class="subsection">
@@ -952,82 +952,32 @@
       <div class="zs-row">
         <span class="zs-val" style="color:#00e676">+2.0 and above</span>
         <div class="zs-bar" style="width:120px;background:linear-gradient(90deg,rgba(0,230,118,0.4),rgba(0,230,118,0.9))"></div>
-        <span class="zs-label">Elite — top tier fantasy contributor</span>
+        <span class="zs-label">Elite — top 2.5% of the player pool</span>
       </div>
       <div class="zs-row">
-        <span class="zs-val" style="color:#4dff99">+0.5 to +2.0</span>
+        <span class="zs-val" style="color:#4dff99">+1.0 to +2.0</span>
         <div class="zs-bar" style="width:80px;background:rgba(0,230,118,0.5)"></div>
         <span class="zs-label">Above average — meaningful positive contributor</span>
       </div>
       <div class="zs-row">
-        <span class="zs-val" style="color:#8892a4">−0.5 to +0.5</span>
+        <span class="zs-val" style="color:#8892a4">−1.0 to +1.0</span>
         <div class="zs-bar" style="width:40px;background:var(--dim)"></div>
-        <span class="zs-label">Average — roughly replacement level</span>
+        <span class="zs-label">Average — 68% of players fall here</span>
       </div>
       <div class="zs-row">
-        <span class="zs-val" style="color:#ff8099">−0.5 to −2.0</span>
+        <span class="zs-val" style="color:#ff8099">−1.0 to −2.0</span>
         <div class="zs-bar" style="width:80px;background:rgba(255,77,106,0.5)"></div>
         <span class="zs-label">Below average — drag on your roster</span>
       </div>
       <div class="zs-row">
         <span class="zs-val" style="color:#ff4d6a">Below −2.0</span>
         <div class="zs-bar" style="width:120px;background:linear-gradient(90deg,rgba(255,77,106,0.4),rgba(255,77,106,0.9))"></div>
-        <span class="zs-label">Significant liability — actively hurts you</span>
+        <span class="zs-label">Significant liability — bottom 2.5% of the player pool</span>
       </div>
     </div>
     <p style="margin-top:18px;font-size:0.9rem;color:var(--muted)">The <strong style="color:var(--text)">composite z-score</strong> sums all nine category z-scores into a single value representing overall fantasy value.</p>
   </div>
 
-  <div class="subsection">
-    <div class="sub-title">Pro tips</div>
-    <ul class="tips-list">
-      <li>Z-scores are most useful for comparison — use them to evaluate trade offers and waiver wire decisions rather than in isolation.</li>
-      <li>A player with a very negative z-score in one category (like FT%) can still be highly valuable if they dominate other categories.</li>
-      <li>Z-scores are calculated relative to the current player pool — they shift slightly as players get injured or role changes occur across the league.</li>
-    </ul>
-  </div>
-
-  <div class="screenshot-card">
-    <div class="sc-bar">
-      <div class="sc-dots"><div class="sc-dot"></div><div class="sc-dot"></div><div class="sc-dot"></div></div>
-      <span class="sc-label">Rankings — category z-score breakdown</span>
-    </div>
-    <div class="sc-body">
-      <div class="sc-mock-rows">
-        <div class="sc-mock-row" style="background:var(--surface-3);font-size:0.68rem;color:var(--muted)">
-          <span style="width:20px"></span>
-          <span style="flex:1">Player</span>
-          <span style="color:var(--accent)">Value <span class="ann-marker">1</span></span>
-          <span>PTS</span><span>REB</span><span>AST</span><span>STL</span><span>BLK</span>
-        </div>
-        <div class="sc-mock-row">
-          <span class="sc-mock-rank">1</span>
-          <span class="sc-mock-name">N. Jokić</span>
-          <span class="sc-mock-green">+4.12 <span class="ann-marker">2</span></span>
-          <span class="sc-mock-green">+2.1</span>
-          <span class="sc-mock-green">+3.8</span>
-          <span class="sc-mock-green">+2.9</span>
-          <span class="sc-mock-num">+0.4</span>
-          <span class="sc-mock-num">+0.8</span>
-        </div>
-        <div class="sc-mock-row">
-          <span class="sc-mock-rank">5</span>
-          <span class="sc-mock-name">R. Gobert</span>
-          <span class="sc-mock-green">+2.31</span>
-          <span class="sc-mock-red">-1.2</span>
-          <span class="sc-mock-green">+3.1</span>
-          <span class="sc-mock-num">-0.3</span>
-          <span class="sc-mock-num">+0.2</span>
-          <span class="sc-mock-green">+3.4 <span class="ann-marker">3</span></span>
-        </div>
-      </div>
-      <div class="sc-annotations">
-        <div class="sc-ann"><span class="sc-ann-num">1</span><span>Composite z-score column — single number representing overall fantasy value across all 9 categories</span></div>
-        <div class="sc-ann"><span class="sc-ann-num">2</span><span>Green z-scores indicate above-average performance in that category relative to all NBA players</span></div>
-        <div class="sc-ann"><span class="sc-ann-num">3</span><span>A high z-score in one category (BLK +3.4) can offset weakness elsewhere — punting strategy made visible</span></div>
-      </div>
-    </div>
-  </div>
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
