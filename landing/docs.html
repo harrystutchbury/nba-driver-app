@@ -390,26 +390,27 @@
       font-size: 0.93rem;
       color: #c4cdd8;
       line-height: 1.65;
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
+      position: relative;
+      padding-left: 22px;
     }
 
     .note-list li::before {
       content: '✓';
       color: var(--accent);
-      flex-shrink: 0;
+      position: absolute;
+      left: 0;
+      top: 2px;
       font-size: 0.8rem;
-      margin-top: 2px;
     }
 
     .trouble-list li::before {
       content: '!';
       color: var(--amber);
-      flex-shrink: 0;
+      position: absolute;
+      left: 0;
+      top: 1px;
       font-size: 0.8rem;
       font-weight: 700;
-      margin-top: 1px;
     }
 
     /* ── SCREENSHOT PLACEHOLDER ───────────────────────────── */
