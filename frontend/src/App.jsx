@@ -4218,7 +4218,13 @@ function CTWBarChart({ data, freeAgents }) {
 
 // ── Trade Analysis tab ─────────────────────────────────────────────────────────
 
-function TradeAnalysis({ data, onSelectPlayer }) {
+function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
+  const EP = {
+    freeAgents:   '/api/fantasy/espn/free-agents',
+    simulate:     '/api/fantasy/espn/roster-analysis/simulate',
+    searchPlayer: '/api/fantasy/espn/roster-analysis/search-player',
+    ...endpoints,
+  }
   // Unified "leaving my roster" list — used by both trade and waiver
   const [outSlugs,   setOutSlugs]   = useState([])  // {slug, name} — trade outs
   const [dropSlugs,  setDropSlugs]  = useState([])  // {slug, name} — pure drops
@@ -4245,13 +4251,13 @@ function TradeAnalysis({ data, onSelectPlayer }) {
 
   useEffect(() => {
     setFaLoading(true)
-    apiFetch('/api/fantasy/espn/free-agents')
+    apiFetch(EP.freeAgents)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setFreeAgents(d.free_agents || []))
       .catch(() => setFreeAgents([]))
       .finally(() => setFaLoading(false))
     // Fetch baseline projected standings (no roster changes)
-    apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
+    apiFetch(EP.simulate, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ add_slugs: [], drop_slugs: [] }),
     }).then(r => r.ok ? r.json() : null).then(d => { if (d) setBaseSim(d) }).catch(() => {})
@@ -4309,7 +4315,7 @@ function TradeAnalysis({ data, onSelectPlayer }) {
     }
 
     try {
-      const res = await apiFetch('/api/fantasy/espn/roster-analysis/simulate', {
+      const res = await apiFetch(EP.simulate, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ add_slugs: addSlugs, drop_slugs: allDropSlugs, team_changes: teamChanges }),
       })
@@ -5056,7 +5062,7 @@ function MatchupProjection({ onSelectPlayer }) {
   function searchPlayers(q) {
     if (!q || q.length < 2) { setSearchRes([]); return }
     setSearching(true)
-    apiFetch(`/api/fantasy/espn/roster-analysis/search-player?q=${encodeURIComponent(q)}`)
+    apiFetch(`${EP.searchPlayer}?q=${encodeURIComponent(q)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setSearchRes(d?.players || []))
       .catch(() => setSearchRes([]))
@@ -6057,6 +6063,15 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
+      )}
+      {tab === 'trade' && (rosterErr
+        ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+        : !rosterData ? <div className="dash-empty">Loading…</div>
+        : <TradeAnalysis data={rosterData} onSelectPlayer={onSelectPlayer} endpoints={{
+            freeAgents:   '/api/fantasy/yahoo/free-agents',
+            simulate:     '/api/fantasy/yahoo/roster-analysis/simulate',
+            searchPlayer: '/api/fantasy/yahoo/roster-analysis/search-player',
+          }} />
       )}
     </div>
   )

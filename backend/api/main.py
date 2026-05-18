@@ -4318,6 +4318,472 @@ def yahoo_projected_standings(current_user: str = Depends(get_current_user)):
     }
 
 
+# ── Yahoo trade / roster-analysis endpoints ────────────────────────────────────
+
+@fantasy_router.post("/yahoo/roster-analysis/simulate")
+def yahoo_roster_simulate(body: dict = Body(...),
+                           current_user: str = Depends(get_current_user)):
+    """
+    Simulate adding/dropping players on a Yahoo league roster and return
+    category deltas + new projected standings.  Response shape mirrors
+    /espn/roster-analysis/simulate so the frontend can share code.
+    """
+    import math as _math
+    from rapidfuzz import process as rfprocess
+
+    add_slugs  = body.get("add_slugs")  or []
+    drop_slugs = body.get("drop_slugs") or []
+
+    # Trade partner mutations: [{team_id, add_slugs, drop_slugs}]
+    team_changes_map = {}
+    for tc in body.get("team_changes", []):
+        tid = str(tc.get("team_id", ""))
+        if tid:
+            team_changes_map[tid] = {
+                "add":  tc.get("add_slugs",  []),
+                "drop": tc.get("drop_slugs", []),
+            }
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+    league_key  = fc["league_key"]
+    my_team_key = fc["team_key"]
+
+    try:
+        token           = _refresh_yahoo_token(conn, current_user)
+        cats_def        = _yahoo_get_stat_cats(token, league_key)
+        standings_data  = _yahoo_api(token, f"league/{league_key}/standings")
+        rosters_data    = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+        scoreboard_data = _yahoo_api(token, f"league/{league_key}/scoreboard")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='yahoo' AND br_slug IS NOT NULL"
+    ).fetchall()
+    yahoo_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+    name_rows = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names = list(name_to_slug.keys())
+    conn.close()
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    tracked_cats  = [c["display"] for c in cats_def]
+    neg_cats      = [c["display"] for c in cats_def if c["is_neg"]]
+    stat_name_map = {c["display"]: c["db_key"] for c in cats_def}
+    NEG_CATS      = set(neg_cats)
+
+    def _stats_from_slugs(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm_sum = fga_sum = ftm_sum = fta_sum = 0.0
+        for slug in slugs:
+            avg = player_avgs.get(slug)
+            if not avg: continue
+            pts  += avg["pts"]  or 0
+            reb  += avg["reb"]  or 0
+            ast  += avg["ast"]  or 0
+            stl  += avg["stl"]  or 0
+            blk  += avg["blk"]  or 0
+            tov  += avg["tov"]  or 0
+            fg3m += avg["fg3m"] or 0
+            fga_pg = avg["fga_pg"] or 0
+            fta_pg = avg["fta_pg"] or 0
+            fgm_sum += fga_pg * (avg["fg_pct"] or 0) / 100
+            fga_sum += fga_pg
+            ftm_sum += fta_pg * (avg["ft_pct"] or 0) / 100
+            fta_sum += fta_pg
+        return {
+            "pts":    pts,  "reb":    reb,  "ast":    ast,  "stl":    stl,
+            "blk":    blk,  "tov":    tov,  "fg3m":   fg3m,
+            "fg_pct": (fgm_sum / fga_sum * 100) if fga_sum else 0,
+            "ft_pct": (ftm_sum / fta_sum * 100) if fta_sum else 0,
+        }
+
+    # ── Parse standings ────────────────────────────────────────────────────────
+    teams = {}
+    try:
+        league_arr = standings_data["fantasy_content"]["league"]
+        st_entry   = next((x for x in league_arr if isinstance(x, dict) and "standings" in x), {})
+        st_teams   = st_entry.get("standings", [{}])[0].get("teams", {})
+        for tk, tv in st_teams.items():
+            if tk == "count": continue
+            team_list = tv.get("team", [])
+            info  = team_list[0] if team_list else []
+            tkey  = next((d["team_key"] for d in info if isinstance(d, dict) and "team_key" in d), "")
+            tname = next((d["name"]     for d in info if isinstance(d, dict) and "name"     in d), "")
+            outcome = team_list[2].get("team_standings", {}).get("outcome_totals", {}) if len(team_list) > 2 else {}
+            teams[tkey] = {
+                "name":         tname,
+                "is_my_team":   tkey == my_team_key,
+                "actual_wins":  int(outcome.get("wins",   0)),
+                "actual_losses":int(outcome.get("losses", 0)),
+                "slugs": [],
+            }
+    except Exception:
+        logger.exception("yahoo_roster_simulate: failed to parse standings")
+        raise HTTPException(status_code=502, detail="Failed to parse standings")
+
+    # ── Parse rosters ──────────────────────────────────────────────────────────
+    try:
+        league_arr  = rosters_data["fantasy_content"]["league"]
+        teams_entry = next((x for x in league_arr if isinstance(x, dict) and "teams" in x), {})
+        teams_raw   = teams_entry.get("teams", {})
+        for tk, tv in teams_raw.items():
+            if tk == "count": continue
+            team_list    = tv.get("team", [{}, {}])
+            team_info    = team_list[0] if isinstance(team_list[0], list) else []
+            team_key_val = next((d["team_key"] for d in team_info if isinstance(d, dict) and "team_key" in d), "")
+            roster_obj   = team_list[1].get("roster", {}) if len(team_list) > 1 else {}
+            players_raw  = roster_obj.get("0", {}).get("players", {})
+            slugs = []
+            for pk, pv in players_raw.items():
+                if pk == "count": continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list): continue
+                name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                pid  = next((d["player_id"] for d in p_list if isinstance(d, dict) and "player_id" in d), None)
+                if not name: continue
+                slug = (yahoo_id_to_slug.get(str(pid)) if pid else None) or _slug_by_name(name)
+                if slug: slugs.append(slug)
+            if team_key_val in teams:
+                teams[team_key_val]["slugs"] = slugs
+    except Exception:
+        logger.exception("yahoo_roster_simulate: failed to parse rosters")
+
+    # ── Scoreboard: remaining weeks ────────────────────────────────────────────
+    current_week = 1
+    total_weeks  = 22
+    try:
+        sb_league    = scoreboard_data["fantasy_content"]["league"]
+        sb_entry     = next((x for x in sb_league if isinstance(x, dict) and "scoreboard" in x), {})
+        current_week = int(sb_entry.get("scoreboard", {}).get("week", 1))
+        league_info  = next((x for x in sb_league if isinstance(x, dict) and "end_week" in x), {})
+        total_weeks  = int(league_info.get("end_week", 22))
+    except Exception:
+        pass
+    remaining_weeks = max(0, total_weeks - current_week)
+
+    # ── Apply my roster mutations ──────────────────────────────────────────────
+    my_entry   = next((t for t in teams.values() if t["is_my_team"]), None)
+    orig_slugs = list(my_entry["slugs"]) if my_entry else []
+    new_slugs  = [s for s in orig_slugs if s not in drop_slugs]
+    for s in add_slugs:
+        if s and s not in new_slugs:
+            new_slugs.append(s)
+
+    orig_stats = _stats_from_slugs(orig_slugs)
+    new_stats  = _stats_from_slugs(new_slugs)
+    delta      = {k: round(new_stats[k] - orig_stats[k], 2) for k in orig_stats}
+
+    def _apply_team_changes(tkey, slugs):
+        if tkey not in team_changes_map:
+            return slugs
+        tc = team_changes_map[tkey]
+        modified = [s for s in slugs if s not in tc["drop"]]
+        for s in tc["add"]:
+            if s and s not in modified:
+                modified.append(s)
+        return modified
+
+    # ── Compute other teams' stats (with any trade-partner mutations) ──────────
+    other_stats = []
+    for tkey, td in teams.items():
+        if td["is_my_team"]: continue
+        other_stats.append(_stats_from_slugs(_apply_team_changes(tkey, td["slugs"])))
+
+    # ── cat_beats: how many teams my team beats per category ──────────────────
+    def _cat_beats(my_s, others):
+        beats = {}
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key: continue
+            neg    = cat in NEG_CATS
+            my_val = my_s.get(key, 0)
+            beats[cat] = sum(
+                1 for o in others
+                if (my_val < o.get(key, 0) if neg else my_val > o.get(key, 0))
+            )
+        return beats
+
+    cat_beats_orig = _cat_beats(orig_stats, other_stats)
+    cat_beats_new  = _cat_beats(new_stats,  other_stats)
+
+    # ── Round-robin simulation ─────────────────────────────────────────────────
+    def _cat_winner(s1, s2):
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key: continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            if abs(v1 - v2) < 1e-6: continue
+            neg = cat in NEG_CATS
+            if neg:
+                if v1 < v2: w1 += 1
+                else:        w2 += 1
+            else:
+                if v1 > v2: w1 += 1
+                else:        w2 += 1
+        return w1, w2
+
+    # Build per-team sim state using mutated slugs
+    team_keys = list(teams.keys())
+    sim = {}
+    for tkey, td in teams.items():
+        if td["is_my_team"]:
+            s = new_stats
+        else:
+            s = _stats_from_slugs(_apply_team_changes(tkey, td["slugs"]))
+        sim[tkey] = {
+            "stats":      s,
+            "name":       td["name"],
+            "is_my_team": td["is_my_team"],
+            "act_wins":   td["actual_wins"],
+            "act_losses": td["actual_losses"],
+            "proj_wins":  0,
+            "proj_losses":0,
+        }
+
+    n = len(team_keys)
+    if n > 1 and remaining_weeks > 0:
+        pairs = [(team_keys[i], team_keys[j]) for i in range(n) for j in range(i+1, n)]
+        matchups_per_week = max(1, n // 2)
+        for week_i in range(remaining_weeks):
+            week_pairs = pairs[
+                ((week_i * matchups_per_week) % len(pairs)):
+                ((week_i * matchups_per_week) % len(pairs)) + matchups_per_week
+            ]
+            for (k1, k2) in week_pairs:
+                w1, w2 = _cat_winner(sim[k1]["stats"], sim[k2]["stats"])
+                if w1 > w2:
+                    sim[k1]["proj_wins"]   += 1; sim[k2]["proj_losses"] += 1
+                elif w2 > w1:
+                    sim[k2]["proj_wins"]   += 1; sim[k1]["proj_losses"] += 1
+
+    # ── Build projected standings (ESPN-compatible shape) ─────────────────────
+    result = []
+    for tkey, d in sim.items():
+        result.append({
+            "name":        d["name"],
+            "is_my_team":  d["is_my_team"],
+            "act_wins":    d["act_wins"],
+            "act_losses":  d["act_losses"],
+            "proj_wins":   d["act_wins"]    + d["proj_wins"],
+            "proj_losses": d["act_losses"]  + d["proj_losses"],
+        })
+    result.sort(key=lambda x: (-x["proj_wins"], x["proj_losses"]))
+    for i, r in enumerate(result):
+        r["proj_standing"] = i + 1
+
+    my_new = next((r for r in result if r["is_my_team"]), {})
+
+    # ── Z-scores for my new stats vs league ──────────────────────────────────
+    all_stats_for_z = other_stats + [new_stats]
+    _tz2: dict = {}
+    for key in stat_name_map.values():
+        vals = [s.get(key) for s in all_stats_for_z if s.get(key) is not None]
+        if len(vals) < 2: continue
+        m   = sum(vals) / len(vals)
+        sd  = _math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals))
+        _tz2[key] = (m, max(sd, 0.001))
+
+    new_cat_z: dict = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key or key not in _tz2: continue
+        v = new_stats.get(key)
+        if v is None: continue
+        m, sd = _tz2[key]
+        raw   = (v - m) / sd
+        new_cat_z[cat] = round(-raw if cat in NEG_CATS else raw, 2)
+
+    return {
+        "orig_stats":          {k: round(v, 2) for k, v in orig_stats.items()},
+        "new_stats":           {k: round(v, 2) for k, v in new_stats.items()},
+        "delta":               delta,
+        "cat_beats_orig":      cat_beats_orig,
+        "cat_beats_new":       cat_beats_new,
+        "new_cat_z":           new_cat_z,
+        "total_teams":         len(teams) - 1,
+        "projected_standings": result,
+        "my_proj_standing":    my_new.get("proj_standing"),
+        "my_proj_wins":        my_new.get("proj_wins"),
+        "tracked_cats":        tracked_cats,
+        "neg_cats":            list(NEG_CATS),
+        "ctw_before":          {},
+        "ctw_after":           {},
+    }
+
+
+@fantasy_router.get("/yahoo/free-agents")
+def yahoo_free_agents(current_user: str = Depends(get_current_user)):
+    """Return non-rostered Yahoo players with season averages, sorted by composite value."""
+    from rapidfuzz import process as rfprocess
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+        [current_user]
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No league selected")
+    league_key = fc["league_key"]
+
+    try:
+        token        = _refresh_yahoo_token(conn, current_user)
+        rosters_data = _yahoo_api(token, f"league/{league_key}/teams/roster/players")
+    except HTTPException:
+        conn.close(); raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Yahoo API error: {e}")
+
+    season_year = _current_season_end_year()
+    season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    map_rows = conn.execute(
+        "SELECT provider_id, br_slug FROM fantasy_player_map WHERE provider='yahoo' AND br_slug IS NOT NULL"
+    ).fetchall()
+    yahoo_id_to_slug = {r["provider_id"]: r["br_slug"] for r in map_rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+
+    slug_to_name = {r["slug"]: r["full_name"] for r in name_rows}
+
+    slug_to_team_fa = {
+        r["player_slug"]: r["team"]
+        for r in conn.execute("""
+            SELECT g.player_slug, g.team
+            FROM game_logs g
+            INNER JOIN (
+                SELECT player_slug, MAX(game_date) AS last_date
+                FROM game_logs WHERE season=? GROUP BY player_slug
+            ) lm ON g.player_slug=lm.player_slug AND g.game_date=lm.last_date
+            WHERE g.season=? GROUP BY g.player_slug
+        """, [season, season]).fetchall()
+    }
+    conn.close()
+
+    def _slug_by_name(name):
+        m = rfprocess.extractOne(name, all_names, score_cutoff=75)
+        return name_to_slug[m[0]] if m else None
+
+    # ── Collect all rostered slugs from Yahoo ─────────────────────────────────
+    rostered_slugs = set()
+    try:
+        league_arr  = rosters_data["fantasy_content"]["league"]
+        teams_entry = next((x for x in league_arr if isinstance(x, dict) and "teams" in x), {})
+        teams_raw   = teams_entry.get("teams", {})
+        for tk, tv in teams_raw.items():
+            if tk == "count": continue
+            team_list   = tv.get("team", [{}, {}])
+            roster_obj  = team_list[1].get("roster", {}) if len(team_list) > 1 else {}
+            players_raw = roster_obj.get("0", {}).get("players", {})
+            for pk, pv in players_raw.items():
+                if pk == "count": continue
+                p_list = pv.get("player", [[]])[0]
+                if not isinstance(p_list, list): continue
+                name = next((d["full_name"] for d in p_list if isinstance(d, dict) and "full_name" in d), None)
+                pid  = next((d["player_id"] for d in p_list if isinstance(d, dict) and "player_id" in d), None)
+                if not name: continue
+                slug = (yahoo_id_to_slug.get(str(pid)) if pid else None) or _slug_by_name(name)
+                if slug: rostered_slugs.add(slug)
+    except Exception:
+        logger.exception("yahoo_free_agents: failed to parse rosters")
+
+    # ── Build free-agent list from DB ─────────────────────────────────────────
+    result = []
+    for slug, avg in player_avgs.items():
+        if slug in rostered_slugs:
+            continue
+        stats = {k: round(avg[k] or 0, 1) for k in
+                 ["pts","reb","ast","stl","blk","tov","fg3m","fg_pct","ft_pct","fga_pg","fta_pg"]}
+        value = (stats["pts"] + 1.5*stats["stl"] + 1.5*stats["blk"]
+                 + 1.2*stats["ast"] + 1.1*stats["reb"]
+                 + stats["fg3m"] - stats["tov"]
+                 + (stats["fg_pct"] - 46) * 0.3
+                 + (stats["ft_pct"] - 76) * 0.2)
+        result.append({
+            "br_slug":  slug,
+            "name":     slug_to_name.get(slug, slug),
+            "stats":    stats,
+            "value":    round(value, 1),
+            "nba_team": slug_to_team_fa.get(slug, ""),
+        })
+
+    result.sort(key=lambda x: -x["value"])
+    return {"free_agents": result}
+
+
+@fantasy_router.get("/yahoo/roster-analysis/search-player")
+def yahoo_roster_search_player(q: str = Query(..., min_length=2),
+                                current_user: str = Depends(get_current_user)):
+    """Search BR players by name and return their season averages (Yahoo version)."""
+    conn = get_conn()
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+    rows = conn.execute("""
+        SELECT p.slug, p.full_name, p.team,
+               AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+               AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+               AVG(g.fg3m) AS fg3m,
+               SUM(g.fgm)*100.0/NULLIF(SUM(g.fga),0) AS fg_pct,
+               SUM(g.ftm)*100.0/NULLIF(SUM(g.fta),0) AS ft_pct,
+               COUNT(*) AS games
+        FROM players p
+        JOIN game_logs g ON g.player_slug = p.slug AND g.season = ?
+        WHERE p.full_name LIKE ? AND g.min > 5
+        GROUP BY p.slug
+        HAVING COUNT(*) >= 5
+        ORDER BY AVG(g.pts) DESC
+        LIMIT 10
+    """, [season, f"%{q}%"]).fetchall()
+    conn.close()
+    return {"players": [dict(r) for r in rows]}
+
+
 @fantasy_router.delete("/disconnect")
 def disconnect_fantasy(current_user: str = Depends(get_current_user)):
     conn = get_conn()
