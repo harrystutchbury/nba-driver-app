@@ -251,9 +251,8 @@
     }
 
     .read-list li {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
+      position: relative;
+      padding-left: 24px;
       font-size: 0.95rem;
       color: #c4cdd8;
       line-height: 1.65;
@@ -262,8 +261,9 @@
     .read-list li::before {
       content: '—';
       color: var(--dim);
-      flex-shrink: 0;
-      margin-top: 1px;
+      position: absolute;
+      left: 0;
+      top: 0;
     }
 
     /* Pro tips list */
@@ -275,9 +275,8 @@
     }
 
     .tips-list li {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
+      position: relative;
+      padding-left: 20px;
       font-size: 0.95rem;
       color: #c4cdd8;
       line-height: 1.65;
@@ -286,9 +285,10 @@
     .tips-list li::before {
       content: '●';
       color: var(--accent);
-      flex-shrink: 0;
+      position: absolute;
+      left: 0;
       font-size: 0.55rem;
-      margin-top: 6px;
+      top: 6px;
     }
 
     /* ── STEPS ────────────────────────────────────────────── */
@@ -731,7 +731,7 @@
   <div class="sec-header">
     <div class="sec-label">01 — Getting Started</div>
     <h2 class="sec-title">Getting Started</h2>
-    <p class="sec-desc">Connect your league and get your edge in under two minutes.</p>
+    <p class="sec-desc">Connect your league and get started in under two minutes.</p>
   </div>
 
   <div class="subsection">
