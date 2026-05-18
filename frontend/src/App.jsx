@@ -501,10 +501,11 @@ function computeGameZSums(games) {
 }
 
 const MA_WINDOW_OPTIONS = [
-  { value: 5,  label: 'Week (~5 games)' },
-  { value: 10, label: 'Fortnight (~10 games)' },
-  { value: 20, label: 'Month (~20 games)' },
-  { value: 41, label: 'Quarter season (~41 games)' },
+  { value: 5,  label: '5' },
+  { value: 10, label: '10' },
+  { value: 20, label: '20' },
+  { value: 40, label: '40' },
+  { value: 80, label: '80' },
 ]
 
 const AGING_COLS = [
@@ -6784,8 +6785,8 @@ function AppMain({ onLogout, onOpenAccount }) {
     },
     scales: {
       x: {
-        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
-        border: { color: '#222' },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
+        border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
         ticks: {
           color: '#888',
           font: { family: "'DM Mono', monospace", size: 11 },
@@ -6795,8 +6796,8 @@ function AppMain({ onLogout, onOpenAccount }) {
         },
       },
       y: {
-        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
-        border: { color: '#222' },
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
+        border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
         ticks:  { color: '#888', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
