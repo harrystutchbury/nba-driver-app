@@ -5105,6 +5105,20 @@ td.bs-pos {
 .mp-sim-badge { font-size: 11px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
 .mp-sim-result-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; }
 
+/* ── Day Coverage Bar ───────────────────────────────────────────────────────── */
+.tp-coverage { margin: 0 0 12px; }
+.tp-coverage-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.tp-coverage-days { display: flex; gap: 6px; flex-wrap: wrap; }
+.tp-day-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 44px; }
+.tp-day-cell-past { opacity: 0.5; }
+.tp-day-lbl { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.tp-day-n { font-size: 13px; font-weight: 700; padding: 4px 6px; border-radius: 5px; min-width: 36px; text-align: center; }
+.tp-day-full { background: rgba(0,230,118,0.15); color: var(--skill); }
+.tp-day-mid  { background: rgba(255,208,96,0.15); color: var(--pos); }
+.tp-day-low  { background: rgba(255,100,80,0.1);  color: var(--neg); }
+.tp-day-zero { background: var(--surface); color: var(--muted); }
+.tp-day-past { background: var(--surface); color: var(--muted); }
+
 /* ── Transaction Planner ────────────────────────────────────────────────────── */
 .tp-header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .tp-header-row .mp-sim-title { margin-bottom: 0; }

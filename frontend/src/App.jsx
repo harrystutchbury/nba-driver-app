@@ -5057,6 +5057,7 @@ function MatchupProjection({ onSelectPlayer }) {
   const [faLoading,  setFaLoading]  = useState(false)
   // Transaction planner state
   const [transactions,  setTransactions]  = useState([])  // [{id, day_idx, add_slug, add_name, drop_slug, searchQ, searchRes}]
+  const [acqLimit,      setAcqLimit]      = useState(-1)  // -1 = unknown/unlimited; user-editable
   const [acqUsed,       setAcqUsed]       = useState(0)
   const [planLoading,   setPlanLoading]   = useState(false)
   const [planData,      setPlanData]      = useState(null)
@@ -5072,7 +5073,7 @@ function MatchupProjection({ onSelectPlayer }) {
     const url = `/api/fantasy/espn/matchup-projection${params.size ? `?${params}` : ''}`
     apiFetch(url)
       .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail || r.statusText)))
-      .then(d => { setData(d); setWeek(d.week); setLoading(false) })
+      .then(d => { setData(d); setWeek(d.week); if ((d.acq_limit ?? -1) !== -1) setAcqLimit(d.acq_limit); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }
 
@@ -5174,6 +5175,35 @@ function MatchupProjection({ onSelectPlayer }) {
     const pct = Math.round(wp * 100)
     const cls  = pct >= 55 ? 'mp-wp-win' : pct <= 45 ? 'mp-wp-loss' : 'mp-wp-toss'
     return <span className={`mp-wp-badge ${cls}`}>{pct}%</span>
+  }
+
+  function DayCoverageBar({ players, label }) {
+    const cap     = d.active_capacity || 0
+    const pastIdx = d.past_end_idx ?? -1
+    const totals  = d.day_labels.map((_, i) => ({
+      slotted: players.filter(p => p.days?.[i] === 'slotted').length,
+      playing: players.filter(p => p.days?.[i] != null).length,
+    }))
+    return (
+      <div className="tp-coverage">
+        {label && <div className="tp-coverage-label">{label}</div>}
+        <div className="tp-coverage-days">
+          {d.day_labels.map((lbl, i) => {
+            const { slotted, playing } = totals[i]
+            const n    = cap > 0 ? slotted : playing
+            const pct  = cap > 0 ? n / cap : 0
+            const past = i <= pastIdx
+            const cls  = past ? 'tp-day-past' : pct >= 0.85 ? 'tp-day-full' : pct >= 0.5 ? 'tp-day-mid' : playing > 0 ? 'tp-day-low' : 'tp-day-zero'
+            return (
+              <div key={i} className={`tp-day-cell${past ? ' tp-day-cell-past' : ''}`}>
+                <div className="tp-day-lbl">{lbl}</div>
+                <div className={`tp-day-n ${cls}`}>{playing > 0 ? (cap > 0 ? `${n}/${cap}` : n) : '—'}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
   }
 
   function DayGrid({ players, label, isMyTeam }) {
@@ -5421,35 +5451,46 @@ function MatchupProjection({ onSelectPlayer }) {
         </div>
       </div>
 
+      {/* Day coverage summary */}
+      <DayCoverageBar players={d.my_players} label={planData ? 'Current lineup — players per day' : null} />
+      {planData && <DayCoverageBar players={planData.my_players} label="After plan — players per day" />}
+
       {/* Transaction Planner */}
       <div className="mp-sim-section">
         <div className="tp-header-row">
           <div className="mp-sim-title">Transaction Planner</div>
           {(() => {
-            const acqLimit = data.acq_limit ?? -1
-            const planned  = transactions.filter(t => t.add_slug).length
-            const total    = acqUsed + planned
-            const over     = acqLimit !== -1 && total > acqLimit
+            const planned = transactions.filter(t => t.add_slug).length
+            const total   = acqUsed + planned
+            const over    = acqLimit > 0 && total > acqLimit
             return (
               <div className="tp-budget">
-                {acqLimit === -1
-                  ? <span className="tp-budget-label">Unlimited acquisitions</span>
-                  : <>
-                      <span className={`tp-budget-count${over ? ' tp-over' : ''}`}>{total}/{acqLimit}</span>
-                      <span className="tp-budget-label"> pickups used</span>
-                      {over && <span className="tp-over-warn"> — over limit</span>}
-                      <span className="tp-budget-sep">·</span>
-                      <label className="tp-used-label">
-                        Already used:
-                        <input
-                          type="number" min="0" max={acqLimit}
-                          className="tp-used-input"
-                          value={acqUsed}
-                          onChange={e => setAcqUsed(Math.max(0, Number(e.target.value)))}
-                        />
-                      </label>
-                    </>
-                }
+                <label className="tp-used-label">
+                  Weekly limit:
+                  <input
+                    type="number" min="0"
+                    className="tp-used-input"
+                    value={acqLimit === -1 ? '' : acqLimit}
+                    placeholder="—"
+                    onChange={e => setAcqLimit(e.target.value ? Number(e.target.value) : -1)}
+                  />
+                </label>
+                {acqLimit > 0 && <>
+                  <span className="tp-budget-sep">·</span>
+                  <span className={`tp-budget-count${over ? ' tp-over' : ''}`}>{total}/{acqLimit}</span>
+                  <span className="tp-budget-label"> used</span>
+                  {over && <span className="tp-over-warn"> — over limit</span>}
+                </>}
+                <span className="tp-budget-sep">·</span>
+                <label className="tp-used-label">
+                  Already used:
+                  <input
+                    type="number" min="0"
+                    className="tp-used-input"
+                    value={acqUsed}
+                    onChange={e => setAcqUsed(Math.max(0, Number(e.target.value)))}
+                  />
+                </label>
               </div>
             )
           })()}
