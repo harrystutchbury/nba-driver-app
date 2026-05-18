@@ -686,7 +686,7 @@ function buildZWaterfall(zResult) {
 
   floatData.push(0)
   barData.push(period_b.z_total)
-  colors.push('#f5a623')
+  colors.push(TOTAL_COLOR)
   tipLabels.push(`Comparison Z: ${period_b.z_total.toFixed(2)}`)
   displayLabels.push(period_b.z_total.toFixed(1))
 
@@ -6862,8 +6862,8 @@ function AppMain({ onLogout, onOpenAccount }) {
         ticks: {
           color: '#555',
           font: { family: "'DM Mono', monospace", size: 10 },
-          maxRotation: 35,
-          minRotation: 35,
+          maxRotation: 0,
+          minRotation: 0,
         },
       },
       y: {
