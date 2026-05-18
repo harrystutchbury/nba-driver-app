@@ -5040,21 +5040,17 @@ function MatchupProjection({ onSelectPlayer }) {
   const [week,       setWeek]       = useState(null)
   const [freeAgents, setFreeAgents] = useState([])
   const [faLoading,  setFaLoading]  = useState(false)
-  // Simulation state
-  const [searchQ,    setSearchQ]    = useState('')
-  const [searchRes,  setSearchRes]  = useState([])
-  const [searching,  setSearching]  = useState(false)
-  const [addSlug,    setAddSlug]    = useState(null)
-  const [addName,    setAddName]    = useState('')
-  const [dropSlug,   setDropSlug]   = useState(null)
-  const [simLoading, setSimLoading] = useState(false)
-  const [simData,    setSimData]    = useState(null)
-  const [asOfDate,   setAsOfDate]   = useState(null)  // YYYY-MM-DD, null = today
-  const [selectedDays, setSelectedDays] = useState(new Set())
-  const [faSortKey,    setFaSortKey]    = useState('value')
+  // Transaction planner state
+  const [transactions,  setTransactions]  = useState([])  // [{id, day_idx, add_slug, add_name, drop_slug, searchQ, searchRes}]
+  const [acqUsed,       setAcqUsed]       = useState(0)
+  const [planLoading,   setPlanLoading]   = useState(false)
+  const [planData,      setPlanData]      = useState(null)
+  const [asOfDate,      setAsOfDate]      = useState(null)
+  const [selectedDays,  setSelectedDays]  = useState(new Set())
+  const [faSortKey,     setFaSortKey]     = useState('value')
 
   function load(w, aod) {
-    setLoading(true); setError(null); setSimData(null)
+    setLoading(true); setError(null); setPlanData(null)
     const params = new URLSearchParams()
     if (w)   params.set('week', w)
     if (aod) params.set('as_of_date', aod)
@@ -5075,38 +5071,65 @@ function MatchupProjection({ onSelectPlayer }) {
       .finally(() => setFaLoading(false))
   }, [])
 
-  function searchPlayers(q) {
-    if (!q || q.length < 2) { setSearchRes([]); return }
-    setSearching(true)
-    apiFetch(`${EP.searchPlayer}?q=${encodeURIComponent(q)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setSearchRes(d?.players || []))
-      .catch(() => setSearchRes([]))
-      .finally(() => setSearching(false))
+  // ── Transaction planner helpers ──────────────────────────────────────────
+  function addTransaction() {
+    const firstFutureIdx = (data?.day_labels || []).findIndex((_, i) => {
+      if (!data?.week_start) return i === 0
+      const d0 = new Date(data.week_start + 'T12:00:00')
+      d0.setDate(d0.getDate() + i)
+      return d0.toISOString().slice(0, 10) > (asOfDate || data?.as_of_date || '')
+    })
+    setTransactions(prev => [...prev, {
+      id: Date.now() + Math.random(),
+      day_idx:  Math.max(0, firstFutureIdx >= 0 ? firstFutureIdx : 0),
+      add_slug: null, add_name: '',
+      drop_slug: null,
+      searchQ: '', searchRes: [],
+    }])
   }
 
-  function runSimulate() {
-    if (!addSlug && !dropSlug) return
-    setSimLoading(true); setSimData(null)
-    apiFetch('/api/fantasy/espn/matchup-projection/simulate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+  function removeTxn(id) {
+    setTransactions(prev => prev.filter(t => t.id !== id))
+    setPlanData(null)
+  }
+
+  function updateTxn(id, key, val) {
+    setTransactions(prev => prev.map(t => t.id === id ? {...t, [key]: val} : t))
+  }
+
+  function searchForTxn(id, q) {
+    updateTxn(id, 'searchQ', q)
+    if (!q || q.length < 2) { updateTxn(id, 'searchRes', []); return }
+    apiFetch(`/api/fantasy/espn/roster-analysis/search-player?q=${encodeURIComponent(q)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => updateTxn(id, 'searchRes', d?.players || []))
+      .catch(() => {})
+  }
+
+  function clearPlan() {
+    setTransactions([]); setPlanData(null); setAcqUsed(0); setSelectedDays(new Set())
+  }
+
+  function runPlan() {
+    const valid = transactions.filter(t => t.add_slug || t.drop_slug)
+    if (!valid.length) return
+    setPlanLoading(true); setPlanData(null)
+    apiFetch('/api/fantasy/espn/matchup-projection/plan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         week,
-        as_of_date: asOfDate || (data?.as_of_date),
-        add_slugs:  addSlug  ? [addSlug]  : [],
-        drop_slugs: dropSlug ? [dropSlug] : [],
+        as_of_date: asOfDate || data?.as_of_date,
+        transactions: valid.map(t => ({
+          day_idx:  t.day_idx,
+          add_slug: t.add_slug  || null,
+          drop_slug: t.drop_slug || null,
+        })),
       }),
     })
       .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.detail)))
-      .then(d => setSimData(d))
-      .catch(e => alert(`Simulation failed: ${e}`))
-      .finally(() => setSimLoading(false))
-  }
-
-  function clearSim() {
-    setAddSlug(null); setAddName(''); setDropSlug(null)
-    setSearchQ(''); setSearchRes([]); setSimData(null)
-    setSelectedDays(new Set())
+      .then(d => setPlanData(d))
+      .catch(e => alert(`Plan failed: ${e}`))
+      .finally(() => setPlanLoading(false))
   }
 
   if (loading) return <div className="dash-empty">Loading matchup projection…</div>
@@ -5163,7 +5186,7 @@ function MatchupProjection({ onSelectPlayer }) {
             </thead>
             <tbody>
               {players.map(p => (
-                <tr key={p.slug || p.name} className={isMyTeam && dropSlug === p.slug ? 'mp-row-drop' : ''}>
+                <tr key={p.slug || p.name} className={isMyTeam && plannedDropSlugs.has(p.slug) ? 'mp-row-drop' : ''}>
                   <td className="mp-col-player">
                     {p.slug
                       ? <button className="mp-player-link" onClick={() => onSelectPlayer?.(p.slug)}>{p.name}</button>
@@ -5219,6 +5242,10 @@ function MatchupProjection({ onSelectPlayer }) {
   const overallCls = overallPct >= 55 ? 'mp-overall-win' : overallPct <= 45 ? 'mp-overall-loss' : 'mp-overall-toss'
   const outcomes   = outcomeDistribution(d.categories)
   const maxOutcomeProb = Math.max(...outcomes.map(o => o.prob))
+
+  // Planned drops + adds (for roster highlighting)
+  const plannedDropSlugs = new Set(transactions.map(t => t.drop_slug).filter(Boolean))
+  const plannedAddSlugs  = new Set(transactions.map(t => t.add_slug).filter(Boolean))
 
   // Rostered slugs (for filtering free agents not on either roster)
   const rosteredSlugs = new Set([
@@ -5283,7 +5310,7 @@ function MatchupProjection({ onSelectPlayer }) {
           <select
             className="mp-week-select"
             value={week || ''}
-            onChange={e => { const w = Number(e.target.value); setWeek(w); setAsOfDate(null); load(w, null); clearSim() }}
+            onChange={e => { const w = Number(e.target.value); setWeek(w); setAsOfDate(null); load(w, null); clearPlan() }}
           >
             {data.all_weeks.map(w => (
               <option key={w.week} value={w.week}>Week {w.week}: {w.label}</option>
@@ -5302,7 +5329,7 @@ function MatchupProjection({ onSelectPlayer }) {
                 <button
                   key={i}
                   className={`mp-asof-btn${active ? ' mp-asof-active' : ''}`}
-                  onClick={() => { setAsOfDate(dayIso); load(week, dayIso); clearSim() }}
+                  onClick={() => { setAsOfDate(dayIso); load(week, dayIso); clearPlan() }}
                 >{lbl}</button>
               )
             })}
@@ -5379,145 +5406,219 @@ function MatchupProjection({ onSelectPlayer }) {
         </div>
       </div>
 
-      {/* Simulate section */}
+      {/* Transaction Planner */}
       <div className="mp-sim-section">
-        <div className="mp-sim-title">Simulate Pickup</div>
-        <div className="mp-sim-row">
-          {/* Controls */}
-          <div className="mp-sim-controls">
-            <div className="mp-sim-field">
-              <label className="mp-sim-label">Add</label>
-              <input
-                className="mp-sim-input"
-                placeholder="Search player…"
-                value={searchQ}
-                onChange={e => { setSearchQ(e.target.value); searchPlayers(e.target.value) }}
-              />
-              {searching && <span className="mp-sim-searching">…</span>}
-              {addSlug && <span className="mp-chip mp-chip-add">+ {addName} <button onClick={() => { setAddSlug(null); setAddName(''); setSearchQ(''); setSearchRes([]) }}>×</button></span>}
-            </div>
-            <div className="mp-sim-field">
-              <label className="mp-sim-label">Drop</label>
-              <select
-                className="mp-sim-select"
-                value={dropSlug || ''}
-                onChange={e => setDropSlug(e.target.value || null)}
-              >
-                <option value=''>— select player to drop —</option>
-                {d.my_players.map(p => (
-                  <option key={p.slug} value={p.slug}>{p.name} ({p.games} GP)</option>
-                ))}
-              </select>
-            </div>
-            <div className="mp-sim-actions">
-              <button className="mp-sim-run" onClick={runSimulate} disabled={simLoading || (!addSlug && !dropSlug)}>
-                {simLoading ? 'Simulating…' : 'Run'}
-              </button>
-              {(addSlug || dropSlug) && <button className="mp-sim-clear" onClick={clearSim}>Clear</button>}
-            </div>
-          </div>
+        <div className="tp-header-row">
+          <div className="mp-sim-title">Transaction Planner</div>
+          {(() => {
+            const acqLimit = data.acq_limit ?? -1
+            const planned  = transactions.filter(t => t.add_slug).length
+            const total    = acqUsed + planned
+            const over     = acqLimit !== -1 && total > acqLimit
+            return (
+              <div className="tp-budget">
+                {acqLimit === -1
+                  ? <span className="tp-budget-label">Unlimited acquisitions</span>
+                  : <>
+                      <span className={`tp-budget-count${over ? ' tp-over' : ''}`}>{total}/{acqLimit}</span>
+                      <span className="tp-budget-label"> pickups used</span>
+                      {over && <span className="tp-over-warn"> — over limit</span>}
+                      <span className="tp-budget-sep">·</span>
+                      <label className="tp-used-label">
+                        Already used:
+                        <input
+                          type="number" min="0" max={acqLimit}
+                          className="tp-used-input"
+                          value={acqUsed}
+                          onChange={e => setAcqUsed(Math.max(0, Number(e.target.value)))}
+                        />
+                      </label>
+                    </>
+                }
+              </div>
+            )
+          })()}
+        </div>
 
-          {/* Search results */}
-          {searchRes.length > 0 && !addSlug && (
-            <div className="mp-search-results">
-              {searchRes.slice(0, 8).map(p => {
-                const nbaTeam = TEAM_ABBREV[p.team] || p.team?.slice(0,3) || '?'
-                const gp = teamWeekGames[p.team] || 0
-                return (
-                  <div key={p.slug} className="mp-search-row" onClick={() => { setAddSlug(p.slug); setAddName(p.full_name); setSearchQ(''); setSearchRes([]) }}>
-                    <span className="mp-sr-name">{p.full_name}</span>
-                    <span className="mp-sr-team">{nbaTeam}</span>
-                    <span className={`mp-sr-gp mp-gp-${gp}`}>{gp} GP</span>
-                    <span className="mp-sr-stat">{(p.pts||0).toFixed(1)}</span>
-                    <span className="mp-sr-stat">{(p.reb||0).toFixed(1)}</span>
-                    <span className="mp-sr-stat">{(p.ast||0).toFixed(1)}</span>
-                  </div>
-                )
-              })}
+        {/* Transaction rows */}
+        <div className="tp-rows">
+          {transactions.map((txn, idx) => (
+            <div key={txn.id} className="tp-row">
+              <span className="tp-row-num">#{idx + 1}</span>
+
+              {/* Day picker */}
+              <div className="tp-field">
+                <label className="mp-sim-label">Pick up on</label>
+                <select
+                  className="mp-sim-select tp-day-select"
+                  value={txn.day_idx}
+                  onChange={e => { updateTxn(txn.id, 'day_idx', Number(e.target.value)); setPlanData(null) }}
+                >
+                  {data.day_labels.map((lbl, i) => (
+                    <option key={i} value={i}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Add player */}
+              <div className="tp-field tp-add-field">
+                <label className="mp-sim-label">Add</label>
+                {txn.add_slug
+                  ? <span className="mp-chip mp-chip-add tp-chip">
+                      + {txn.add_name}
+                      <button onClick={() => { updateTxn(txn.id, 'add_slug', null); updateTxn(txn.id, 'add_name', ''); updateTxn(txn.id, 'searchQ', ''); updateTxn(txn.id, 'searchRes', []); setPlanData(null) }}>×</button>
+                    </span>
+                  : <>
+                      <input
+                        className="mp-sim-input"
+                        placeholder="Search player…"
+                        value={txn.searchQ}
+                        onChange={e => searchForTxn(txn.id, e.target.value)}
+                      />
+                      {txn.searchRes.length > 0 && (
+                        <div className="mp-search-results tp-search-results">
+                          {txn.searchRes.slice(0, 6).map(p => {
+                            const gp = teamWeekGames[p.team] || 0
+                            return (
+                              <div key={p.slug} className="mp-search-row"
+                                onClick={() => {
+                                  updateTxn(txn.id, 'add_slug',  p.slug)
+                                  updateTxn(txn.id, 'add_name',  p.full_name)
+                                  updateTxn(txn.id, 'searchQ',   '')
+                                  updateTxn(txn.id, 'searchRes', [])
+                                  setPlanData(null)
+                                }}>
+                                <span className="mp-sr-name">{p.full_name}</span>
+                                <span className="mp-sr-team">{TEAM_ABBREV[p.team] || p.team?.slice(0,3) || '?'}</span>
+                                <span className={`mp-sr-gp mp-gp-${gp}`}>{gp} GP</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </>
+                }
+              </div>
+
+              {/* Drop player */}
+              <div className="tp-field">
+                <label className="mp-sim-label">Drop</label>
+                <select
+                  className="mp-sim-select"
+                  value={txn.drop_slug || ''}
+                  onChange={e => { updateTxn(txn.id, 'drop_slug', e.target.value || null); setPlanData(null) }}
+                >
+                  <option value=''>— optional —</option>
+                  {d.my_players
+                    .filter(p => !plannedDropSlugs.has(p.slug) || txn.drop_slug === p.slug)
+                    .map(p => (
+                      <option key={p.slug} value={p.slug}>{p.name} ({p.games} GP)</option>
+                    ))
+                  }
+                </select>
+              </div>
+
+              <button className="tp-remove-btn" onClick={() => removeTxn(txn.id)} title="Remove">×</button>
             </div>
+          ))}
+        </div>
+
+        {/* Action bar */}
+        <div className="tp-actions">
+          <button className="tp-add-btn" onClick={addTransaction}>+ Add transaction</button>
+          {transactions.length > 0 && (
+            <>
+              <button
+                className="mp-sim-run"
+                onClick={runPlan}
+                disabled={planLoading || !transactions.some(t => t.add_slug || t.drop_slug)}
+              >
+                {planLoading ? 'Simulating…' : 'Simulate plan'}
+              </button>
+              <button className="mp-sim-clear" onClick={clearPlan}>Clear all</button>
+            </>
           )}
         </div>
 
-        {/* Simulation result delta */}
-        {simData && (
+        {/* Plan result */}
+        {planData && (
           <div className="mp-sim-result">
             <div className="mp-sim-result-title">
-              Simulated: {simData.my_team_name}
-              <span className={`mp-overall-badge mp-sim-badge ${Math.round(simData.overall_win_prob*100)>=55?'mp-overall-win':Math.round(simData.overall_win_prob*100)<=45?'mp-overall-loss':'mp-overall-toss'}`}>
-                {simData.cat_wins}–{simData.cat_total - simData.cat_wins} ({Math.round(simData.overall_win_prob*100)}%)
+              Planned: {planData.my_team_name}
+              <span className={`mp-overall-badge mp-sim-badge ${Math.round(planData.overall_win_prob*100)>=55?'mp-overall-win':Math.round(planData.overall_win_prob*100)<=45?'mp-overall-loss':'mp-overall-toss'}`}>
+                {planData.cat_wins}–{planData.cat_total - planData.cat_wins} ({Math.round(planData.overall_win_prob*100)}%)
               </span>
             </div>
             <div className="mp-sim-body">
-            <table className="mp-cats-table mp-sim-cats-table">
-              <thead>
-                <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th><th>ΔWin%</th></tr>
-              </thead>
-              <tbody>
-                {simData.categories.map((c, i) => {
-                  const before   = data.categories[i]
-                  const delta    = Math.round(c.my_proj) - Math.round(before?.my_proj || 0)
-                  const neg      = c.neg
-                  const better   = neg ? delta < 0 : delta > 0
-                  const worse    = neg ? delta > 0 : delta < 0
-                  const wpDelta  = Math.round((c.win_prob - (before?.win_prob ?? 0.5)) * 100)
-                  return (
-                    <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
-                      <td className="mp-cat-name">{c.stat}</td>
-                      <td className="mp-cat-my">{Math.round(before?.my_proj ?? 0)}</td>
-                      <td className="mp-cat-my">{Math.round(c.my_proj)}</td>
-                      <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}</td>
-                      <td><WinProbBadge wp={c.win_prob} /></td>
-                      <td className={wpDelta > 0 ? 'mp-delta-pos' : wpDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}>
-                        {wpDelta > 0 ? `+${wpDelta}%` : wpDelta < 0 ? `${wpDelta}%` : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {/* Simulated outcome distribution */}
-            {(() => {
-              const simOutcomes  = outcomeDistribution(simData.categories)
-              const simMaxProb   = Math.max(...simOutcomes.map(o => o.prob))
-              const realByWins   = Object.fromEntries(outcomes.map(o => [o.wins, o.prob]))
-              const overallDelta = Math.round(simData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
-              return (
-                <div className="mp-outcome-section mp-sim-outcome">
-                  <div className="mp-sim-outcome-header">
-                    <div className="mp-grid-label">Simulated Result Distribution</div>
-                    <div className={`mp-sim-overall-delta ${overallDelta > 0 ? 'mp-delta-pos' : overallDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}`}>
-                      {overallDelta > 0 ? `▲ +${overallDelta}%` : overallDelta < 0 ? `▼ ${overallDelta}%` : '—'}
-                      <span className="mp-sim-overall-delta-label">win prob</span>
+              <table className="mp-cats-table mp-sim-cats-table">
+                <thead>
+                  <tr><th>Cat</th><th className="mp-cat-my">Before</th><th className="mp-cat-my">After</th><th>Δ</th><th>Win%</th><th>ΔWin%</th></tr>
+                </thead>
+                <tbody>
+                  {planData.categories.map((c, i) => {
+                    const before  = data.categories[i]
+                    const delta   = Math.round(c.my_proj) - Math.round(before?.my_proj || 0)
+                    const neg     = c.neg
+                    const better  = neg ? delta < 0 : delta > 0
+                    const worse   = neg ? delta > 0 : delta < 0
+                    const wpDelta = Math.round((c.win_prob - (before?.win_prob ?? 0.5)) * 100)
+                    return (
+                      <tr key={c.stat} className={c.win_prob>=0.55?'mp-cat-winning':c.win_prob<=0.45?'mp-cat-losing':'mp-cat-toss'}>
+                        <td className="mp-cat-name">{c.stat}</td>
+                        <td className="mp-cat-my">{Math.round(before?.my_proj ?? 0)}</td>
+                        <td className="mp-cat-my">{Math.round(c.my_proj)}</td>
+                        <td className={better?'mp-delta-pos':worse?'mp-delta-neg':''}>{delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}</td>
+                        <td><WinProbBadge wp={c.win_prob} /></td>
+                        <td className={wpDelta > 0 ? 'mp-delta-pos' : wpDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}>
+                          {wpDelta > 0 ? `+${wpDelta}%` : wpDelta < 0 ? `${wpDelta}%` : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {(() => {
+                const planOutcomes = outcomeDistribution(planData.categories)
+                const planMaxProb  = Math.max(...planOutcomes.map(o => o.prob))
+                const realByWins   = Object.fromEntries(outcomes.map(o => [o.wins, o.prob]))
+                const overallDelta = Math.round(planData.overall_win_prob * 100) - Math.round(data.overall_win_prob * 100)
+                return (
+                  <div className="mp-outcome-section mp-sim-outcome">
+                    <div className="mp-sim-outcome-header">
+                      <div className="mp-grid-label">Projected Result Distribution</div>
+                      <div className={`mp-sim-overall-delta ${overallDelta > 0 ? 'mp-delta-pos' : overallDelta < 0 ? 'mp-delta-neg' : 'mp-delta-flat'}`}>
+                        {overallDelta > 0 ? `▲ +${overallDelta}%` : overallDelta < 0 ? `▼ ${overallDelta}%` : '—'}
+                        <span className="mp-sim-overall-delta-label">win prob</span>
+                      </div>
+                    </div>
+                    <div className="mp-outcomes">
+                      {planOutcomes.slice().reverse().map(o => {
+                        const pct      = Math.round(o.prob * 100)
+                        const barW     = planMaxProb > 0 ? (o.prob / planMaxProb) * 100 : 0
+                        const isProj   = o.wins === planData.cat_wins
+                        const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
+                        const rowDelta = Math.round((o.prob - (realByWins[o.wins] ?? 0)) * 100)
+                        return (
+                          <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
+                            <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
+                            <div className="mp-out-bar-wrap">
+                              <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
+                            </div>
+                            <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
+                            {rowDelta !== 0
+                              ? <span className={`mp-out-row-delta ${rowDelta > 0 ? 'mp-delta-pos' : 'mp-delta-neg'}`}>
+                                  {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
+                                </span>
+                              : isProj && <span className="mp-out-proj-tag">proj</span>
+                            }
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
-                  <div className="mp-outcomes">
-                    {simOutcomes.slice().reverse().map(o => {
-                      const pct      = Math.round(o.prob * 100)
-                      const barW     = simMaxProb > 0 ? (o.prob / simMaxProb) * 100 : 0
-                      const isProj   = o.wins === simData.cat_wins
-                      const cls      = o.wins > o.losses ? 'mp-out-win' : o.wins < o.losses ? 'mp-out-loss' : 'mp-out-toss'
-                      const rowDelta = Math.round((o.prob - (realByWins[o.wins] ?? 0)) * 100)
-                      return (
-                        <div key={o.wins} className={`mp-outcome-row${isProj ? ' mp-out-projected' : ''}`}>
-                          <span className={`mp-out-label ${cls}`}>{o.wins}–{o.losses}</span>
-                          <div className="mp-out-bar-wrap">
-                            <div className={`mp-out-bar ${cls}`} style={{width:`${barW}%`}} />
-                          </div>
-                          <span className="mp-out-pct">{pct > 0 ? `${pct}%` : '<1%'}</span>
-                          {rowDelta !== 0
-                            ? <span className={`mp-out-row-delta ${rowDelta > 0 ? 'mp-delta-pos' : 'mp-delta-neg'}`}>
-                                {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
-                              </span>
-                            : isProj && <span className="mp-out-proj-tag">proj</span>
-                          }
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })()}
-            </div>{/* end mp-sim-body */}
+                )
+              })()}
+            </div>
           </div>
         )}
 
@@ -5578,13 +5679,34 @@ function MatchupProjection({ onSelectPlayer }) {
                   {filteredFreeAgents.map(fa => {
                     const cumG  = faCumGames(fa)
                     const tm    = TEAM_ABBREV[fa.nba_team] || fa.nba_team?.slice(0,3) || '?'
-                    const isAdd = addSlug === fa.br_slug
+                    const isAdd = plannedAddSlugs.has(fa.br_slug)
                     const fmt   = v => v != null ? v : '—'
                     return (
                       <div
                         key={fa.br_slug}
                         className={`mp-fa-row${isAdd ? ' mp-fa-selected' : ''}`}
-                        onClick={() => { setAddSlug(fa.br_slug); setAddName(fa.espn_name); setSearchQ(''); setSearchRes([]) }}
+                        onClick={() => {
+                          // Fill first empty add slot, or add new transaction
+                          const emptyTxn = transactions.find(t => !t.add_slug)
+                          if (emptyTxn) {
+                            updateTxn(emptyTxn.id, 'add_slug', fa.br_slug)
+                            updateTxn(emptyTxn.id, 'add_name', fa.espn_name)
+                          } else {
+                            const firstFutureIdx = (data?.day_labels || []).findIndex((_, i) => {
+                              if (!data?.week_start) return i === 0
+                              const d0 = new Date(data.week_start + 'T12:00:00')
+                              d0.setDate(d0.getDate() + i)
+                              return d0.toISOString().slice(0, 10) > (asOfDate || data?.as_of_date || '')
+                            })
+                            setTransactions(prev => [...prev, {
+                              id: Date.now() + Math.random(),
+                              day_idx:  Math.max(0, firstFutureIdx >= 0 ? firstFutureIdx : 0),
+                              add_slug: fa.br_slug, add_name: fa.espn_name,
+                              drop_slug: null, searchQ: '', searchRes: [],
+                            }])
+                          }
+                          setPlanData(null)
+                        }}
                       >
                         <span className="mp-fa-name">{fa.espn_name}</span>
                         <span className="mp-fa-team">{tm}</span>

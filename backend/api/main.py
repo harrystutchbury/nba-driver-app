@@ -5486,7 +5486,7 @@ def _optimal_lineup_matching(players_indexed: list, slot_instances: list) -> set
     return matched
 
 
-def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slugs=None, drop_slugs=None):
+def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slugs=None, drop_slugs=None, transactions=None):
     """
     Core logic for the matchup projection view. Called from GET (browse) and POST (simulate).
     as_of_date: date string YYYY-MM-DD — days up to this date use actual game logs;
@@ -5813,15 +5813,17 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             if s in _SLOT_NAME_TO_ID
         }
 
-    def _compute_effective_games(players_raw):
+    def _compute_effective_games(players_raw, min_day_indices=None):
         """
         players_raw: list of (name, slug, eligible_slot_ids)
+        min_day_indices: {player_index: min_day_idx} — player only active from this day onwards
         Returns (eff, past_eff, future_eff, day_statuses):
           eff         - total effective games (slot-constrained)
           past_eff    - effective games for days <= as_of_dt (from actual game logs)
           future_eff  - effective games for days >  as_of_dt (from schedule projections)
           day_statuses- list per player of per-day status: 'slotted'|'benched'|None
         """
+        min_day_indices = min_day_indices or {}
         n = len(players_raw)
         eff        = [0.0] * n
         past_eff   = [0.0] * n
@@ -5854,6 +5856,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             playing_indices = [
                 pi for pi, (_, slug, _elig) in enumerate(players_raw)
                 if slug and day_dt in actual_by_slug.get(slug, {})
+                and day_i >= min_day_indices.get(pi, 0)
             ]
             _apply_day(day_i, playing_indices, past_eff)
 
@@ -5862,6 +5865,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             playing_indices = [
                 pi for pi, (_, slug, _elig) in enumerate(players_raw)
                 if day_dt in team_week_dates.get(slug_to_team.get(slug or "", ""), set())
+                and day_i >= min_day_indices.get(pi, 0)
             ]
             _apply_day(day_i, playing_indices, future_eff)
 
@@ -5886,26 +5890,41 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             "avg_stats":       avg_stats,
         }
 
+    # Merge flat add/drop params with structured transactions
+    all_drops: set = set(drop_slugs or [])
+    all_adds:  set = set(add_slugs  or [])
+    txn_day_by_add: dict = {}  # add_slug → day_idx (for day-aware pickup simulation)
+    for txn in (transactions or []):
+        if txn.get("drop_slug"):
+            all_drops.add(txn["drop_slug"])
+        if txn.get("add_slug"):
+            s = txn["add_slug"]
+            all_adds.add(s)
+            txn_day_by_add[s] = int(txn.get("day_idx", 0))
+
     # Build my roster (with add/drop overrides)
-    my_raw   = []
+    my_raw: list = []
+    my_min_day_indices: dict = {}  # player index → first day they're active
     roster_slugs = set()
     for p in (my_team_obj.roster or []):
         slug = _resolve_slug(p)
-        if slug in drop_slugs:
+        if slug in all_drops:
             continue
         roster_slugs.add(slug)
         my_raw.append((p.name, slug, _eligible_ids(p)))
-    for slug in add_slugs:
+    for slug in all_adds:
         if slug not in roster_slugs:
-            # Added players: use broad eligible set (all active slots)
+            pi = len(my_raw)
             my_raw.append((slug_to_name.get(slug, slug), slug, set(_ACTIVE_SLOT_IDS)))
+            if slug in txn_day_by_add:
+                my_min_day_indices[pi] = txn_day_by_add[slug]
 
     opp_raw = []
     for p in (opp_team_obj.roster if opp_team_obj else []):
         slug = _resolve_slug(p)
         opp_raw.append((p.name, slug, _eligible_ids(p)))
 
-    my_eff,  my_past_eff,  my_future_eff,  my_day_statuses  = _compute_effective_games(my_raw)
+    my_eff,  my_past_eff,  my_future_eff,  my_day_statuses  = _compute_effective_games(my_raw, min_day_indices=my_min_day_indices)
     opp_eff, opp_past_eff, opp_future_eff, opp_day_statuses = _compute_effective_games(opp_raw)
 
     def _build_players(raw_list, eff_list, past_eff_list, future_eff_list, day_statuses_list):
@@ -6033,6 +6052,20 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     cat_wins        = sum(1 for c in categories if c["win_prob"] > 0.5)
     overall_win_prob = round(cat_wins / max(1, len(categories)), 3)
 
+    # Fetch acquisition limit from ESPN API (mSettings view)
+    acq_limit = -1
+    try:
+        _alr = _requests.get(
+            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/2026/segments/0/leagues/{fc['league_key']}",
+            params={"view": "mSettings"},
+            cookies={"espn_s2": fc["access_token"], "SWID": fc["refresh_token"]},
+            timeout=8,
+        )
+        if _alr.ok:
+            acq_limit = _alr.json().get("settings", {}).get("acquisitionSettings", {}).get("acquisitionLimit", -1)
+    except Exception:
+        pass
+
     return {
         "week":             week,
         "week_label":       wi["label"],
@@ -6054,6 +6087,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
         "active_capacity":  active_capacity,
         "as_of_date":       as_of_dt.isoformat(),
         "past_end_idx":     past_end_idx,  # index of last past day in day_labels (-1 = all projected)
+        "acq_limit":        acq_limit,     # -1 = unlimited; positive = weekly acquisition cap
     }
 
 
@@ -6079,6 +6113,24 @@ def espn_matchup_projection_simulate(
         as_of_date=body.get("as_of_date"),
         add_slugs=body.get("add_slugs", []),
         drop_slugs=body.get("drop_slugs", []),
+    )
+
+
+@fantasy_router.post("/espn/matchup-projection/plan")
+def espn_matchup_projection_plan(
+    body: dict = Body(...),
+    current_user: str = Depends(get_current_user),
+):
+    """Simulate matchup projection with day-aware transaction planning.
+
+    Body: {week, as_of_date, transactions: [{day_idx, add_slug, drop_slug}]}
+    Each transaction adds a player from day_idx onwards and/or drops a player entirely.
+    """
+    return _espn_matchup_projection_inner(
+        current_user=current_user,
+        week=body.get("week"),
+        as_of_date=body.get("as_of_date"),
+        transactions=body.get("transactions", []),
     )
 
 
