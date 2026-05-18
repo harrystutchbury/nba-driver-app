@@ -979,6 +979,7 @@
 }
 .nav-btn:hover { color: var(--text); border-color: var(--border); }
 .nav-btn.active { color: var(--skill); border-color: var(--skill); }
+a.nav-btn { text-decoration: none; display: inline-block; }
 
 /* ── Dropdown nav groups ── */
 .nav-group {
@@ -4321,6 +4322,11 @@ td.bs-pos {
   border-radius: 6px;
   padding: 6px 8px;
   min-height: 40px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ra-move-box.ra-drop-active {
+  border-color: var(--skill);
+  background: rgba(0,230,118,0.05);
 }
 .ra-move-box .ra-zone-label {
   font-size: 10px;

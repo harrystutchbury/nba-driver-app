@@ -4345,10 +4345,19 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
 
   function onDrop(zone) {
     if (!dragging) return
-    const addTo = (list, set) => { if (!list.find(p=>p.slug===dragging.slug)) set(prev=>[...prev,{slug:dragging.slug,name:dragging.name}]) }
-    if      (zone==='get'  && dragging.source==='theirs')  addTo(getSlugs,  setGetSlugs)
-    else if (zone==='get2' && dragging.source==='theirs2') addTo(getSlugs2, setGetSlugs2)
+    const { slug, name, source } = dragging
+    if (zone === 'in-trade') {
+      if (source === 'theirs'  && !getSlugs.find(p=>p.slug===slug))  setGetSlugs(prev=>[...prev,{slug,name}])
+      if (source === 'theirs2' && !getSlugs2.find(p=>p.slug===slug)) setGetSlugs2(prev=>[...prev,{slug,name}])
+    } else if (zone === 'out-trade' && source === 'mine') {
+      if (!outSlugs.find(p=>p.slug===slug) && !dropSlugs.find(p=>p.slug===slug))
+        setOutSlugs(prev=>[...prev,{slug,name,toTeam:1}])
+    } else if (zone === 'out-drop' && source === 'mine') {
+      if (!dropSlugs.find(p=>p.slug===slug) && !outSlugs.find(p=>p.slug===slug))
+        setDropSlugs(prev=>[...prev,{slug,name}])
+    }
     setDragging(null)
+    resetSim()
   }
   function onDragOver(e) { e.preventDefault() }
 
@@ -4470,13 +4479,16 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
 
           {/* Col 1: My Roster */}
           <div>
-            <div className="ra-trade-col-title ra-my-team-title">My Roster <span className="ra-col-sub">(click: trade out → drop → clear)</span></div>
+            <div className="ra-trade-col-title ra-my-team-title">My Roster <span className="ra-col-sub">(drag or click: trade out → drop → clear)</span></div>
             {my_roster.filter(p=>p.br_slug).map((p,i) => {
               const inTrade = outSlugs.find(o=>o.slug===p.br_slug)
               const inDrop  = dropSlugs.find(o=>o.slug===p.br_slug)
               return (
                 <div key={p.espn_name+i}
                      className={`ra-player-chip${inTrade?' ra-chip-out':inDrop?' ra-chip-drop':''}`}
+                     draggable
+                     onDragStart={() => setDragging({slug:p.br_slug, name:p.espn_name, source:'mine'})}
+                     onDragEnd={() => setDragging(null)}
                      onClick={() => toggleOut(p.br_slug, p.espn_name)}>
                   {p.espn_name}
                 </div>
@@ -4486,10 +4498,11 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
 
           {/* Col 2: Movement summary */}
           <div className="ra-movement-summary">
-            <div className="ra-move-box">
+            <div className={`ra-move-box${dragging?.source==='mine' ? ' ra-drop-active' : ''}`}
+                 onDrop={() => onDrop('out-trade')} onDragOver={onDragOver}>
               <div className="ra-zone-label">OUT · Trade</div>
               {outSlugs.length === 0
-                ? <span className="ra-zone-hint">1st click from My Roster</span>
+                ? <span className="ra-zone-hint">Drag or click from My Roster</span>
                 : outSlugs.map(p => (
                     <div key={p.slug} className="ra-zone-chip ra-zone-chip-out" style={{flexWrap:'wrap',gap:2}}>
                       <span style={{flex:1}}>{p.name}</span>
@@ -4504,10 +4517,11 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
                   ))
               }
             </div>
-            <div className="ra-move-box">
+            <div className={`ra-move-box${(dragging?.source==='theirs'||dragging?.source==='theirs2') ? ' ra-drop-active' : ''}`}
+                 onDrop={() => onDrop('in-trade')} onDragOver={onDragOver}>
               <div className="ra-zone-label">IN · Trade</div>
               {getSlugs.length===0 && getSlugs2.length===0
-                ? <span className="ra-zone-hint">Click from partner roster</span>
+                ? <span className="ra-zone-hint">Drag or click from partner roster</span>
                 : [...getSlugs, ...getSlugs2].map(p => (
                     <div key={p.slug} className="ra-zone-chip">
                       {p.name}<button className="ra-chip-remove" onClick={()=>{setGetSlugs(prev=>prev.filter(g=>g.slug!==p.slug));setGetSlugs2(prev=>prev.filter(g=>g.slug!==p.slug));resetSim()}}>✕</button>
@@ -4515,10 +4529,11 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
                   ))
               }
             </div>
-            <div className="ra-move-box">
+            <div className={`ra-move-box${dragging?.source==='mine' ? ' ra-drop-active' : ''}`}
+                 onDrop={() => onDrop('out-drop')} onDragOver={onDragOver}>
               <div className="ra-zone-label">OUT · Drop</div>
               {dropSlugs.length === 0
-                ? <span className="ra-zone-hint">2nd click from My Roster</span>
+                ? <span className="ra-zone-hint">Drag or click (2nd click) from My Roster</span>
                 : dropSlugs.map(p => (
                     <div key={p.slug} className="ra-zone-chip ra-zone-chip-out">
                       {p.name}<button className="ra-chip-remove" onClick={()=>{setDropSlugs(prev=>prev.filter(o=>o.slug!==p.slug));resetSim()}}>✕</button>
@@ -7170,6 +7185,8 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </div>
 
                 <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => go('blog')}>Blog</button>
+
+                <a className="nav-btn" href="https://roto-intel-landing.onrender.com/docs.html" target="_blank" rel="noopener noreferrer">Explainer</a>
 
                 {/* Mobile-only: account links inside menu */}
                 <div className="mobile-nav-footer">
