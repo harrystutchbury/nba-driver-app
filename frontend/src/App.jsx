@@ -550,6 +550,21 @@ function rollingAverage(games, key, window) {
   })
 }
 
+function linReg(vals) {
+  const pts = vals.map((v, i) => [i, v]).filter(([, v]) => v !== null && v !== undefined)
+  if (pts.length < 2) return vals.map(() => null)
+  const n = pts.length
+  const sumX  = pts.reduce((s, [x]) => s + x, 0)
+  const sumY  = pts.reduce((s, [, y]) => s + y, 0)
+  const sumXY = pts.reduce((s, [x, y]) => s + x * y, 0)
+  const sumX2 = pts.reduce((s, [x]) => s + x * x, 0)
+  const denom = n * sumX2 - sumX * sumX
+  if (Math.abs(denom) < 1e-10) return vals.map(() => sumY / n)
+  const slope = (n * sumXY - sumX * sumY) / denom
+  const intercept = (sumY - slope * sumX) / n
+  return vals.map((_, i) => slope * i + intercept)
+}
+
 function nextSeasonLabel(season) {
   if (!season) return 'Next season'
   const yr = parseInt(season.split('-')[0]) + 1
@@ -6706,6 +6721,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const maSynthGames = maIsZSum ? maGames.map((g, i) => ({ ...g, z_sum: maRawVals[i] })) : maGames
   const maVals      = rollingAverage(maSynthGames, maStat, maWindow)
   const maStatLabel = MA_STAT_OPTIONS.find(o => o.value === maStat)?.label ?? maStat
+  const maTrendVals = linReg(maRawVals)
   const maChartData = maGames.length > 0 ? {
     labels: maGames.map(g => g.game_date),
     datasets: [
@@ -6730,6 +6746,17 @@ function AppMain({ onLogout, onOpenAccount }) {
         borderWidth: 2,
         tension: 0.3,
         spanGaps: false,
+      },
+      {
+        label: 'Trend',
+        data: maTrendVals,
+        borderColor: 'rgba(0,230,118,0.5)',
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        borderWidth: 1.5,
+        borderDash: [5, 4],
+        spanGaps: true,
       },
     ],
   } : null
