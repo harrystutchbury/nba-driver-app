@@ -6053,6 +6053,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     overall_win_prob = round(cat_wins / max(1, len(categories)), 3)
 
     # Fetch acquisition limit from ESPN API (mSettings view)
+    # matchupAcquisitionLimit = per-week cap; acquisitionLimit = season total (usually -1)
     acq_limit = -1
     try:
         _alr = _requests.get(
@@ -6062,9 +6063,14 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
             timeout=8,
         )
         if _alr.ok:
-            acq_limit = _alr.json().get("settings", {}).get("acquisitionSettings", {}).get("acquisitionLimit", -1)
+            _acq = _alr.json().get("settings", {}).get("acquisitionSettings", {})
+            logger.info(f"ESPN acquisitionSettings: {_acq}")
+            # Prefer per-week limit; fall back to season limit
+            weekly = _acq.get("matchupAcquisitionLimit", -1)
+            season = _acq.get("acquisitionLimit", -1)
+            acq_limit = weekly if weekly != -1 else season
     except Exception:
-        pass
+        logger.warning("Could not fetch ESPN acquisition limit", exc_info=True)
 
     return {
         "week":             week,

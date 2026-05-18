@@ -5524,10 +5524,16 @@ function MatchupProjection({ onSelectPlayer }) {
                   onChange={e => { updateTxn(txn.id, 'drop_slug', e.target.value || null); setPlanData(null) }}
                 >
                   <option value=''>— optional —</option>
-                  {d.my_players
+                  {[
+                    ...d.my_players.map(p => ({ slug: p.slug, name: p.name, label: `${p.name} (${p.games} GP)` })),
+                    ...transactions
+                      .filter(t => t.id !== txn.id && t.add_slug)
+                      .map(t => ({ slug: t.add_slug, name: t.add_name, label: `${t.add_name} (pickup)` })),
+                  ]
+                    .filter((p, i, arr) => arr.findIndex(x => x.slug === p.slug) === i) // dedupe
                     .filter(p => !plannedDropSlugs.has(p.slug) || txn.drop_slug === p.slug)
                     .map(p => (
-                      <option key={p.slug} value={p.slug}>{p.name} ({p.games} GP)</option>
+                      <option key={p.slug} value={p.slug}>{p.label}</option>
                     ))
                   }
                 </select>
