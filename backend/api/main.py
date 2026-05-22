@@ -469,7 +469,7 @@ def _avg_row(rows, team_game_map=None):
     }
 
 
-def _league_data(conn, season=None, cutoff=None, min_games=20, min_mpg=20):
+def _league_data(conn, season=None, cutoff=None, cutoff_end=None, min_games=20, min_mpg=20):
     """
     Fetch per-player averages for all qualifying players in a period.
     Returns (stats_dict, player_rows) where:
@@ -487,6 +487,9 @@ def _league_data(conn, season=None, cutoff=None, min_games=20, min_mpg=20):
     if cutoff:
         clauses.append("game_date >= ?")
         params.append(cutoff)
+    if cutoff_end:
+        clauses.append("game_date <= ?")
+        params.append(cutoff_end)
     where = " AND ".join(clauses)
 
     rows = conn.execute(f"""
@@ -1820,6 +1823,8 @@ def get_projection(
 def get_rankings(
     period:   str = Query("season", description="season | l14 | l30"),
     position: str = Query("all",    description="all | PG | SG | SF | PF | C (ESPN positions; falls back to broad group if not synced)"),
+    start:    str = Query(None,     description="Custom window start YYYY-MM-DD (overrides period)"),
+    end:      str = Query(None,     description="Custom window end YYYY-MM-DD (overrides period)"),
 ):
     """
     Return all qualifying players ranked by composite Z-score for the given period.
@@ -1828,7 +1833,14 @@ def get_rankings(
 
     conn = get_conn()
     try:
-        if period == "season":
+        cutoff_end = None
+        if start and end:
+            cutoff    = start
+            cutoff_end = end
+            season    = None
+            range_days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+            min_games = 3 if range_days <= 20 else 5 if range_days <= 60 else 10
+        elif period == "season":
             cutoff    = None
             min_games = 10
             _yr       = _current_season_end_year()
@@ -1842,7 +1854,7 @@ def get_rankings(
             min_games = 5
             season    = None
 
-        league, player_rows = _league_data(conn, season=season, cutoff=cutoff, min_games=min_games)
+        league, player_rows = _league_data(conn, season=season, cutoff=cutoff, cutoff_end=cutoff_end, min_games=min_games)
 
         if not player_rows:
             return []
@@ -1913,6 +1925,9 @@ def get_rankings(
         if cutoff:
             clauses.append("game_date >= ?")
             params.append(cutoff)
+        if cutoff_end:
+            clauses.append("game_date <= ?")
+            params.append(cutoff_end)
         where = " AND ".join(clauses)
         gp_rows = conn.execute(
             f"SELECT player_slug, COUNT(*) AS gp FROM game_logs WHERE {where} GROUP BY player_slug",

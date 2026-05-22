@@ -792,14 +792,17 @@ const RANK_COLS = [
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
 
-const PERIODS = [
-  { value: 'season', label: '2025-26 Season' },
-  { value: 'l30',    label: 'Last 30 Days' },
-  { value: 'l14',    label: 'Last 14 Days' },
+const SEASON_START = '2025-10-22'
+const SEASON_END   = '2026-04-19'
+const RANK_PERIODS = [
+  { label: '2025-26 Season', start: SEASON_START, end: SEASON_END },
+  { label: 'Last 30 Days',   start: () => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0,10) }, end: () => new Date().toISOString().slice(0,10) },
+  { label: 'Last 14 Days',   start: () => { const d = new Date(); d.setDate(d.getDate() - 14); return d.toISOString().slice(0,10) }, end: () => new Date().toISOString().slice(0,10) },
 ]
 
 function RankingsPage({ onSelectPlayer, ownership }) {
-  const [period,   setPeriod]   = useState('season')
+  const [rankStart, setRankStart] = useState(SEASON_START)
+  const [rankEnd,   setRankEnd]   = useState(SEASON_END)
   const [position, setPosition] = useState('all')
   const [players,  setPlayers]  = useState(null)
   const [loading,  setLoading]  = useState(false)
@@ -811,15 +814,28 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [showCTW, setShowCTW]   = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
+
+  const activePeriod = RANK_PERIODS.find(p => {
+    const s = typeof p.start === 'function' ? p.start() : p.start
+    const e = typeof p.end   === 'function' ? p.end()   : p.end
+    return rankStart === s && rankEnd === e
+  })?.label
+
+  function setPreset(p) {
+    setRankStart(typeof p.start === 'function' ? p.start() : p.start)
+    setRankEnd(typeof p.end === 'function' ? p.end() : p.end)
+  }
+
   useEffect(() => {
+    if (!rankStart || !rankEnd || rankStart > rankEnd) return
     setLoading(true)
     setPlayers(null)
     const pos = position === 'all' ? 'all' : position
-    apiFetch(`/api/rankings?period=${period}&position=${encodeURIComponent(pos)}`)
+    apiFetch(`/api/rankings?start=${rankStart}&end=${rankEnd}&position=${encodeURIComponent(pos)}`)
       .then(r => r.json())
       .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [period, position])
+  }, [rankStart, rankEnd, position])
 
   function handleSort(key) {
     if (sortKey === key) setSortAsc(a => !a)
@@ -912,13 +928,16 @@ function RankingsPage({ onSelectPlayer, ownership }) {
     <div className="rankings-page">
       <div className="rankings-controls">
         <div className="rank-filter-group">
-          <span className="ctrl-label">Period</span>
+          <span className="ctrl-label">Window</span>
           <div className="rank-pills">
-            {PERIODS.map(p => (
-              <button key={p.value} className={`rank-pill${period === p.value ? ' active' : ''}`}
-                onClick={() => setPeriod(p.value)}>{p.label}</button>
+            {RANK_PERIODS.map(p => (
+              <button key={p.label} className={`rank-pill${activePeriod === p.label ? ' active' : ''}`}
+                onClick={() => setPreset(p)}>{p.label}</button>
             ))}
           </div>
+          <input type="date" className="proj-date-input" value={rankStart} onChange={e => setRankStart(e.target.value)} />
+          <span className="proj-date-sep">→</span>
+          <input type="date" className="proj-date-input" value={rankEnd}   onChange={e => setRankEnd(e.target.value)} />
         </div>
         <div className="rank-filter-group">
           <span className="ctrl-label">Position</span>
