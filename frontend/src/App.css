@@ -2253,6 +2253,10 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .gamelog-table tbody tr:hover td { background: var(--surface); }
 .gamelog-table tr.gl-injured td { opacity: 0.45; }
 .gl-dnp { font-size: 11px; color: var(--muted); letter-spacing: 0.03em; }
+.gl-date-link { cursor: pointer; color: var(--accent); }
+.gl-date-link:hover { text-decoration: underline; }
+.gl-injured .gl-date-link { cursor: default; color: inherit; }
+.gl-injured .gl-date-link:hover { text-decoration: none; }
 
 .opp-cell {
   display: flex;

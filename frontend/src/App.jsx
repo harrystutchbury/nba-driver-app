@@ -1535,10 +1535,10 @@ function BoxScoreTable({ players, onSelectPlayer, ownership }) {
   )
 }
 
-function BoxScorePage({ onSelectPlayer, ownership }) {
+function BoxScorePage({ onSelectPlayer, ownership, initialDate }) {
   const clientET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
   const [todayEt, setTodayEt] = useState(clientET)
-  const [date, setDate]       = useState(clientET)
+  const [date, setDate]       = useState(() => initialDate || clientET())
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
@@ -6462,6 +6462,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   }, [dark])
   const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
   const [fantasyTab, setFantasyTab]   = useState('dashboard')
+  const [boxScoreDate, setBoxScoreDate] = useState(null)
 
   const PAGE_TITLES = {
     dashboard:         'Home',
@@ -7384,7 +7385,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
-      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} initialDate={boxScoreDate} />}
 
       {page === 'projections' && (isPro
         ? <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />
@@ -8562,7 +8563,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                             const inj = g.injured
                             return (
                             <tr key={i} className={`${i % 2 === 0 ? 'row-even' : ''}${inj ? ' gl-injured' : ''}`}>
-                              <td className="mono">{g.game_date}</td>
+                              <td className="mono gl-date-link" onClick={() => { if (!g.injured) { setBoxScoreDate(g.game_date); setPage('boxscores') } }}>{g.game_date}</td>
                               <td>
                                 <span className="opp-cell">
                                   <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
