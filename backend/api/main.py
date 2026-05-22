@@ -1301,29 +1301,33 @@ def get_game_log(
     ).fetchone()
 
     # Find team games in range with no game_log entry (injured/missed)
+    # Use team_games (complete) + teammate game_logs for opponent/home_away
     injury_stubs = []
     if team_row:
         team = team_row[0]
-        season_year = int(season.split("-")[1]) + 2000
         played_dates = {dict(r)["game_date"] for r in rows}
-        sched = conn.execute("""
-            SELECT game_date, home_team, away_team FROM nba_schedule
-            WHERE (home_team=? OR away_team=?) AND season=?
-              AND game_date >= ? AND game_date <= ?
-        """, (team, team, season_year, pa_start, pb_end)).fetchall()
-        for s in sched:
-            s = dict(s)
-            if s["game_date"] not in played_dates:
-                is_home = s["home_team"] == team
-                injury_stubs.append({
-                    "game_date": s["game_date"], "injured": True,
-                    "opponent": s["away_team"] if is_home else s["home_team"],
-                    "home_away": "home" if is_home else "away",
-                    "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
-                    "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
-                    "plus_minus": None, "team_score": None, "opp_score": None,
-                    "usg_pct": None, "opp_ease": None, "z_total": None,
-                })
+        missed_dates = conn.execute("""
+            SELECT game_date FROM team_games
+            WHERE team=? AND season=? AND game_date >= ? AND game_date <= ?
+        """, (team, season, pa_start, pb_end)).fetchall()
+        for md in missed_dates:
+            gd = md[0]
+            if gd in played_dates:
+                continue
+            # Get opponent/home_away from a teammate who did play
+            tm = conn.execute("""
+                SELECT opponent, home_away FROM game_logs
+                WHERE team=? AND game_date=? AND min > 0 LIMIT 1
+            """, (team, gd)).fetchone()
+            injury_stubs.append({
+                "game_date": gd, "injured": True,
+                "opponent": tm["opponent"] if tm else None,
+                "home_away": tm["home_away"] if tm else None,
+                "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
+                "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
+                "plus_minus": None, "team_score": None, "opp_score": None,
+                "usg_pct": None, "opp_ease": None, "z_total": None,
+            })
 
     conn.close()
 
@@ -1420,26 +1424,28 @@ def get_player_games(player: str = Query(..., description="Player slug")):
     injury_stubs = []
     if team_row:
         team = team_row[0]
-        season_year = int(season.split("-")[1]) + 2000
         played_dates = {dict(r)["game_date"] for r in rows}
-        sched = conn.execute("""
-            SELECT game_date, home_team, away_team FROM nba_schedule
-            WHERE (home_team=? OR away_team=?) AND season=?
-        """, (team, team, season_year)).fetchall()
-        for s in sched:
-            s = dict(s)
-            if s["game_date"] not in played_dates:
-                is_home = s["home_team"] == team
-                injury_stubs.append({
-                    "game_date": s["game_date"], "season": season, "injured": True,
-                    "opponent": s["away_team"] if is_home else s["home_team"],
-                    "home_away": "home" if is_home else "away",
-                    "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
-                    "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
-                    "plus_minus": None, "fg_pct": None, "ft_pct": None,
-                    "team_score": None, "opp_score": None,
-                    "usg_pct": None, "opp_ease": None, "z_total": None,
-                })
+        missed_dates = conn.execute("""
+            SELECT game_date FROM team_games WHERE team=? AND season=?
+        """, (team, season)).fetchall()
+        for md in missed_dates:
+            gd = md[0]
+            if gd in played_dates:
+                continue
+            tm = conn.execute("""
+                SELECT opponent, home_away FROM game_logs
+                WHERE team=? AND game_date=? AND min > 0 LIMIT 1
+            """, (team, gd)).fetchone()
+            injury_stubs.append({
+                "game_date": gd, "season": season, "injured": True,
+                "opponent": tm["opponent"] if tm else None,
+                "home_away": tm["home_away"] if tm else None,
+                "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
+                "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
+                "plus_minus": None, "fg_pct": None, "ft_pct": None,
+                "team_score": None, "opp_score": None,
+                "usg_pct": None, "opp_ease": None, "z_total": None,
+            })
 
     conn.close()
 
