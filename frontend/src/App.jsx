@@ -6521,7 +6521,8 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
   const [maChartType, setMaChartType] = useState('line')
-  const [maLookback, setMaLookback]   = useState(20)
+  const [maRangeStart, setMaRangeStart] = useState(0)
+  const [maRangeEnd,   setMaRangeEnd]   = useState(null) // null = last game
   const [maExpanded, setMaExpanded]   = useState(false)
   const [glExpanded, setGlExpanded]   = useState(false)
   const [glStart, setGlStart]         = useState(0)
@@ -6621,6 +6622,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     setPlayerStats(null)
     setProjection(null)
     setPlayerGames(null)
+    setMaRangeStart(0); setMaRangeEnd(null)
     setSchedProj(null)
     setMaLookback(20)
     setProjYear(1)
@@ -6917,12 +6919,13 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   // Moving average chart
   const maAllGames  = playerGames ?? []
-  const maGames     = maLookback ? maAllGames.slice(-maLookback) : maAllGames
+  const maEffEnd    = maRangeEnd   ?? (maAllGames.length - 1)
+  const maGames     = maAllGames.slice(maRangeStart, maEffEnd + 1)
   const maIsZSum    = maStat === 'z_sum'
   // Z-scores computed over full career so the baseline doesn't shift with the slider
   const maAllZSums  = maIsZSum ? computeGameZSums(maAllGames) : null
   const maRawVals   = maIsZSum
-    ? (maLookback ? maAllZSums.slice(-maLookback) : maAllZSums)
+    ? maAllZSums.slice(maRangeStart, maEffEnd + 1)
     : maGames.map(g => g[maStat] ?? null)
   const maSynthGames = maIsZSum ? maGames.map((g, i) => ({ ...g, z_sum: maRawVals[i] })) : maGames
   const maVals      = rollingAverage(maSynthGames, maStat, maWindow)
@@ -8468,20 +8471,28 @@ function AppMain({ onLogout, onOpenAccount }) {
                 {maAllGames.length > 0 && (
                   <div className="mpg-slider-row">
                     <span className="ctrl-label">Period</span>
-                    <input
-                      type="range"
-                      min={20}
-                      max={maAllGames.length}
-                      step={5}
-                      value={maLookback ?? maAllGames.length}
-                      onChange={e => {
-                        const v = +e.target.value
-                        setMaLookback(v >= maAllGames.length ? null : v)
-                      }}
-                      className="mpg-slider"
-                    />
-                    <span className="mpg-value">
-                      {maLookback ? `Last ${maLookback} games` : 'All time'}
+                    <div className="dual-range-wrap">
+                      <input
+                        type="range" className="dual-range dual-range-start"
+                        min={0} max={maAllGames.length - 1} step={1}
+                        value={maRangeStart}
+                        onChange={e => { const v = +e.target.value; setMaRangeStart(Math.min(v, maEffEnd - 1)) }}
+                      />
+                      <input
+                        type="range" className="dual-range dual-range-end"
+                        min={0} max={maAllGames.length - 1} step={1}
+                        value={maEffEnd}
+                        onChange={e => { const v = +e.target.value; setMaRangeEnd(Math.max(v, maRangeStart + 1)) }}
+                      />
+                      <div className="dual-range-track">
+                        <div className="dual-range-fill" style={{
+                          left:  `${(maRangeStart / (maAllGames.length - 1)) * 100}%`,
+                          right: `${((maAllGames.length - 1 - maEffEnd) / (maAllGames.length - 1)) * 100}%`,
+                        }} />
+                      </div>
+                    </div>
+                    <span className="mpg-value" style={{ minWidth: 120, fontSize: 12 }}>
+                      {maAllGames[maRangeStart]?.game_date?.slice(0,7)} → {maAllGames[maEffEnd]?.game_date?.slice(0,7)}
                     </span>
                   </div>
                 )}
