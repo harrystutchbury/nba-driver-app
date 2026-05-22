@@ -2251,6 +2251,8 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .gamelog-table tr.row-even td { background: var(--bg); }
 .gamelog-table tbody tr:hover td { background: var(--surface); }
+.gamelog-table tr.gl-injured td { opacity: 0.45; }
+.gl-dnp { font-size: 11px; color: var(--muted); letter-spacing: 0.03em; }
 
 .opp-cell {
   display: flex;

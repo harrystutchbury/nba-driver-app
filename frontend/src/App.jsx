@@ -5231,7 +5231,7 @@ function MatchupProjection({ onSelectPlayer }) {
             </thead>
             <tbody>
               {players.map(p => (
-                <tr key={p.slug || p.name} className={isMyTeam && plannedDropSlugs.has(p.slug) ? 'mp-row-drop' : ''}>
+                <tr key={p.slug || p.name} className={isMyTeam && plannedDropSlugs.has(p.slug || p.name) ? 'mp-row-drop' : ''}>
                   <td className="mp-col-player">
                     {p.slug
                       ? <button className="mp-player-link" onClick={() => onSelectPlayer?.(p.slug)}>{p.name}</button>
@@ -5289,7 +5289,7 @@ function MatchupProjection({ onSelectPlayer }) {
   const maxOutcomeProb = Math.max(...outcomes.map(o => o.prob))
 
   // Planned drops + adds (for roster highlighting)
-  const plannedDropSlugs = new Set(transactions.map(t => t.drop_slug).filter(Boolean))
+  const plannedDropSlugs = new Set(transactions.map(t => t.drop_slug).filter(Boolean)) // contains slug OR name for null-slug players
   const plannedAddSlugs  = new Set(transactions.map(t => t.add_slug).filter(Boolean))
 
   // Rostered slugs (for filtering free agents not on either roster)
@@ -5566,15 +5566,15 @@ function MatchupProjection({ onSelectPlayer }) {
                 >
                   <option value=''>— optional —</option>
                   {[
-                    ...d.my_players.map(p => ({ slug: p.slug, name: p.name, label: `${p.name} (${p.games} GP)` })),
+                    ...d.my_players.map(p => ({ dropId: p.slug || p.name, name: p.name, label: `${p.name} (${p.games} GP)` })),
                     ...transactions
                       .filter(t => t.id !== txn.id && t.add_slug)
-                      .map(t => ({ slug: t.add_slug, name: t.add_name, label: `${t.add_name} (pickup)` })),
+                      .map(t => ({ dropId: t.add_slug, name: t.add_name, label: `${t.add_name} (pickup)` })),
                   ]
-                    .filter((p, i, arr) => arr.findIndex(x => x.slug === p.slug) === i) // dedupe
-                    .filter(p => !plannedDropSlugs.has(p.slug) || txn.drop_slug === p.slug)
+                    .filter((p, i, arr) => arr.findIndex(x => x.dropId === p.dropId) === i) // dedupe
+                    .filter(p => !plannedDropSlugs.has(p.dropId) || txn.drop_slug === p.dropId)
                     .map(p => (
-                      <option key={p.slug} value={p.slug}>{p.label}</option>
+                      <option key={p.dropId} value={p.dropId}>{p.label}</option>
                     ))
                   }
                 </select>
@@ -7591,6 +7591,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                     <span className="ctrl-label">Presets</span>
                     <div className="preset-btns">
                       {[
+                        { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-04-13' }, b: { start: '2025-10-22', end: '2026-04-06' } },
                         { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-06' } },
                         { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
                         { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
@@ -8468,8 +8469,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                             const pm = g.plus_minus
                             const pmNum = pm != null ? parseInt(pm, 10) : null
                             const z = g.z_total
+                            const inj = g.injured
                             return (
-                            <tr key={i} className={i % 2 === 0 ? 'row-even' : ''}>
+                            <tr key={i} className={`${i % 2 === 0 ? 'row-even' : ''}${inj ? ' gl-injured' : ''}`}>
                               <td className="mono">{g.game_date}</td>
                               <td>
                                 <span className="opp-cell">
@@ -8488,7 +8490,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                               <td className="num mono" style={{ color: g.opp_ease == null ? '#888' : g.opp_ease > 1 ? '#00e676' : g.opp_ease < -1 ? '#ff6b6b' : '#888' }}>
                                 {g.opp_ease == null ? '—' : g.opp_ease > 1 ? 'High' : g.opp_ease < -1 ? 'Low' : 'Mid'}
                               </td>
-                              <td className="num mono">{g.min}</td>
+                              <td className="num mono">{inj ? <span className="gl-dnp">DNP</span> : g.min}</td>
                               <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
                                 {pmNum != null ? (pmNum > 0 ? '+' : '') + pmNum : '—'}
                               </td>
@@ -8793,8 +8795,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                         const pm = g.plus_minus
                         const pmNum = pm != null ? parseInt(pm, 10) : null
                         const z = g.z_total
+                        const inj = g.injured
                         return (
-                        <tr key={i} className={i % 2 === 0 ? 'row-even' : ''}>
+                        <tr key={i} className={`${i % 2 === 0 ? 'row-even' : ''}${inj ? ' gl-injured' : ''}`}>
                           <td className="mono">{g.game_date}</td>
                           <td>
                             <span className="opp-cell">
@@ -8813,7 +8816,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           <td className="num mono" style={{ color: g.opp_ease != null ? (g.opp_ease > 0 ? '#00e676' : '#ff6b6b') : '#888' }}>
                             {g.opp_ease != null ? (g.opp_ease > 0 ? '+' : '') + g.opp_ease + '%' : '—'}
                           </td>
-                          <td className="num mono">{g.min}</td>
+                          <td className="num mono">{inj ? <span className="gl-dnp">DNP</span> : g.min}</td>
                           <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
                             {pmNum != null ? (pmNum > 0 ? '+' : '') + pmNum : '—'}
                           </td>

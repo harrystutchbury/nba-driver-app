@@ -707,6 +707,7 @@
     <a class="sec-pill" href="#espn">Connecting ESPN</a>
     <a class="sec-pill" href="#yahoo">Connecting Yahoo</a>
     <a class="sec-pill" href="#z-scores">Z-Scores</a>
+    <a class="sec-pill" href="#ctw">CTW</a>
     <a class="sec-pill" href="#rankings">Rankings</a>
     <a class="sec-pill" href="#projections">Projections</a>
     <a class="sec-pill" href="#driver-analysis">Driver Analysis</a>
@@ -714,7 +715,6 @@
     <a class="sec-pill" href="#matchup">Matchup</a>
     <a class="sec-pill" href="#trade-analysis">Trade Analysis</a>
     <a class="sec-pill" href="#schedule">Schedule</a>
-    <a class="sec-pill" href="#ctw">CTW</a>
   </div>
 </div>
 
@@ -980,11 +980,37 @@
 </section>
 
 <!-- ════════════════════════════════════════════════════════════
-     SECTION 5 — RANKINGS
+     SECTION 5 — CTW
+═════════════════════════════════════════════════════════════ -->
+<section class="doc-section" id="ctw">
+  <div class="sec-header">
+    <div class="sec-label">05 — CTW</div>
+    <h2 class="sec-title">Contribution to Winning</h2>
+    <p class="sec-desc">How much each player contributes to winning fantasy matchups, not just producing stats.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">What it's for</div>
+    <p>CTW (Contribution to Winning) measures how much a player's stats contribute to winning head-to-head matchups. Where z-scores measure statistical output relative to the average player, CTW measures winning impact — specifically, how often a player's above-replacement contribution in a category is decisive in a real matchup. It's calculated by simulating the player's contribution across the league's actual team compositions.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="sub-title">How to read it</div>
+    <ul class="read-list">
+      <li>A positive CTW score means the player is a net contributor to winning categories across simulated matchups.</li>
+      <li>The by-category breakdown shows where a player's contribution is decisive versus negligible — useful for identifying punt-friendly players.</li>
+      <li>CTW and z-score often agree, but diverge for players who concentrate their value in a small number of high-impact categories.</li>
+      <li>CTW appears as a column on both the Rankings and Projections pages.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SECTION 6 — RANKINGS
 ═════════════════════════════════════════════════════════════ -->
 <section class="doc-section" id="rankings">
   <div class="sec-header">
-    <div class="sec-label">05 — Rankings</div>
+    <div class="sec-label">06 — Rankings</div>
     <h2 class="sec-title">Rankings</h2>
     <p class="sec-desc">A view of every player's fantasy value to date this season.</p>
   </div>
@@ -1159,33 +1185,6 @@
       <li>The games played count per week is shown for each team — prioritise teams with 4+ game weeks.</li>
       <li>The Weekly Schedule view breaks down each week day-by-day — teams as rows, Monday through Sunday as columns, with home/away indicator.</li>
       <li>Fantasy playoff weeks are highlighted separately so you can plan ahead.</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ════════════════════════════════════════════════════════════
-     SECTION 12 — CTW
-═════════════════════════════════════════════════════════════ -->
-<section class="doc-section" id="ctw">
-  <div class="sec-header">
-    <div class="sec-label">12 — CTW</div>
-    <h2 class="sec-title">Contribution to Winning</h2>
-    <p class="sec-desc">How much each player contributes to winning fantasy matchups, not just producing stats.</p>
-  </div>
-
-  <div class="subsection">
-    <div class="sub-title">What it's for</div>
-    <p>CTW (Contribution to Winning) measures how much a player's stats contribute to winning head-to-head matchups. Where z-scores measure statistical output relative to the average player, CTW measures winning impact — specifically, how often a player's above-replacement contribution in a category is decisive in a real matchup. It's calculated by simulating the player's contribution across the league's actual team compositions.</p>
-  </div>
-
-  <div class="subsection">
-    <div class="sub-title">How to read it</div>
-    <ul class="read-list">
-      <li>A positive CTW score means the player is a net contributor to winning categories across simulated matchups.</li>
-      <li>The by-category breakdown shows where a player's contribution is decisive versus negligible — useful for identifying punt-friendly players.</li>
-      <li>Players dominant in scarce categories (BLK, STL) can score higher CTW relative to their composite z-score, since those categories are harder to win league-wide.</li>
-      <li>CTW and z-score often agree, but diverge for players who concentrate their value in a small number of high-impact categories.</li>
-      <li>CTW appears as a column on both the Rankings and Projections pages.</li>
     </ul>
   </div>
 </section>

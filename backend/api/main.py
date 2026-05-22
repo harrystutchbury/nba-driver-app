@@ -1289,11 +1289,42 @@ def get_game_log(
         WHERE g.player_slug = ?
           AND g.game_date   >= ?
           AND g.game_date   <= ?
-          AND g.min          > 0
         ORDER BY g.game_date DESC
     """, (season, season, season, player, pa_start, pb_end)).fetchall()
 
     zp = _league_z_params(conn, season)
+
+    # Get player's team for schedule lookup
+    team_row = conn.execute(
+        "SELECT team FROM game_logs WHERE player_slug=? AND season=? ORDER BY game_date DESC LIMIT 1",
+        (player, season)
+    ).fetchone()
+
+    # Find team games in range with no game_log entry (injured/missed)
+    injury_stubs = []
+    if team_row:
+        team = team_row[0]
+        season_year = int(season.split("-")[1]) + 2000
+        played_dates = {dict(r)["game_date"] for r in rows}
+        sched = conn.execute("""
+            SELECT game_date, home_team, away_team FROM nba_schedule
+            WHERE (home_team=? OR away_team=?) AND season=?
+              AND game_date >= ? AND game_date <= ?
+        """, (team, team, season_year, pa_start, pb_end)).fetchall()
+        for s in sched:
+            s = dict(s)
+            if s["game_date"] not in played_dates:
+                is_home = s["home_team"] == team
+                injury_stubs.append({
+                    "game_date": s["game_date"], "injured": True,
+                    "opponent": s["away_team"] if is_home else s["home_team"],
+                    "home_away": "home" if is_home else "away",
+                    "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
+                    "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
+                    "plus_minus": None, "team_score": None, "opp_score": None,
+                    "usg_pct": None, "opp_ease": None, "z_total": None,
+                })
+
     conn.close()
 
     def _zs(stat, val):
@@ -1303,6 +1334,11 @@ def get_game_log(
     result = []
     for r in rows:
         d = dict(r)
+        if not d.get("min"):
+            d["injured"] = True
+            d["z_total"] = None
+            result.append(d)
+            continue
         pts  = d["pts"]  or 0.0; reb  = d["reb"]  or 0.0; ast  = d["ast"]  or 0.0
         stl  = d["stl"]  or 0.0; blk  = d["blk"]  or 0.0; tov  = d["tov"]  or 0.0
         fg3m = d["fg3m"] or 0.0; fgm  = d["fgm"]  or 0.0; fga  = d["fga"]  or 0.0
@@ -1311,6 +1347,8 @@ def get_game_log(
         ft_z = ((ftm / fta - zp["ft_pct"]["league_avg"]) * fta - zp["ft_pct"]["mean"]) / zp["ft_pct"]["std"] if fta > 0 else 0.0
         d["z_total"] = round(_zs("pts",pts) + _zs("reb",reb) + _zs("ast",ast) + _zs("stl",stl) + _zs("blk",blk) - _zs("tov",tov) + _zs("fg3m",fg3m) + fg_z + ft_z, 2)
         result.append(d)
+
+    result = sorted(result + injury_stubs, key=lambda r: r["game_date"], reverse=True)
     return result
 
 
@@ -1367,11 +1405,42 @@ def get_player_games(player: str = Query(..., description="Player slug")):
         LEFT JOIN opp_fg3   of3 ON of3.opp_team = g.opponent AND of3.game_date = g.game_date
         LEFT JOIN opp_pts_allowed opa ON opa.team = g.opponent
         LEFT JOIN league_avg la
-        WHERE g.player_slug = ? AND g.min > 0
+        WHERE g.player_slug = ?
         ORDER BY g.game_date ASC
     """, (season, season, season, player)).fetchall()
 
     zp = _league_z_params(conn, season)
+
+    # Find team games with no game_log entry (injured/missed)
+    team_row = conn.execute(
+        "SELECT team FROM game_logs WHERE player_slug=? AND season=? ORDER BY game_date DESC LIMIT 1",
+        (player, season)
+    ).fetchone()
+
+    injury_stubs = []
+    if team_row:
+        team = team_row[0]
+        season_year = int(season.split("-")[1]) + 2000
+        played_dates = {dict(r)["game_date"] for r in rows}
+        sched = conn.execute("""
+            SELECT game_date, home_team, away_team FROM nba_schedule
+            WHERE (home_team=? OR away_team=?) AND season=?
+        """, (team, team, season_year)).fetchall()
+        for s in sched:
+            s = dict(s)
+            if s["game_date"] not in played_dates:
+                is_home = s["home_team"] == team
+                injury_stubs.append({
+                    "game_date": s["game_date"], "season": season, "injured": True,
+                    "opponent": s["away_team"] if is_home else s["home_team"],
+                    "home_away": "home" if is_home else "away",
+                    "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
+                    "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
+                    "plus_minus": None, "fg_pct": None, "ft_pct": None,
+                    "team_score": None, "opp_score": None,
+                    "usg_pct": None, "opp_ease": None, "z_total": None,
+                })
+
     conn.close()
 
     def _zs(stat, val):
@@ -1381,6 +1450,11 @@ def get_player_games(player: str = Query(..., description="Player slug")):
     result = []
     for r in rows:
         d = dict(r)
+        if not d.get("min"):
+            d["injured"] = True
+            d["z_total"] = None
+            result.append(d)
+            continue
         pts  = d["pts"]  or 0.0
         reb  = d["reb"]  or 0.0
         ast  = d["ast"]  or 0.0
@@ -1398,6 +1472,7 @@ def get_player_games(player: str = Query(..., description="Player slug")):
         d["z_total"] = round(z_total, 2)
         result.append(d)
 
+    result = sorted(result + injury_stubs, key=lambda r: r["game_date"])
     return result
 
 
@@ -5908,7 +5983,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     roster_slugs = set()
     for p in (my_team_obj.roster or []):
         slug = _resolve_slug(p)
-        if slug in all_drops:
+        if (slug and slug in all_drops) or p.name in all_drops:
             continue
         roster_slugs.add(slug)
         my_raw.append((p.name, slug, _eligible_ids(p)))
