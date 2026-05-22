@@ -6930,6 +6930,24 @@ function AppMain({ onLogout, onOpenAccount }) {
   const maVals      = rollingAverage(maSynthGames, maStat, maWindow)
   const maStatLabel = MA_STAT_OPTIONS.find(o => o.value === maStat)?.label ?? maStat
   const maTrendVals = linReg(maRawVals)
+
+  // Smart x-axis: DD MMM when window ≤ 60 days, MMM 'YY otherwise
+  const maDateSpanDays = maGames.length > 1
+    ? Math.round((new Date(maGames[maGames.length - 1].game_date) - new Date(maGames[0].game_date)) / 86400000)
+    : 0
+  const MA_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const maDateLabel = (game_date) => {
+    if (!game_date) return ''
+    const [y, m, day] = game_date.split('-')
+    return maDateSpanDays <= 60
+      ? `${+day} ${MA_MONTHS[+m - 1]}`
+      : `${MA_MONTHS[+m - 1]} '${y.slice(2)}`
+  }
+
+  // Ease table threshold
+  const MA_TABLE_THRESHOLD = 30
+  const maShowTable = maGames.length <= MA_TABLE_THRESHOLD
+
   const maChartData = maGames.length > 0 ? {
     labels: maGames.map(g => g.game_date),
     datasets: [
@@ -6999,13 +7017,7 @@ function AppMain({ onLogout, onOpenAccount }) {
           font: { family: "'DM Mono', monospace", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
-          callback: (_, i) => {
-            const d = maGames[i]?.game_date
-            if (!d) return ''
-            const [y, m] = d.split('-')
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-            return `${months[+m - 1]} '${y.slice(2)}`
-          },
+          callback: (_, i) => maDateLabel(maGames[i]?.game_date),
         },
       },
       y: {
@@ -7021,8 +7033,16 @@ function AppMain({ onLogout, onOpenAccount }) {
     datasets: [{
       label: maStatLabel,
       data: maRawVals,
-      backgroundColor: maRawVals.map(v => {
+      backgroundColor: maRawVals.map((v, i) => {
         if (v == null) return 'transparent'
+        if (!maShowTable) {
+          // Colour bars by ease rating when table is hidden
+          const ease = maGames[i]?.opp_ease
+          if (ease == null) return 'rgba(150,150,255,0.7)'
+          if (ease > 3)  return 'rgba(0,230,118,0.65)'
+          if (ease < -3) return 'rgba(255,107,107,0.65)'
+          return 'rgba(150,150,255,0.7)'
+        }
         if (maStat === 'tov') return v > 3 ? 'rgba(255,107,107,0.7)' : 'rgba(150,150,255,0.7)'
         return v === 0 ? 'rgba(100,100,100,0.3)' : 'rgba(150,150,255,0.7)'
       }),
@@ -7055,13 +7075,7 @@ function AppMain({ onLogout, onOpenAccount }) {
           font: { family: "'DM Mono', monospace", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
-          callback: (_, i) => {
-            const d = maGames[i]?.game_date
-            if (!d) return ''
-            const [y, m] = d.split('-')
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-            return `${months[+m - 1]} '${y.slice(2)}`
-          },
+          callback: (_, i) => maDateLabel(maGames[i]?.game_date),
         },
       },
       y: {
@@ -8500,6 +8514,42 @@ function AppMain({ onLogout, onOpenAccount }) {
                     ? maChartData && <Line data={maChartData} options={maChartOptions} />
                     : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
                 </div>
+                {maShowTable && maGames.length > 0 && (
+                  <div className="form-ease-wrap">
+                    <table className="form-ease-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Opponent</th>
+                          <th className="num">{maStatLabel}</th>
+                          <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...maGames].reverse().map((g, i) => {
+                          const ri = maGames.length - 1 - i
+                          const val = maRawVals[ri]
+                          const ease = g.opp_ease
+                          return (
+                            <tr key={g.game_date} className={g.injured ? 'gl-injured' : ''}>
+                              <td className="mono">{g.game_date}</td>
+                              <td>
+                                <span className="opp-cell">
+                                  <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
+                                  {g.opponent}
+                                </span>
+                              </td>
+                              <td className="num mono">{g.injured ? <span className="gl-dnp">DNP</span> : val != null ? val.toFixed(1) : '—'}</td>
+                              <td className="num mono" style={{ color: ease == null ? '#666' : ease > 3 ? '#00e676' : ease < -3 ? '#ff6b6b' : '#888' }}>
+                                {ease != null ? (ease > 0 ? '+' : '') + ease + '%' : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
             )}
