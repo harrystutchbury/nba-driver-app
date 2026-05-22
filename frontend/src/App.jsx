@@ -6995,7 +6995,13 @@ function AppMain({ onLogout, onOpenAccount }) {
           font: { family: "'DM Mono', monospace", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
-          callback: (_, i) => { const d = maGames[i]?.game_date; return d ? d.slice(5) : '' },
+          callback: (_, i) => {
+            const d = maGames[i]?.game_date
+            if (!d) return ''
+            const [y, m] = d.split('-')
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+            return `${months[+m - 1]} '${y.slice(2)}`
+          },
         },
       },
       y: {
