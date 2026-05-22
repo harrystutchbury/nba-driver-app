@@ -6624,7 +6624,6 @@ function AppMain({ onLogout, onOpenAccount }) {
     setPlayerGames(null)
     setMaRangeStart(0); setMaRangeEnd(null)
     setSchedProj(null)
-    setMaLookback(20)
     setProjYear(1)
     setProjScenario('baseline')
     setUsageUsg(null)
