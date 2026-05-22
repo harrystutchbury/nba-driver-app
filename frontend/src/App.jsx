@@ -6519,6 +6519,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
+  const [maChartType, setMaChartType] = useState('line')
   const [maLookback, setMaLookback]   = useState(20)
   const [maExpanded, setMaExpanded]   = useState(false)
   const [glExpanded, setGlExpanded]   = useState(false)
@@ -6989,6 +6990,62 @@ function AppMain({ onLogout, onOpenAccount }) {
     scales: {
       x: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
+        border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
+        ticks: {
+          color: '#888',
+          font: { family: "'DM Mono', monospace", size: 11 },
+          maxTicksLimit: 12,
+          maxRotation: 0,
+          callback: (_, i) => {
+            const d = maGames[i]?.game_date
+            if (!d) return ''
+            const [y, m] = d.split('-')
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+            return `${months[+m - 1]} '${y.slice(2)}`
+          },
+        },
+      },
+      y: {
+        grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
+        border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
+        ticks:  { color: '#888', font: { family: "'DM Mono', monospace", size: 11 } },
+      },
+    },
+  }
+
+  const maBarData = maGames.length > 0 ? {
+    labels: maGames.map(g => g.game_date),
+    datasets: [{
+      label: maStatLabel,
+      data: maRawVals,
+      backgroundColor: maRawVals.map(v => {
+        if (v == null) return 'transparent'
+        if (maStat === 'tov') return v > 3 ? 'rgba(255,107,107,0.7)' : 'rgba(150,150,255,0.7)'
+        return v === 0 ? 'rgba(100,100,100,0.3)' : 'rgba(150,150,255,0.7)'
+      }),
+      borderColor: 'transparent',
+      borderRadius: 2,
+    }],
+  } : null
+
+  const maBarOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      datalabels: { display: false },
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => { const d = maGames[items[0].dataIndex]?.game_date; if (!d) return ''; const [y,m,day] = d.split('-'); const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${months[+m-1]} ${+day} '${y.slice(2)}` },
+          label: (ctx) => { const v = ctx.parsed.y; if (v == null) return null; return (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(2)}` },
+        },
+        backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1,
+        titleColor: '#aaa', bodyColor: '#eee',
+      },
+    },
+    scales: {
+      x: {
+        grid:   { display: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
         ticks: {
           color: '#888',
@@ -8394,12 +8451,18 @@ function AppMain({ onLogout, onOpenAccount }) {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  <span className="ctrl-label" style={{ marginLeft: '1rem' }}>Weighted Average Period</span>
-                  <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
-                    {MA_WINDOW_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  {maChartType === 'line' && <>
+                    <span className="ctrl-label" style={{ marginLeft: '1rem' }}>Weighted Average Period</span>
+                    <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
+                      {MA_WINDOW_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </>}
+                  <div className="rank-pills" style={{ marginLeft: 'auto' }}>
+                    <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
+                    <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                  </div>
                 </div>
                 {maAllGames.length > 0 && (
                   <div className="mpg-slider-row">
@@ -8422,7 +8485,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                   </div>
                 )}
                 <div className="trend-chart-wrap" style={{ height: '260px' }}>
-                  {maChartData && <Line data={maChartData} options={maChartOptions} />}
+                  {maChartType === 'line'
+                    ? maChartData && <Line data={maChartData} options={maChartOptions} />
+                    : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
                 </div>
                 </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
