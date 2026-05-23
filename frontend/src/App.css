@@ -2173,7 +2173,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .shot-diet-charts {
   display: flex;
   gap: 20px;
-  margin-bottom: 24px;
+  margin-bottom: 40px;
 }
 
 .shot-diet-chart-wrap {

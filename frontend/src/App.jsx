@@ -7936,7 +7936,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
                         },
                         scales: {
-                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, maxRotation: 0 } },
+                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
                           y: { display: false },
                         },
                       })
@@ -8852,7 +8852,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                   datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
                 },
                 scales: {
-                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, maxRotation: 0 } },
+                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
                   y: { display: false },
                 },
               })
