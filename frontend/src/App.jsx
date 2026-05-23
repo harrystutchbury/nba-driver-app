@@ -7148,8 +7148,8 @@ function AppMain({ onLogout, onOpenAccount }) {
         grid: { color: '#1a1a1a', drawTicks: false },
         border: { color: '#222' },
         ticks: {
-          color: '#555',
-          font: { family: "'DM Mono', monospace", size: 10 },
+          color: '#bbb',
+          font: { family: "'DM Mono', monospace", size: 11 },
           maxRotation: 0,
           minRotation: 0,
         },
