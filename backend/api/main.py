@@ -1276,6 +1276,7 @@ def get_shot_diet(
         )
 
     percentiles_a = _compute_zone_percentiles(conn, player, pa_start, pa_end)
+    percentiles_b = _compute_zone_percentiles(conn, player, pb_start, pb_end)
     conn.close()
 
     return {
@@ -1285,6 +1286,7 @@ def get_shot_diet(
         "diet_total":       result.diet_total,
         "efficiency_total": result.efficiency_total,
         "percentiles_a":    percentiles_a,
+        "percentiles_b":    percentiles_b,
         "zones": [
             {
                 "zone":             z.zone,

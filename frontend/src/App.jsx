@@ -7900,14 +7900,15 @@ function AppMain({ onLogout, onOpenAccount }) {
                         }
                         return { ...z, net: z.diet_effect + z.efficiency_effect }
                       })
-                      const percs = shotDiet.percentiles_a || {}
+                      const percs  = shotDiet.percentiles_a || {}
+                      const percsB = shotDiet.percentiles_b || {}
                       const selZoneLabels = zoneRows.map(z => {
-                        const p = ordinal(percs[z.zone]?.freq_pct)
-                        return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                        const a = ordinal(percs[z.zone]?.freq_pct), b = ordinal(percsB[z.zone]?.freq_pct)
+                        return (a != null && b != null) ? [ZONE_LABELS[z.zone], `${a} → ${b} %ile`] : ZONE_LABELS[z.zone]
                       })
                       const fgZoneLabels = zoneRows.map(z => {
-                        const p = ordinal(percs[z.zone]?.fg_pct_pct)
-                        return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                        const a = ordinal(percs[z.zone]?.fg_pct_pct), b = ordinal(percsB[z.zone]?.fg_pct_pct)
+                        return (a != null && b != null) ? [ZONE_LABELS[z.zone], `${a} → ${b} %ile`] : ZONE_LABELS[z.zone]
                       })
                       const BASE_COLOR = '#3a4470'
                       const COMP_COLOR = '#00e676'
@@ -8815,14 +8816,15 @@ function AppMain({ onLogout, onOpenAccount }) {
                 return { ...z, net: z.diet_effect + z.efficiency_effect }
               })
 
-              const percs = shotDiet.percentiles_a || {}
+              const percs  = shotDiet.percentiles_a || {}
+              const percsB = shotDiet.percentiles_b || {}
               const selZoneLabels = zoneRows.map(z => {
-                const p = ordinal(percs[z.zone]?.freq_pct)
-                return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                const a = ordinal(percs[z.zone]?.freq_pct), b = ordinal(percsB[z.zone]?.freq_pct)
+                return (a != null && b != null) ? [ZONE_LABELS[z.zone], `${a} → ${b} %ile`] : ZONE_LABELS[z.zone]
               })
               const fgZoneLabels = zoneRows.map(z => {
-                const p = ordinal(percs[z.zone]?.fg_pct_pct)
-                return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                const a = ordinal(percs[z.zone]?.fg_pct_pct), b = ordinal(percsB[z.zone]?.fg_pct_pct)
+                return (a != null && b != null) ? [ZONE_LABELS[z.zone], `${a} → ${b} %ile`] : ZONE_LABELS[z.zone]
               })
               const BASE_COLOR = '#3a4470'
               const COMP_COLOR = '#00e676'
