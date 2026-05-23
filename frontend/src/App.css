@@ -2182,7 +2182,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: 280px;
+  height: 310px;
   position: relative;
 }
 

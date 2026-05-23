@@ -47,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from schema import get_conn
 from engine.decompose import decompose
-from engine.shots import decompose_shots
+from engine.shots import decompose_shots, ALL_ZONES
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
@@ -1179,6 +1179,76 @@ def get_seasons():
 
 
 # -----------------------------------------------------------------------
+# Shot diet helpers
+# -----------------------------------------------------------------------
+
+def _compute_zone_percentiles(conn, player_slug: str, date_from: str, date_to: str) -> dict:
+    """
+    For each zone, return the player's percentile rank (0–100) for freq and fg_pct
+    vs all qualifying NBA players in the period (min 20 FGA total).
+    Returns {zone: {freq_pct: int|None, fg_pct_pct: int|None}}.
+    """
+    from collections import defaultdict
+
+    rows = conn.execute("""
+        SELECT m.br_slug, s.zone, COUNT(*) AS fga, SUM(s.made) AS fgm
+        FROM shot_logs s
+        INNER JOIN player_id_map m ON m.nba_id = s.nba_id
+        WHERE s.game_date >= ? AND s.game_date <= ?
+        GROUP BY m.br_slug, s.zone
+    """, (date_from, date_to)).fetchall()
+
+    if not rows:
+        return {}
+
+    player_zones  = {}
+    player_totals = {}
+    for r in rows:
+        slug = r["br_slug"]
+        if slug not in player_zones:
+            player_zones[slug] = {}
+            player_totals[slug] = 0
+        player_zones[slug][r["zone"]] = {"fga": r["fga"], "fgm": r["fgm"]}
+        player_totals[slug] += r["fga"]
+
+    qualified = {s for s, t in player_totals.items() if t >= 20}
+    if player_slug not in qualified:
+        return {}
+
+    zone_freq_list  = defaultdict(list)
+    zone_fgpct_list = defaultdict(list)
+
+    for slug in qualified:
+        total = player_totals[slug]
+        for zone in ALL_ZONES:
+            z = player_zones[slug].get(zone, {"fga": 0, "fgm": 0})
+            zone_freq_list[zone].append((slug, z["fga"] / total))
+            if z["fga"] >= 5:
+                zone_fgpct_list[zone].append((slug, z["fgm"] / z["fga"]))
+
+    result = {}
+    for zone in ALL_ZONES:
+        freq_vals  = zone_freq_list.get(zone, [])
+        fgpct_vals = zone_fgpct_list.get(zone, [])
+
+        player_freq  = next((v for s, v in freq_vals  if s == player_slug), None)
+        player_fgpct = next((v for s, v in fgpct_vals if s == player_slug), None)
+
+        freq_pct = (
+            round(sum(1 for _, v in freq_vals if v < player_freq) / len(freq_vals) * 100)
+            if player_freq is not None and freq_vals else None
+        )
+        fgpct_pct = (
+            round(sum(1 for _, v in fgpct_vals if v < player_fgpct) / len(fgpct_vals) * 100)
+            if player_fgpct is not None and fgpct_vals else None
+        )
+
+        result[zone] = {"freq_pct": freq_pct, "fg_pct_pct": fgpct_pct}
+
+    return result
+
+
+# -----------------------------------------------------------------------
 # GET /shot-diet
 # -----------------------------------------------------------------------
 
@@ -1196,14 +1266,17 @@ def get_shot_diet(
         period_a=(pa_start, pa_end),
         period_b=(pb_start, pb_end),
     )
-    conn.close()
 
     if result is None:
+        conn.close()
         raise HTTPException(
             status_code=404,
             detail="No shot data found for this player and date ranges. "
                    "Run map_players.py then refresh_shots.py first."
         )
+
+    percentiles_a = _compute_zone_percentiles(conn, player, pa_start, pa_end)
+    conn.close()
 
     return {
         "fg_pct_a":         result.fg_pct_a,
@@ -1211,6 +1284,7 @@ def get_shot_diet(
         "delta":            result.delta,
         "diet_total":       result.diet_total,
         "efficiency_total": result.efficiency_total,
+        "percentiles_a":    percentiles_a,
         "zones": [
             {
                 "zone":             z.zone,

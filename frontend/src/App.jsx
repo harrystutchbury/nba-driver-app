@@ -772,6 +772,11 @@ const ZONE_LABELS = {
   corner_3:        'Corner 3',
   above_break_3:   'Above break 3',
 }
+function ordinal(n) {
+  if (n == null) return null
+  const s = ['th','st','nd','rd'], v = n % 100
+  return `${n}${s[(v-20)%10] || s[v] || s[0]}`
+}
 
 
 
@@ -7895,20 +7900,28 @@ function AppMain({ onLogout, onOpenAccount }) {
                         }
                         return { ...z, net: z.diet_effect + z.efficiency_effect }
                       })
-                      const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
+                      const percs = shotDiet.percentiles_a || {}
+                      const selZoneLabels = zoneRows.map(z => {
+                        const p = ordinal(percs[z.zone]?.freq_pct)
+                        return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                      })
+                      const fgZoneLabels = zoneRows.map(z => {
+                        const p = ordinal(percs[z.zone]?.fg_pct_pct)
+                        return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+                      })
                       const BASE_COLOR = '#3a4470'
                       const COMP_COLOR = '#00e676'
                       const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
                       const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
                       const selChartData = {
-                        labels: zoneLabels,
+                        labels: selZoneLabels,
                         datasets: [
                           { label: baseLabel, data: zoneRows.map(z => +(z.freq_a * 100).toFixed(1)), backgroundColor: BASE_COLOR, borderRadius: 2 },
                           { label: compLabel, data: zoneRows.map(z => +(z.freq_b * 100).toFixed(1)), backgroundColor: COMP_COLOR, borderRadius: 2 },
                         ],
                       }
                       const fgChartData = {
-                        labels: zoneLabels,
+                        labels: fgZoneLabels,
                         datasets: [
                           { label: baseLabel, data: zoneRows.map(z => z.fga_a > 0 ? +(z.fg_pct_a * 100).toFixed(1) : 0), backgroundColor: BASE_COLOR, borderRadius: 2 },
                           { label: compLabel, data: zoneRows.map(z => z.fga_b > 0 ? +(z.fg_pct_b * 100).toFixed(1) : 0), backgroundColor: COMP_COLOR, borderRadius: 2 },
@@ -7922,7 +7935,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                           datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
                         },
                         scales: {
-                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
+                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, maxRotation: 0 } },
                           y: { display: false },
                         },
                       })
@@ -8802,20 +8815,28 @@ function AppMain({ onLogout, onOpenAccount }) {
                 return { ...z, net: z.diet_effect + z.efficiency_effect }
               })
 
-              const zoneLabels = zoneRows.map(z => ZONE_LABELS[z.zone])
+              const percs = shotDiet.percentiles_a || {}
+              const selZoneLabels = zoneRows.map(z => {
+                const p = ordinal(percs[z.zone]?.freq_pct)
+                return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+              })
+              const fgZoneLabels = zoneRows.map(z => {
+                const p = ordinal(percs[z.zone]?.fg_pct_pct)
+                return p != null ? [ZONE_LABELS[z.zone], `${p} %ile`] : ZONE_LABELS[z.zone]
+              })
               const BASE_COLOR = '#3a4470'
               const COMP_COLOR = '#00e676'
               const baseLabel = `Baseline (${result.period_a.start} – ${result.period_a.end})`
               const compLabel = `Comparison (${result.period_b.start} – ${result.period_b.end})`
               const selChartData = {
-                labels: zoneLabels,
+                labels: selZoneLabels,
                 datasets: [
                   { label: baseLabel, data: zoneRows.map(z => +(z.freq_a * 100).toFixed(1)), backgroundColor: BASE_COLOR, borderRadius: 2 },
                   { label: compLabel, data: zoneRows.map(z => +(z.freq_b * 100).toFixed(1)), backgroundColor: COMP_COLOR, borderRadius: 2 },
                 ],
               }
               const fgChartData = {
-                labels: zoneLabels,
+                labels: fgZoneLabels,
                 datasets: [
                   { label: baseLabel, data: zoneRows.map(z => z.fga_a > 0 ? +(z.fg_pct_a * 100).toFixed(1) : 0), backgroundColor: BASE_COLOR, borderRadius: 2 },
                   { label: compLabel, data: zoneRows.map(z => z.fga_b > 0 ? +(z.fg_pct_b * 100).toFixed(1) : 0), backgroundColor: COMP_COLOR, borderRadius: 2 },
@@ -8829,7 +8850,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                   datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#9aa0b8', font: { family: "'DM Mono', monospace", size: 9 } },
                 },
                 scales: {
-                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 } } },
+                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#888', font: { family: "'DM Mono', monospace", size: 10 }, maxRotation: 0 } },
                   y: { display: false },
                 },
               })
