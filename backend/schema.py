@@ -386,6 +386,47 @@ def init_db():
         )
     """)
 
+    # Forum
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forum_posts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            title        TEXT NOT NULL,
+            body         TEXT NOT NULL,
+            username     TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            created_at   TEXT DEFAULT (datetime('now')),
+            is_hidden    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forum_comments (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id      INTEGER NOT NULL REFERENCES forum_posts(id) ON DELETE CASCADE,
+            parent_id    INTEGER REFERENCES forum_comments(id) ON DELETE CASCADE,
+            username     TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            body         TEXT NOT NULL,
+            created_at   TEXT DEFAULT (datetime('now')),
+            is_hidden    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forum_post_votes (
+            post_id  INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            vote     INTEGER NOT NULL,
+            PRIMARY KEY (post_id, username)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forum_comment_votes (
+            comment_id INTEGER NOT NULL,
+            username   TEXT NOT NULL,
+            vote       INTEGER NOT NULL,
+            PRIMARY KEY (comment_id, username)
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

@@ -1001,8 +1001,39 @@ function RankingsPage({ onSelectPlayer, ownership }) {
 
       {loading && <p className="rankings-loading">Loading…</p>}
 
-{!loading && sorted.length > 0 && (
+{!loading && sorted.length > 0 && (() => {
+  function downloadRankingsCSV() {
+    const headers = ['#','Player','Team','Pos','GP','MIN']
+    RANK_COLS.forEach(c => {
+      if (showRaw) headers.push(c.label)
+      if (showZ)   headers.push(`z_${c.label}`)
+      if (showCTW) headers.push(`CTW_${c.label}`)
+    })
+    if (showZ)   headers.push('Value')
+    if (showCTW) headers.push('CTW')
+    const rows = sorted.map(p => {
+      const row = [p.rank, p.name, p.team, p.position || '', p.gp ?? '', p.min_pg != null ? p.min_pg.toFixed(1) : '']
+      RANK_COLS.forEach(c => {
+        const raw = isTotalsKey(c.key) ? (totalsVal(p, c.key) ?? '') : (p[c.key] != null ? (c.pct ? `${p[c.key]}%` : p[c.key].toFixed(1)) : '')
+        const z   = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? (getTotalsZ(p, c.key) ?? '') : (p[`z_${c.key}`] ?? '')
+        const ctw = p[`ctw_${c.key}`]
+        if (showRaw) row.push(raw)
+        if (showZ)   row.push(z !== '' && z != null ? Number(z).toFixed(2) : '')
+        if (showCTW) row.push(ctw != null ? ctw.toFixed(2) : '')
+      })
+      if (showZ)   row.push(getEffectiveZTotal(p)?.toFixed(2) ?? '')
+      if (showCTW) row.push(p.ctw != null ? p.ctw.toFixed(2) : '')
+      return row
+    })
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download: `rankings_${rankStart}_${rankEnd}.csv` })
+    a.click()
+  }
+  return (
         <div className="rankings-table-wrap">
+          <div className="rankings-export-row">
+            <button className="export-csv-btn" onClick={downloadRankingsCSV}>↓ Export CSV</button>
+          </div>
           <table className="rankings-table">
             <thead>
               <tr>
@@ -1085,7 +1116,8 @@ function RankingsPage({ onSelectPlayer, ownership }) {
             </tbody>
           </table>
         </div>
-      )}
+  )
+})()}
 
       {!loading && players && sorted.length === 0 && (
         <p className="rankings-empty">No players found for this filter.</p>
@@ -1883,8 +1915,43 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
         <p className="rankings-loading">No players found — check the schedule table covers this window.</p>
       )}
 
-      {!loading && sorted.length > 0 && (
+      {!loading && sorted.length > 0 && (() => {
+  function downloadProjectionsCSV() {
+    const headers = ['#','Player','Team','Pos','GP']
+    PROJ_COLS.forEach(c => {
+      if (showRaw) headers.push(c.label)
+      if (showZ && !c.noZ) headers.push(`z_${c.label}`)
+      if (showRanges && !c.noZ && !c.pct) headers.push(`${c.label}_Low`, `${c.label}_High`)
+      if (showCTW && !c.noZ) headers.push(`CTW_${c.label}`)
+    })
+    if (showZ) headers.push('Value')
+    if (showCTW) headers.push('CTW')
+    const rows = sorted.map((p, i) => {
+      const row = [i+1, p.name, p.team, p.position || '', p.gp ?? '']
+      PROJ_COLS.forEach(c => {
+        const raw = isTotalsKey(c.key) ? (totalsVal(p,c.key)??'') : (p[c.key]!=null ? (c.pct?`${p[c.key]}%`:p[c.key].toFixed(1)) : '')
+        const z = c.noZ ? '' : viewMode==='totals' && !PROJ_PCT_KEYS.has(c.key) ? (getTotalsZ(p,c.key)??'') : (p[`z_${c.key}`]??'')
+        if (showRaw) row.push(raw)
+        if (showZ && !c.noZ) row.push(z!==''&&z!=null?Number(z).toFixed(2):'')
+        if (showRanges && !c.noZ && !c.pct) {
+          const lo = p[`${c.key}_low`]; const hi = p[`${c.key}_high`]
+          row.push(lo!=null?lo.toFixed(1):'', hi!=null?hi.toFixed(1):'')
+        }
+        if (showCTW && !c.noZ) row.push(p[`ctw_${c.key}`]!=null?p[`ctw_${c.key}`].toFixed(2):'')
+      })
+      if (showZ) { const v=getEffectiveValue(p); row.push(v!=null?v.toFixed(1):'') }
+      if (showCTW) row.push(p.ctw!=null?p.ctw.toFixed(2):'')
+      return row
+    })
+    const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:`projections_${start}_${end}.csv`})
+    a.click()
+  }
+  return (
         <div className="rankings-table-wrap">
+          <div className="rankings-export-row">
+            <button className="export-csv-btn" onClick={downloadProjectionsCSV}>↓ Export CSV</button>
+          </div>
           <table className="rankings-table">
             <thead>
               <tr>
@@ -1974,6 +2041,293 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
             </tbody>
           </table>
         </div>
+  )
+})()}
+    </div>
+  )
+}
+
+// ─── Forum ────────────────────────────────────────────────────────────────────
+
+function timeAgo(dt) {
+  const diff = (Date.now() - new Date(dt.endsWith('Z') ? dt : dt + 'Z').getTime()) / 1000
+  if (diff < 60)       return 'just now'
+  if (diff < 3600)     return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400)    return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 86400*7)  return `${Math.floor(diff / 86400)}d ago`
+  return new Date(dt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+}
+
+function ForumVote({ score, myVote, onVote, sm }) {
+  return (
+    <div className={`forum-vote-col${sm ? ' sm' : ''}`}>
+      <button className={`forum-vote-btn up${myVote === 1 ? ' active' : ''}${sm ? ' sm' : ''}`}
+        onClick={e => { e.stopPropagation(); onVote(myVote === 1 ? 0 : 1) }}>▲</button>
+      <span className={`forum-score${sm ? ' sm' : ''} ${score > 0 ? 'pos' : score < 0 ? 'neg' : ''}`}>{score}</span>
+      <button className={`forum-vote-btn dn${myVote === -1 ? ' active' : ''}${sm ? ' sm' : ''}`}
+        onClick={e => { e.stopPropagation(); onVote(myVote === -1 ? 0 : -1) }}>▼</button>
+    </div>
+  )
+}
+
+function ForumCommentBox({ postId, parentId, onSubmit, placeholder, onCancel }) {
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  function submit() {
+    if (!body.trim()) return
+    setBusy(true)
+    onSubmit(postId, body.trim(), parentId)
+      .then(() => { setBody(''); setBusy(false); onCancel?.() })
+      .catch(() => setBusy(false))
+  }
+  return (
+    <div className="forum-comment-box">
+      <textarea className="forum-textarea sm" rows={3} placeholder={placeholder || 'Write a reply…'}
+        value={body} onChange={e => setBody(e.target.value)} />
+      <div className="forum-form-actions">
+        {onCancel && <button className="forum-btn secondary" onClick={onCancel}>Cancel</button>}
+        <button className="forum-btn primary" onClick={submit} disabled={busy || !body.trim()}>
+          {busy ? 'Posting…' : 'Post'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ForumComment({ comment, postId, onVote, onReply, onDelete, depth }) {
+  const [showReply, setShowReply] = useState(false)
+  const indent = Math.min(depth, 3) * 24
+  return (
+    <div className="forum-comment" style={{ marginLeft: indent }}>
+      <ForumVote score={comment.score} myVote={comment.my_vote} sm
+        onVote={v => onVote(comment.id, v)} />
+      <div className="forum-comment-body-wrap">
+        <div className="forum-comment-meta">
+          <span className="forum-author">{comment.author}</span>
+          <span className="forum-dot">·</span>
+          <span>{timeAgo(comment.created_at)}</span>
+          <button className="forum-text-btn" onClick={() => setShowReply(v => !v)}>
+            {showReply ? 'Cancel' : 'Reply'}
+          </button>
+          {comment.is_mine && (
+            <button className="forum-text-btn danger" onClick={() => onDelete(comment.id)}>Delete</button>
+          )}
+        </div>
+        <div className="forum-comment-text">{comment.body}</div>
+        {showReply && (
+          <ForumCommentBox postId={postId} parentId={comment.id} onSubmit={onReply}
+            placeholder="Write a reply…" onCancel={() => setShowReply(false)} />
+        )}
+        {comment.replies?.map(r => (
+          <ForumComment key={r.id} comment={r} postId={postId}
+            onVote={onVote} onReply={onReply} onDelete={onDelete} depth={depth + 1} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ForumPage() {
+  const [view,        setView]        = useState('feed')
+  const [posts,       setPosts]       = useState(null)
+  const [currentPost, setCurrentPost] = useState(null)
+  const [loading,     setLoading]     = useState(false)
+  const [showForm,    setShowForm]    = useState(false)
+  const [newTitle,    setNewTitle]    = useState('')
+  const [newBody,     setNewBody]     = useState('')
+  const [busy,        setBusy]        = useState(false)
+
+  useEffect(() => { if (view === 'feed') loadPosts() }, [view])
+
+  function loadPosts() {
+    setLoading(true)
+    apiFetch('/api/forum/posts').then(r => r.json())
+      .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  function openPost(id) {
+    setLoading(true)
+    apiFetch(`/api/forum/posts/${id}`).then(r => r.json())
+      .then(d => { setCurrentPost(d); setView('post'); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  function submitPost() {
+    if (!newTitle.trim() || !newBody.trim()) return
+    setBusy(true)
+    apiFetch('/api/forum/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle.trim(), body: newBody.trim() }),
+    }).then(r => r.json()).then(() => {
+      setShowForm(false); setNewTitle(''); setNewBody(''); setBusy(false); loadPosts()
+    }).catch(() => setBusy(false))
+  }
+
+  function votePost(id, vote) {
+    apiFetch(`/api/forum/posts/${id}/vote`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote }),
+    }).then(r => r.json()).then(d => {
+      setPosts(prev => prev?.map(p => p.id === id ? { ...p, score: d.score, my_vote: vote } : p))
+      if (currentPost?.id === id) setCurrentPost(prev => ({ ...prev, score: d.score, my_vote: vote }))
+    })
+  }
+
+  function voteComment(commentId, vote) {
+    apiFetch(`/api/forum/comments/${commentId}/vote`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote }),
+    }).then(r => r.json()).then(d => {
+      setCurrentPost(prev => ({
+        ...prev, comments: patchComment(prev.comments, commentId, { score: d.score, my_vote: vote })
+      }))
+    })
+  }
+
+  function patchComment(list, id, patch) {
+    return list.map(c => c.id === id
+      ? { ...c, ...patch }
+      : { ...c, replies: patchComment(c.replies || [], id, patch) })
+  }
+
+  function addComment(postId, body, parentId) {
+    return apiFetch(`/api/forum/posts/${postId}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body, parent_id: parentId || null }),
+    }).then(r => r.json()).then(nc => {
+      setCurrentPost(prev => ({
+        ...prev,
+        comments: parentId
+          ? patchComment(prev.comments, parentId, { replies: [...(prev.comments.find(c => findById(prev.comments, parentId))?.replies || []), nc] })
+          : [...prev.comments, nc],
+      }))
+      if (!parentId) {
+        setCurrentPost(prev => ({ ...prev, comments: [...prev.comments.filter(c => c.id !== nc.id), ...(prev.comments.some(c => c.id === nc.id) ? [] : [nc])] }))
+      }
+    })
+  }
+
+  // Simpler addComment that reloads the post
+  function addCommentReload(postId, body, parentId) {
+    return apiFetch(`/api/forum/posts/${postId}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body, parent_id: parentId || null }),
+    }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(() => apiFetch(`/api/forum/posts/${postId}`).then(r => r.json())
+        .then(d => setCurrentPost(d)))
+  }
+
+  function deletePost(id) {
+    if (!window.confirm('Delete this post?')) return
+    apiFetch(`/api/forum/posts/${id}`, { method: 'DELETE' }).then(() => {
+      if (view === 'post') setView('feed')
+      else setPosts(prev => prev.filter(p => p.id !== id))
+    })
+  }
+
+  function deleteComment(id) {
+    if (!window.confirm('Delete this comment?')) return
+    apiFetch(`/api/forum/comments/${id}`, { method: 'DELETE' })
+      .then(() => apiFetch(`/api/forum/posts/${currentPost.id}`).then(r => r.json()).then(d => setCurrentPost(d)))
+  }
+
+  // ── Feed view ─────────────────────────────────────────────────────────────
+  if (view === 'feed') return (
+    <div className="forum-page">
+      <div className="forum-header">
+        <h1 className="forum-title">Community</h1>
+        <button className="forum-btn primary" onClick={() => setShowForm(v => !v)}>
+          {showForm ? 'Cancel' : '+ New Post'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="forum-new-post-form">
+          <input className="forum-input" placeholder="Title" maxLength={200}
+            value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+          <textarea className="forum-textarea" rows={5} placeholder="What's on your mind?"
+            value={newBody} onChange={e => setNewBody(e.target.value)} />
+          <div className="forum-form-actions">
+            <button className="forum-btn secondary" onClick={() => { setShowForm(false); setNewTitle(''); setNewBody('') }}>Cancel</button>
+            <button className="forum-btn primary" onClick={submitPost}
+              disabled={busy || !newTitle.trim() || !newBody.trim()}>
+              {busy ? 'Posting…' : 'Post'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading && <p className="forum-loading">Loading…</p>}
+      {!loading && posts?.length === 0 && <p className="forum-empty">No posts yet — be the first!</p>}
+
+      <div className="forum-feed">
+        {posts?.map(post => (
+          <div key={post.id} className="forum-post-card" onClick={() => openPost(post.id)}>
+            <ForumVote score={post.score} myVote={post.my_vote} onVote={v => { votePost(post.id, v) }} />
+            <div className="forum-post-main">
+              <div className="forum-post-title">{post.title}</div>
+              <div className="forum-post-preview">{post.body.slice(0, 120)}{post.body.length > 120 ? '…' : ''}</div>
+              <div className="forum-post-meta">
+                <span className="forum-author">{post.author}</span>
+                <span className="forum-dot">·</span>
+                <span>{timeAgo(post.created_at)}</span>
+                <span className="forum-dot">·</span>
+                <span>{post.comment_count} {post.comment_count === 1 ? 'reply' : 'replies'}</span>
+              </div>
+            </div>
+            {post.is_mine && (
+              <button className="forum-del-btn" onClick={e => { e.stopPropagation(); deletePost(post.id) }}>×</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  // ── Post detail view ──────────────────────────────────────────────────────
+  return (
+    <div className="forum-page">
+      <button className="forum-back-btn" onClick={() => setView('feed')}>← Community</button>
+
+      {loading && <p className="forum-loading">Loading…</p>}
+
+      {currentPost && (
+        <>
+          <div className="forum-post-detail">
+            <ForumVote score={currentPost.score} myVote={currentPost.my_vote}
+              onVote={v => votePost(currentPost.id, v)} />
+            <div className="forum-post-body-wrap">
+              <h2 className="forum-detail-title">{currentPost.title}</h2>
+              <div className="forum-post-meta">
+                <span className="forum-author">{currentPost.author}</span>
+                <span className="forum-dot">·</span>
+                <span>{timeAgo(currentPost.created_at)}</span>
+                {currentPost.is_mine && (
+                  <button className="forum-text-btn danger" onClick={() => deletePost(currentPost.id)}>Delete</button>
+                )}
+              </div>
+              <div className="forum-detail-body">{currentPost.body}</div>
+            </div>
+          </div>
+
+          <div className="forum-comment-area">
+            <div className="forum-section-label">Leave a comment</div>
+            <ForumCommentBox postId={currentPost.id} parentId={null}
+              onSubmit={addCommentReload} placeholder="Share your thoughts…" />
+          </div>
+
+          <div className="forum-comments-section">
+            <div className="forum-section-label">
+              {currentPost.comments.length} {currentPost.comments.length === 1 ? 'Reply' : 'Replies'}
+            </div>
+            {currentPost.comments.map(c => (
+              <ForumComment key={c.id} comment={c} postId={currentPost.id}
+                onVote={voteComment} onReply={addCommentReload} onDelete={deleteComment} depth={0} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -2210,14 +2564,6 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
 }
 
 // ── Comments section ─────────────────────────────────────────────────────────
-
-function timeAgo(iso) {
-  const secs = Math.floor((Date.now() - new Date(iso + 'Z')) / 1000)
-  if (secs < 60)  return 'just now'
-  if (secs < 3600) return `${Math.floor(secs/60)}m ago`
-  if (secs < 86400) return `${Math.floor(secs/3600)}h ago`
-  return `${Math.floor(secs/86400)}d ago`
-}
 
 function CommentsSection({ playerSlug }) {
   const [comments, setComments] = useState([])
@@ -7337,6 +7683,8 @@ function AppMain({ onLogout, onOpenAccount }) {
 
                 <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => go('blog')}>Blog</button>
 
+                <button className={`nav-btn${page === 'forum' ? ' active' : ''}`} onClick={() => go('forum')}>Community</button>
+
                 <a className="nav-btn" href="https://roto-intel-landing.onrender.com/docs.html" target="_blank" rel="noopener noreferrer">Explainer</a>
 
                 {/* Mobile-only: account links inside menu */}
@@ -7425,6 +7773,8 @@ function AppMain({ onLogout, onOpenAccount }) {
       {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
       {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
+
+      {page === 'forum' && <ForumPage />}
 
       {page === 'adjustments' && <AdjustmentsPage />}
 

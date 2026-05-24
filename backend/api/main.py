@@ -9987,6 +9987,9 @@ app.include_router(_sse_router)
 from ctw.api import ctw_router
 app.include_router(ctw_router)
 
+from api.forum import forum_router
+app.include_router(forum_router)
+
 
 # Must come AFTER all API routes so /api/* is never caught here.
 # -----------------------------------------------------------------------
