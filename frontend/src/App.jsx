@@ -2057,8 +2057,8 @@ const DRAFT_CATS = [
   { key: 'blk',    label: 'BLK', zKey: 'z_blk',     invert: false },
   { key: 'tov',    label: 'TOV', zKey: 'z_tov',     invert: true  },
   { key: 'fg3m',   label: '3PM', zKey: 'z_fg3m',    invert: false },
-  { key: 'fg_pct', label: 'FG%', zKey: 'fg_impact', invert: false },
-  { key: 'ft_pct', label: 'FT%', zKey: 'ft_impact', invert: false },
+  { key: 'fg_pct', label: 'FG%', zKey: 'z_fg_pct', invert: false },
+  { key: 'ft_pct', label: 'FT%', zKey: 'z_ft_pct', invert: false },
 ]
 
 function computeDraftScore(player, myRoster, scoringType) {
@@ -2180,10 +2180,36 @@ function DraftPage() {
       .sort((a, b) => b.draftScore - a.draftScore)
   }, [rankData, drafted, myRoster, setup, search])
 
-  const myCatSummary = useMemo(() => DRAFT_CATS.map(cat => ({
-    ...cat,
-    total: myRoster.reduce((s, p) => { const v = p[cat.zKey] || 0; return s + (cat.invert ? -v : v) }, 0),
-  })), [myRoster])
+  // Per-team category totals (from all picks on the board)
+  const teamCatTotals = useMemo(() => {
+    if (!setup) return {}
+    const teams = {}
+    picks.forEach((p, i) => {
+      const { slot } = pickOrder[i]
+      if (!teams[slot]) teams[slot] = {}
+      for (const cat of DRAFT_CATS) {
+        const v = p[cat.zKey] || 0
+        teams[slot][cat.key] = (teams[slot][cat.key] || 0) + (cat.invert ? -v : v)
+      }
+    })
+    return teams
+  }, [picks, pickOrder, setup])
+
+  const myCatSummary = useMemo(() => {
+    const mySlot = setup ? setup.myPickSlot - 1 : -1
+    const teamsWithPicks = Object.entries(teamCatTotals).filter(([, t]) => Object.keys(t).length > 0)
+    return DRAFT_CATS.map(cat => {
+      const total = myRoster.reduce((s, p) => { const v = p[cat.zKey] || 0; return s + (cat.invert ? -v : v) }, 0)
+      // Rank among teams that have at least 1 pick
+      let rank = null, outOf = null
+      if (teamsWithPicks.length > 1) {
+        const sorted = [...teamsWithPicks].sort((a, b) => (b[1][cat.key] ?? -99) - (a[1][cat.key] ?? -99))
+        rank  = sorted.findIndex(([s]) => Number(s) === mySlot) + 1
+        outOf = teamsWithPicks.length
+      }
+      return { ...cat, total, rank, outOf }
+    })
+  }, [myRoster, teamCatTotals, setup])
 
   function draftPlayer(player) {
     if (isComplete) return
@@ -2208,7 +2234,7 @@ function DraftPage() {
           <span className="draft-meta-pill">{setup.scoringType === 'cats' ? '9-Cat' : 'Points'}</span>
           {!isComplete
             ? <span className={`draft-meta-pill draft-meta-round${isMyTurn ? ' my-turn' : ''}`}>
-                {isMyTurn ? '⭐ ' : ''}Round {currentRound} · Pick {currentIdx + 1}
+                Round {currentRound} · Pick {currentIdx + 1}
               </span>
             : <span className="draft-meta-pill">Draft complete</span>
           }
@@ -2259,28 +2285,33 @@ function DraftPage() {
           {myRoster.length > 0 && (
             <div className="draft-analysis">
               <div className="draft-analysis-header">
-                <span className="draft-analysis-title">My Team · Category Strength</span>
+                <span className="draft-analysis-title">My Team · Category Rankings</span>
                 <span className="draft-analysis-sub">
-                  Each bar shows how your team compares to a league-average team in that category.
-                  Green = above average, red = below. The number is how many standard deviations above (+) or below (−) average.
+                  Your team ranked against other teams in this draft so far.
+                  {myCatSummary[0]?.outOf == null && ' Rankings appear once 2+ teams have picks.'}
                 </span>
               </div>
               <div className="draft-cat-grid">
                 {myCatSummary.map(cat => {
-                  const pct = Math.min(Math.max((cat.total + 5) / 10 * 100, 0), 100)
-                  const teamAvg = myRoster.reduce((s, p) => s + (p[cat.key] || 0), 0) / myRoster.length
+                  const { rank, outOf } = cat
+                  const rankPct = rank && outOf ? (outOf - rank) / (outOf - 1) : null
+                  const barColor = rankPct == null ? '#555'
+                    : rankPct >= 0.66 ? '#00e676'
+                    : rankPct >= 0.33 ? '#f5a623'
+                    : '#ff6b6b'
+                  const rankLabel = rank == null ? '—'
+                    : rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : `${rank}th`
                   return (
                     <div key={cat.key} className="draft-cat-item">
                       <div className="draft-cat-item-header">
                         <span className="draft-cat-label">{cat.label}</span>
-                        <span className={`draft-cat-val ${cat.total >= 0 ? 'pos' : 'neg'}`}>
-                          {cat.total >= 0 ? '+' : ''}{cat.total.toFixed(1)}
+                        <span className="draft-cat-rank" style={{ color: barColor }}>
+                          {rankLabel}{outOf ? ` / ${outOf}` : ''}
                         </span>
                       </div>
                       <div className="draft-cat-track">
-                        <div className="draft-cat-fill" style={{ width: `${pct}%`, background: cat.total >= 0 ? '#00e676' : '#ff6b6b' }} />
+                        <div className="draft-cat-fill" style={{ width: `${(rankPct ?? 0.5) * 100}%`, background: barColor }} />
                       </div>
-                      <span className="draft-cat-avg">{teamAvg.toFixed(1)}/g avg</span>
                     </div>
                   )
                 })}
@@ -2300,7 +2331,7 @@ function DraftPage() {
         <div className="draft-right">
           <div className={`draft-pick-header${isMyTurn ? ' my-turn' : ''}`}>
             {!isComplete
-              ? <span className="draft-pick-label">{isMyTurn ? `⭐ Your pick — Round ${currentRound}` : `Opponent's pick — Round ${currentRound}`}</span>
+              ? <span className="draft-pick-label">{isMyTurn ? `Your pick — Round ${currentRound}` : `Opponent's pick — Round ${currentRound}`}</span>
               : <span className="draft-pick-label">Draft complete</span>
             }
             <input
@@ -2320,11 +2351,6 @@ function DraftPage() {
                 <div className="dp-info">
                   <span className="dp-name">{p.name}</span>
                   <span className="dp-meta">{p.position} · {p.team}</span>
-                </div>
-                <div className="dp-stats">
-                  <span>{p.pts?.toFixed(1)}</span>
-                  <span>{p.reb?.toFixed(1)}</span>
-                  <span>{p.ast?.toFixed(1)}</span>
                 </div>
                 <span className={`dp-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
                   {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
