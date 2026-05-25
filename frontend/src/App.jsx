@@ -2220,19 +2220,17 @@ function DraftPage() {
       </div>
 
       <div className="draft-body">
-        {/* ── Left: board + pick entry ──────────────── */}
+        {/* ── Left: board + analysis ────────────────── */}
         <div className="draft-left">
           {/* Snake draft board */}
           <div className="draft-board-scroll">
             <div className="draft-board" style={{ gridTemplateColumns: `36px repeat(${leagueSize}, minmax(80px, 1fr))` }}>
-              {/* Column headers */}
               <div className="db-corner" />
               {Array.from({ length: leagueSize }, (_, i) => (
                 <div key={i} className={`db-col-hdr${i === myPickSlot - 1 ? ' my-col' : ''}`}>
                   {i === myPickSlot - 1 ? 'You' : `T${i + 1}`}
                 </div>
               ))}
-              {/* Rows */}
               {board.map((row, r) => (
                 <Fragment key={r}>
                   <div className="db-row-hdr">R{r + 1}</div>
@@ -2257,73 +2255,88 @@ function DraftPage() {
             </div>
           </div>
 
-          {/* Pick entry strip */}
-          {!isComplete && (
-            <div className={`draft-entry${isMyTurn ? ' my-turn' : ''}`}>
-              <span className={`draft-entry-label${isMyTurn ? ' my-turn' : ''}`}>
-                {isMyTurn ? `⭐ Your pick — Round ${currentRound}` : `Opponent's pick — Round ${currentRound}`}
-              </span>
-              <input
-                ref={searchRef}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Type to search…"
-                className="draft-entry-input"
-                autoFocus
-              />
-              <div className="draft-suggestions">
-                {loading && <span className="draft-loading">Loading…</span>}
-                {available.slice(0, search ? 8 : 5).map((p, i) => (
-                  <button key={p.slug} onClick={() => draftPlayer(p)} className="draft-sug-btn">
-                    {!search && <span className="dsb-rank">{i + 1}</span>}
-                    <span className="dsb-name">{p.name}</span>
-                    <span className="dsb-meta">{p.position} · {p.team}</span>
-                    {!search && (
-                      <span className={`dsb-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
-                        {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
-                      </span>
-                    )}
-                  </button>
+          {/* Category analysis */}
+          {myRoster.length > 0 && (
+            <div className="draft-analysis">
+              <div className="draft-analysis-header">
+                <span className="draft-analysis-title">My Team · Category Strength</span>
+                <span className="draft-analysis-sub">
+                  Each bar shows how your team compares to a league-average team in that category.
+                  Green = above average, red = below. The number is how many standard deviations above (+) or below (−) average.
+                </span>
+              </div>
+              <div className="draft-cat-grid">
+                {myCatSummary.map(cat => {
+                  const pct = Math.min(Math.max((cat.total + 5) / 10 * 100, 0), 100)
+                  const teamAvg = myRoster.reduce((s, p) => s + (p[cat.key] || 0), 0) / myRoster.length
+                  return (
+                    <div key={cat.key} className="draft-cat-item">
+                      <div className="draft-cat-item-header">
+                        <span className="draft-cat-label">{cat.label}</span>
+                        <span className={`draft-cat-val ${cat.total >= 0 ? 'pos' : 'neg'}`}>
+                          {cat.total >= 0 ? '+' : ''}{cat.total.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="draft-cat-track">
+                        <div className="draft-cat-fill" style={{ width: `${pct}%`, background: cat.total >= 0 ? '#00e676' : '#ff6b6b' }} />
+                      </div>
+                      <span className="draft-cat-avg">{teamAvg.toFixed(1)}/g avg</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="draft-roster-chips">
+                {myRoster.map((p, i) => (
+                  <span key={p.slug} className="draft-roster-chip">
+                    <span className="drc-round">R{i + 1}</span>{p.name}
+                  </span>
                 ))}
-                {!loading && available.length === 0 && <span className="draft-loading">No players found</span>}
               </div>
             </div>
           )}
         </div>
 
-        {/* ── Right: my team ────────────────────────── */}
-        <div className="draft-sidebar">
-          <h3 className="draft-panel-title">My Team ({myRoster.length})</h3>
-          {myRoster.length === 0
-            ? <p className="draft-sidebar-empty">Your picks will appear here</p>
-            : <>
-                <div className="draft-cat-bars">
-                  {myCatSummary.map(cat => {
-                    const pct = Math.min(Math.max((cat.total + 5) / 10 * 100, 0), 100)
-                    return (
-                      <div key={cat.key} className="draft-cat-row">
-                        <span className="draft-cat-label">{cat.label}</span>
-                        <div className="draft-cat-track">
-                          <div className="draft-cat-fill" style={{ width: `${pct}%`, background: cat.total >= 0 ? '#00e676' : '#ff6b6b' }} />
-                        </div>
-                        <span className={`draft-cat-val ${cat.total >= 0 ? 'pos' : 'neg'}`}>
-                          {cat.total >= 0 ? '+' : ''}{cat.total.toFixed(1)}
-                        </span>
-                      </div>
-                    )
-                  })}
+        {/* ── Right: player list ────────────────────── */}
+        <div className="draft-right">
+          <div className={`draft-pick-header${isMyTurn ? ' my-turn' : ''}`}>
+            {!isComplete
+              ? <span className="draft-pick-label">{isMyTurn ? `⭐ Your pick — Round ${currentRound}` : `Opponent's pick — Round ${currentRound}`}</span>
+              : <span className="draft-pick-label">Draft complete</span>
+            }
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search players…"
+              className="draft-pick-search"
+              autoFocus
+            />
+          </div>
+          <div className="draft-player-list">
+            {loading && <div className="draft-loading">Loading players…</div>}
+            {available.map((p, i) => (
+              <button key={p.slug} onClick={() => draftPlayer(p)} className="draft-player-row" disabled={isComplete}>
+                <span className="dp-rank">{i + 1}</span>
+                <div className="dp-info">
+                  <span className="dp-name">{p.name}</span>
+                  <span className="dp-meta">{p.position} · {p.team}</span>
                 </div>
-                <div className="draft-roster">
-                  {myRoster.map((p, i) => (
-                    <div key={p.slug} className="draft-roster-row">
-                      <span className="dr-round">R{i + 1}</span>
-                      <span className="dr-name">{p.name}</span>
-                      <span className="dr-pos">{p.position}</span>
-                    </div>
-                  ))}
+                <div className="dp-stats">
+                  <span>{p.pts?.toFixed(1)}</span>
+                  <span>{p.reb?.toFixed(1)}</span>
+                  <span>{p.ast?.toFixed(1)}</span>
                 </div>
-              </>
-          }
+                <span className={`dp-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
+                  {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
+                </span>
+              </button>
+            ))}
+            {!loading && available.length === 0 && <div className="draft-loading">No players found</div>}
+          </div>
+          <div className="draft-list-legend">
+            <span>PTS · REB · AST</span>
+            <span>Draft value{myRoster.length === 0 ? ' (raw z-score)' : ' (need-adjusted)'}</span>
+          </div>
         </div>
       </div>
     </div>
