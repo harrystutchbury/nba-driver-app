@@ -231,13 +231,20 @@ def _weekly_schedule_sync():
 
 
 async def _box_score_live_poller():
-    """Poll today's box scores every 60 s and broadcast to SSE subscribers."""
+    """Poll today's box scores every 60 s during game hours (7 pm–1 am ET) only."""
     from datetime import timezone, timedelta
     ET = timezone(timedelta(hours=-5))
     while True:
+        now_et  = datetime.now(ET)
+        hour_et = now_et.hour
+        # NBA games run roughly 7 pm–1 am ET; skip polling outside that window
+        in_game_hours = hour_et >= 19 or hour_et < 1
+        if not in_game_hours:
+            await asyncio.sleep(300)  # check again in 5 min
+            continue
         await asyncio.sleep(60)
         try:
-            today_et = datetime.now(ET).date().isoformat()
+            today_et = now_et.date().isoformat()
             data = await asyncio.to_thread(get_box_score, today_et)
             async with _bs_condition:
                 _bs_live["data"] = data
@@ -290,15 +297,14 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_box_score_live_poller())
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_daily_refresh, 'cron', hour=8, minute=0)
-    scheduler.add_job(_weekly_schedule_sync, 'cron', hour=7, minute=0)  # daily at 7am UTC
-    # Injury sync every 3 hours so status stays fresh throughout the day
+    scheduler.add_job(_weekly_schedule_sync, 'cron', day_of_week='mon', hour=9, minute=0)
     scheduler.add_job(
         lambda: __import__('sync_injuries').sync(),
-        'interval', hours=3,
+        'cron', hour=7, minute=30,
         id='injury_sync',
     )
     scheduler.start()
-    logger.info("Scheduler started — daily refresh 08:00 UTC, injury sync every 3h, schedule sync Mondays 09:00 UTC")
+    logger.info("Scheduler started — daily refresh 08:00 UTC, injury sync 07:30 UTC daily, schedule sync Mondays 09:00 UTC")
     yield
     scheduler.shutdown()
 
