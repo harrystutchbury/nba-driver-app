@@ -2211,6 +2211,50 @@ function DraftPage() {
     })
   }, [myRoster, teamCatTotals, setup])
 
+  const VS_CATS = [
+    { key: 'pts',    label: 'PTS', invert: false, threshold: 5   },
+    { key: 'reb',    label: 'REB', invert: false, threshold: 2   },
+    { key: 'ast',    label: 'AST', invert: false, threshold: 2   },
+    { key: 'stl',    label: 'STL', invert: false, threshold: 0.5 },
+    { key: 'blk',    label: 'BLK', invert: false, threshold: 0.5 },
+    { key: 'tov',    label: 'TO',  invert: true,  threshold: 1   },
+    { key: 'fg3m',   label: '3PM', invert: false, threshold: 1   },
+    { key: 'fg_pct', label: 'FG%', invert: false, threshold: 3   },
+    { key: 'ft_pct', label: 'FT%', invert: false, threshold: 5   },
+  ]
+
+  const vsTable = useMemo(() => {
+    if (!setup || myRoster.length === 0) return []
+    const mySlot = setup.myPickSlot - 1
+    const myAvg = {}
+    for (const cat of VS_CATS) {
+      const vals = myRoster.map(p => p[cat.key] ?? 0)
+      myAvg[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length
+    }
+    const oppSlots = [...new Set(
+      picks.map((_, i) => pickOrder[i].slot).filter(s => s !== mySlot)
+    )]
+    const rows = oppSlots.map(slot => {
+      const roster = picks.filter((_, i) => pickOrder[i].slot === slot)
+      if (roster.length === 0) return null
+      const oppAvg = {}
+      for (const cat of VS_CATS) {
+        const vals = roster.map(p => p[cat.key] ?? 0)
+        oppAvg[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length
+      }
+      let wins = 0, losses = 0
+      const cats = VS_CATS.map(cat => {
+        const delta = cat.invert ? oppAvg[cat.key] - myAvg[cat.key] : myAvg[cat.key] - oppAvg[cat.key]
+        if (delta > 0) wins++
+        else if (delta < 0) losses++
+        return { key: cat.key, label: cat.label, oppVal: oppAvg[cat.key], delta, threshold: cat.threshold }
+      })
+      const winPct = wins / VS_CATS.length
+      return { slot, teamLabel: `T${slot + 1}`, winPct, wins, losses, cats }
+    }).filter(Boolean)
+    return rows.sort((a, b) => b.winPct - a.winPct)
+  }, [picks, pickOrder, myRoster, setup])
+
   function draftPlayer(player) {
     if (isComplete) return
     setPicks(prev => [...prev, player])
@@ -2323,6 +2367,52 @@ function DraftPage() {
                   </span>
                 ))}
               </div>
+
+              {/* VS Each Opponent table */}
+              {vsTable.length > 0 && (
+                <div className="draft-vs-wrap">
+                  <span className="draft-vs-title">VS Each Opponent</span>
+                  <div className="draft-vs-scroll">
+                    <table className="draft-vs-table">
+                      <thead>
+                        <tr>
+                          <th className="dvt-th dvt-team">Team</th>
+                          <th className="dvt-th dvt-winpct">Win%</th>
+                          <th className="dvt-th dvt-record">You vs</th>
+                          {VS_CATS.map(c => <th key={c.key} className="dvt-th dvt-stat">{c.label}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vsTable.map(row => (
+                          <tr key={row.slot} className="dvt-row">
+                            <td className="dvt-td dvt-team">{row.teamLabel}</td>
+                            <td className="dvt-td dvt-winpct">{Math.round(row.winPct * 100)}%</td>
+                            <td className="dvt-td dvt-record">{row.wins}–{row.losses}</td>
+                            {row.cats.map(cat => {
+                              const intensity = Math.min(Math.abs(cat.delta) / cat.threshold, 1) * 0.45
+                              const bg = cat.delta > 0
+                                ? `rgba(0,230,118,${intensity})`
+                                : cat.delta < 0
+                                ? `rgba(255,107,107,${intensity})`
+                                : 'transparent'
+                              const sign = cat.delta > 0 ? '+' : ''
+                              const decimals = cat.key === 'stl' || cat.key === 'blk' ? 2 : 1
+                              return (
+                                <td key={cat.key} className="dvt-td dvt-stat" style={{ background: bg }}>
+                                  <span className="dvt-opp">{cat.oppVal.toFixed(decimals)}</span>
+                                  <span className={`dvt-delta ${cat.delta >= 0 ? 'pos' : 'neg'}`}>
+                                    {sign}{cat.delta.toFixed(decimals)}
+                                  </span>
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
