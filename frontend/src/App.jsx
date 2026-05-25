@@ -2234,7 +2234,7 @@ function DraftPage() {
               ))}
               {/* Rows */}
               {board.map((row, r) => (
-                <React.Fragment key={r}>
+                <Fragment key={r}>
                   <div className="db-row-hdr">R{r + 1}</div>
                   {row.map((player, c) => {
                     const isCur = currentOrder?.round === r && currentOrder?.slot === c
@@ -2252,7 +2252,7 @@ function DraftPage() {
                       </div>
                     )
                   })}
-                </React.Fragment>
+                </Fragment>
               ))}
             </div>
           </div>
