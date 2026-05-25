@@ -8336,13 +8336,15 @@ function AppMain({ onLogout, onOpenAccount }) {
             </div>
 
             {/* ── Schedule projection ───────────────────────── */}
-            {schedProj && schedProj.games.length > 0 && (
+            {schedProj && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setSchedExpanded(e => !e)} style={{ cursor: 'pointer' }}>
                   <h3 className="panel-title">Upcoming Games {!isPro && <span className="pro-badge">PRO</span>}</h3>
                   <span className="proj-toggle">{schedExpanded ? '▲' : '▼'}</span>
                 </div>
-                {schedExpanded && (isPro ? (() => {
+                {schedExpanded && (schedProj.games.length === 0
+                  ? <p className="sched-no-games">No upcoming games — this team's season has ended.</p>
+                  : isPro ? (() => {
                   const SCHED_COLS = [
                     { key: 'pts',  label: 'PTS' },
                     { key: 'reb',  label: 'REB' },

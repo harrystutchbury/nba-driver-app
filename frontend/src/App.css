@@ -2735,6 +2735,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .sched-ha   { font-size: 11px; width: 24px; }
 .sched-stat { font-size: 13px; }
 
+.sched-no-games { color: var(--muted); font-size: 13px; padding: 12px 0 4px; margin: 0; }
 .sched-baseline-row td { border-top: 1px solid var(--border); border-bottom: none; padding-top: 8px; }
 .sched-baseline-label { font-size: 11px; color: var(--muted); font-family: var(--sans); }
 
