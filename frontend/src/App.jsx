@@ -2049,6 +2049,15 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
 // ─── Draft Tool ───────────────────────────────────────────────────────────────
 
+const NAME_SUFFIXES = new Set(['jr.', 'sr.', 'ii', 'iii', 'iv', 'v'])
+function draftLastName(fullName) {
+  const parts = fullName.trim().split(/\s+/)
+  while (parts.length > 1 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase())) {
+    parts.pop()
+  }
+  return parts[parts.length - 1]
+}
+
 const DRAFT_CATS = [
   { key: 'pts',    label: 'PTS', zKey: 'z_pts',     invert: false },
   { key: 'reb',    label: 'REB', zKey: 'z_reb',     invert: false },
@@ -2314,7 +2323,7 @@ function DraftPage() {
                         className={`db-cell${isCur ? ' current' : ''}${isMe ? ' my-col' : ''}${player ? ' filled' : ''}`}
                       >
                         {player
-                          ? <><span className="dbc-name">{player.name.split(' ').slice(-1)[0]}</span><span className="dbc-pos">{player.position}</span></>
+                          ? <><span className="dbc-name">{draftLastName(player.name)}</span><span className="dbc-pos">{player.position}</span></>
                           : isCur ? <span className="dbc-cursor">▸</span> : null
                         }
                       </div>

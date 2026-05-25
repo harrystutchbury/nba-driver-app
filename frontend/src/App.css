@@ -5865,7 +5865,7 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .draft-setup-fields { display: flex; flex-direction: column; gap: 16px; margin-bottom: 28px; }
 .draft-setup-label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
 .draft-setup-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
-.draft-start-btn { width: 100%; padding: 11px; background: var(--accent); color: #000; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.draft-start-btn { width: 100%; padding: 11px; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; }
 .draft-start-btn:hover { opacity: .88; }
 
 /* Page shell */
