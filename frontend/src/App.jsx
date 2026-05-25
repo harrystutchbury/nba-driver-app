@@ -2053,7 +2053,7 @@ const DRAFT_CATS = [
   { key: 'pts',    label: 'PTS', zKey: 'z_pts',     invert: false },
   { key: 'reb',    label: 'REB', zKey: 'z_reb',     invert: false },
   { key: 'ast',    label: 'AST', zKey: 'z_ast',     invert: false },
-  { key: 'stl',   label: 'STL', zKey: 'z_stl',    invert: false },
+  { key: 'stl',    label: 'STL', zKey: 'z_stl',     invert: false },
   { key: 'blk',    label: 'BLK', zKey: 'z_blk',     invert: false },
   { key: 'tov',    label: 'TOV', zKey: 'z_tov',     invert: true  },
   { key: 'fg3m',   label: '3PM', zKey: 'z_fg3m',    invert: false },
@@ -2074,15 +2074,27 @@ function computeDraftScore(player, myRoster, scoringType) {
   const min = Math.min(...vals), max = Math.max(...vals), range = max - min || 1
   return DRAFT_CATS.reduce((s, cat) => {
     const pv = cat.invert ? -(player[cat.zKey] || 0) : (player[cat.zKey] || 0)
-    const need = 1 - (myTotals[cat.key] - min) / range  // 0=strongest, 1=weakest
-    return s + pv * (0.5 + need)  // weight range 0.5–1.5
+    const need = 1 - (myTotals[cat.key] - min) / range
+    return s + pv * (0.5 + need)
   }, 0)
+}
+
+// snake draft pick order: returns [{round, slot}] for each overall pick index
+function buildPickOrder(leagueSize, numRounds) {
+  const order = []
+  for (let r = 0; r < numRounds; r++) {
+    for (let i = 0; i < leagueSize; i++) {
+      order.push({ round: r, slot: r % 2 === 0 ? i : leagueSize - 1 - i })
+    }
+  }
+  return order
 }
 
 function DraftSetupScreen({ onStart }) {
   const [leagueSize, setLeagueSize]   = useState(12)
   const [scoringType, setScoringType] = useState('cats')
   const [myPickSlot, setMyPickSlot]   = useState(1)
+  const [numRounds, setNumRounds]     = useState(13)
   return (
     <div className="draft-setup-wrap">
       <div className="draft-setup-card">
@@ -2106,8 +2118,13 @@ function DraftSetupScreen({ onStart }) {
               )}
             </select>
           </label>
+          <label className="draft-setup-label">Rounds
+            <select value={numRounds} onChange={e => setNumRounds(Number(e.target.value))} className="draft-setup-select">
+              {[10,12,13,14,15,16].map(n => <option key={n} value={n}>{n} rounds</option>)}
+            </select>
+          </label>
         </div>
-        <button className="draft-start-btn" onClick={() => onStart({ leagueSize, scoringType, myPickSlot })}>
+        <button className="draft-start-btn" onClick={() => onStart({ leagueSize, scoringType, myPickSlot, numRounds })}>
           Start Draft
         </button>
       </div>
@@ -2116,12 +2133,12 @@ function DraftSetupScreen({ onStart }) {
 }
 
 function DraftPage() {
-  const [setup, setSetup]         = useState(null)
-  const [picks, setPicks]         = useState([])   // [{ player, isMine }]
-  const [rankData, setRankData]   = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [search, setSearch]       = useState('')
-  const [posFilter, setPosFilter] = useState('ALL')
+  const [setup, setSetup]       = useState(null)
+  const [picks, setPicks]       = useState([])   // player objects in pick order
+  const [rankData, setRankData] = useState([])
+  const [loading, setLoading]   = useState(false)
+  const [search, setSearch]     = useState('')
+  const searchRef               = useRef(null)
 
   useEffect(() => {
     if (!setup) return
@@ -2132,44 +2149,69 @@ function DraftPage() {
       .catch(() => setLoading(false))
   }, [setup])
 
-  const drafted  = useMemo(() => new Set(picks.map(p => p.player.slug)), [picks])
-  const myRoster = useMemo(() => picks.filter(p => p.isMine).map(p => p.player), [picks])
+  const pickOrder = useMemo(() =>
+    setup ? buildPickOrder(setup.leagueSize, setup.numRounds) : []
+  , [setup])
+
+  // board[round][slot] = player | null
+  const board = useMemo(() => {
+    if (!setup) return []
+    const b = Array.from({ length: setup.numRounds }, () => Array(setup.leagueSize).fill(null))
+    picks.forEach((p, i) => { const o = pickOrder[i]; if (o) b[o.round][o.slot] = p })
+    return b
+  }, [picks, pickOrder, setup])
+
+  const currentIdx   = picks.length
+  const currentOrder = pickOrder[currentIdx]
+  const isComplete   = setup && currentIdx >= setup.leagueSize * setup.numRounds
+  const isMyTurn     = currentOrder && setup && currentOrder.slot === setup.myPickSlot - 1
+
+  const myRoster = useMemo(() =>
+    picks.filter((_, i) => pickOrder[i]?.slot === (setup?.myPickSlot ?? 0) - 1)
+  , [picks, pickOrder, setup])
+
+  const drafted = useMemo(() => new Set(picks.map(p => p.slug)), [picks])
 
   const available = useMemo(() => {
     let list = rankData.filter(p => !drafted.has(p.slug))
-    if (posFilter !== 'ALL') list = list.filter(p => p.position && p.position.includes(posFilter))
     if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q)) }
     return list
       .map(p => ({ ...p, draftScore: computeDraftScore(p, myRoster, setup?.scoringType) }))
       .sort((a, b) => b.draftScore - a.draftScore)
-  }, [rankData, drafted, myRoster, setup, posFilter, search])
+  }, [rankData, drafted, myRoster, setup, search])
 
   const myCatSummary = useMemo(() => DRAFT_CATS.map(cat => ({
     ...cat,
-    total: myRoster.reduce((s, p) => {
-      const v = p[cat.zKey] || 0; return s + (cat.invert ? -v : v)
-    }, 0),
+    total: myRoster.reduce((s, p) => { const v = p[cat.zKey] || 0; return s + (cat.invert ? -v : v) }, 0),
   })), [myRoster])
 
-  function draftPlayer(player, isMine) { setPicks(prev => [...prev, { player, isMine }]) }
+  function draftPlayer(player) {
+    if (isComplete) return
+    setPicks(prev => [...prev, player])
+    setSearch('')
+    searchRef.current?.focus()
+  }
   function undoPick() { setPicks(prev => prev.slice(0, -1)) }
   function resetDraft() { if (window.confirm('Reset this draft?')) { setPicks([]); setSetup(null) } }
 
   if (!setup) return <DraftSetupScreen onStart={setSetup} />
 
-  const totalPicks = picks.length
-  const round = Math.floor(totalPicks / setup.leagueSize) + 1
-  const pickInRound = (totalPicks % setup.leagueSize) + 1
-  const rec = available[0]
+  const { leagueSize, numRounds, myPickSlot } = setup
+  const currentRound = currentOrder ? currentOrder.round + 1 : numRounds
 
   return (
     <div className="draft-page">
+      {/* ── Header ────────────────────────────────── */}
       <div className="draft-header">
         <div className="draft-meta">
-          <span className="draft-meta-pill">{setup.leagueSize}-team</span>
+          <span className="draft-meta-pill">{leagueSize}-team</span>
           <span className="draft-meta-pill">{setup.scoringType === 'cats' ? '9-Cat' : 'Points'}</span>
-          <span className="draft-meta-pill">My slot: #{setup.myPickSlot}</span>
-          <span className="draft-meta-pill draft-meta-round">Round {round} · Pick {pickInRound}</span>
+          {!isComplete
+            ? <span className={`draft-meta-pill draft-meta-round${isMyTurn ? ' my-turn' : ''}`}>
+                {isMyTurn ? '⭐ ' : ''}Round {currentRound} · Pick {currentIdx + 1}
+              </span>
+            : <span className="draft-meta-pill">Draft complete</span>
+          }
         </div>
         <div className="draft-header-btns">
           <button onClick={undoPick} disabled={picks.length === 0} className="draft-hdr-btn">↩ Undo</button>
@@ -2178,115 +2220,110 @@ function DraftPage() {
       </div>
 
       <div className="draft-body">
-        {/* ── Available players ─────────────────────── */}
-        <div className="draft-available">
-          <div className="draft-search-bar">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search players…" className="draft-search-input" />
-            <div className="draft-pos-filters">
-              {['ALL','PG','SG','SF','PF','C'].map(pos => (
-                <button key={pos} onClick={() => setPosFilter(pos)} className={`draft-pos-btn${posFilter === pos ? ' active' : ''}`}>{pos}</button>
+        {/* ── Left: board + pick entry ──────────────── */}
+        <div className="draft-left">
+          {/* Snake draft board */}
+          <div className="draft-board-scroll">
+            <div className="draft-board" style={{ gridTemplateColumns: `36px repeat(${leagueSize}, minmax(80px, 1fr))` }}>
+              {/* Column headers */}
+              <div className="db-corner" />
+              {Array.from({ length: leagueSize }, (_, i) => (
+                <div key={i} className={`db-col-hdr${i === myPickSlot - 1 ? ' my-col' : ''}`}>
+                  {i === myPickSlot - 1 ? 'You' : `T${i + 1}`}
+                </div>
+              ))}
+              {/* Rows */}
+              {board.map((row, r) => (
+                <React.Fragment key={r}>
+                  <div className="db-row-hdr">R{r + 1}</div>
+                  {row.map((player, c) => {
+                    const isCur = currentOrder?.round === r && currentOrder?.slot === c
+                    const isMe  = c === myPickSlot - 1
+                    return (
+                      <div
+                        key={c}
+                        onClick={() => isCur && searchRef.current?.focus()}
+                        className={`db-cell${isCur ? ' current' : ''}${isMe ? ' my-col' : ''}${player ? ' filled' : ''}`}
+                      >
+                        {player
+                          ? <><span className="dbc-name">{player.name.split(' ').slice(-1)[0]}</span><span className="dbc-pos">{player.position}</span></>
+                          : isCur ? <span className="dbc-cursor">▸</span> : null
+                        }
+                      </div>
+                    )
+                  })}
+                </React.Fragment>
               ))}
             </div>
           </div>
 
-          {rec && myRoster.length > 0 && !search && posFilter === 'ALL' && (
-            <div className="draft-rec-card">
-              <div className="draft-rec-eyebrow">Top recommendation</div>
-              <div className="draft-rec-name">{rec.name}</div>
-              <div className="draft-rec-sub">{rec.position} · {rec.team} · {rec.pts?.toFixed(1)} / {rec.reb?.toFixed(1)} / {rec.ast?.toFixed(1)}</div>
-              <div className="draft-rec-btns">
-                <button onClick={() => draftPlayer(rec, true)} className="draft-btn-me">My Pick</button>
-                <button onClick={() => draftPlayer(rec, false)} className="draft-btn-opp">Opp's Pick</button>
+          {/* Pick entry strip */}
+          {!isComplete && (
+            <div className={`draft-entry${isMyTurn ? ' my-turn' : ''}`}>
+              <span className={`draft-entry-label${isMyTurn ? ' my-turn' : ''}`}>
+                {isMyTurn ? `⭐ Your pick — Round ${currentRound}` : `Opponent's pick — Round ${currentRound}`}
+              </span>
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Type to search…"
+                className="draft-entry-input"
+                autoFocus
+              />
+              <div className="draft-suggestions">
+                {loading && <span className="draft-loading">Loading…</span>}
+                {available.slice(0, search ? 8 : 5).map((p, i) => (
+                  <button key={p.slug} onClick={() => draftPlayer(p)} className="draft-sug-btn">
+                    {!search && <span className="dsb-rank">{i + 1}</span>}
+                    <span className="dsb-name">{p.name}</span>
+                    <span className="dsb-meta">{p.position} · {p.team}</span>
+                    {!search && (
+                      <span className={`dsb-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
+                        {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                {!loading && available.length === 0 && <span className="draft-loading">No players found</span>}
               </div>
             </div>
           )}
-
-          <div className="draft-list-header">
-            <span className="dlh-rank">#</span>
-            <span className="dlh-name">Player</span>
-            <span className="dlh-stat">PTS</span>
-            <span className="dlh-stat">REB</span>
-            <span className="dlh-stat">AST</span>
-            <span className="dlh-score">Score</span>
-            <span className="dlh-actions"></span>
-          </div>
-
-          <div className="draft-player-list">
-            {loading && <div className="draft-loading">Loading…</div>}
-            {available.map((p, i) => (
-              <div key={p.slug} className="draft-player-row">
-                <span className="dp-rank">{i + 1}</span>
-                <div className="dp-info">
-                  <span className="dp-name">{p.name}</span>
-                  <span className="dp-meta">{p.position} · {p.team}</span>
-                </div>
-                <span className="dp-stat">{p.pts?.toFixed(1) ?? '—'}</span>
-                <span className="dp-stat">{p.reb?.toFixed(1) ?? '—'}</span>
-                <span className="dp-stat">{p.ast?.toFixed(1) ?? '—'}</span>
-                <span className={`dp-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
-                  {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
-                </span>
-                <div className="dp-actions">
-                  <button onClick={() => draftPlayer(p, true)} className="draft-btn-me-sm" title="My pick">Me</button>
-                  <button onClick={() => draftPlayer(p, false)} className="draft-btn-opp-sm" title="Opponent's pick">Opp</button>
-                </div>
-              </div>
-            ))}
-            {!loading && available.length === 0 && <div className="draft-empty-list">No players found</div>}
-          </div>
         </div>
 
-        {/* ── Sidebar: my team + pick log ───────────── */}
+        {/* ── Right: my team ────────────────────────── */}
         <div className="draft-sidebar">
-          <div className="draft-my-team">
-            <h3 className="draft-panel-title">My Team ({myRoster.length})</h3>
-            {myRoster.length === 0
-              ? <p className="draft-sidebar-empty">Your picks will appear here</p>
-              : <>
-                  <div className="draft-cat-bars">
-                    {myCatSummary.map(cat => {
-                      const pct = Math.min(Math.max((cat.total + 5) / 10 * 100, 0), 100)
-                      return (
-                        <div key={cat.key} className="draft-cat-row">
-                          <span className="draft-cat-label">{cat.label}</span>
-                          <div className="draft-cat-track">
-                            <div className="draft-cat-fill" style={{ width: `${pct}%`, background: cat.total >= 0 ? '#00e676' : '#ff6b6b' }} />
-                          </div>
-                          <span className={`draft-cat-val ${cat.total >= 0 ? 'pos' : 'neg'}`}>
-                            {cat.total >= 0 ? '+' : ''}{cat.total.toFixed(1)}
-                          </span>
+          <h3 className="draft-panel-title">My Team ({myRoster.length})</h3>
+          {myRoster.length === 0
+            ? <p className="draft-sidebar-empty">Your picks will appear here</p>
+            : <>
+                <div className="draft-cat-bars">
+                  {myCatSummary.map(cat => {
+                    const pct = Math.min(Math.max((cat.total + 5) / 10 * 100, 0), 100)
+                    return (
+                      <div key={cat.key} className="draft-cat-row">
+                        <span className="draft-cat-label">{cat.label}</span>
+                        <div className="draft-cat-track">
+                          <div className="draft-cat-fill" style={{ width: `${pct}%`, background: cat.total >= 0 ? '#00e676' : '#ff6b6b' }} />
                         </div>
-                      )
-                    })}
-                  </div>
-                  <div className="draft-roster">
-                    {myRoster.map((p, i) => (
-                      <div key={p.slug} className="draft-roster-row">
-                        <span className="dr-round">R{i + 1}</span>
-                        <span className="dr-name">{p.name}</span>
-                        <span className="dr-pos">{p.position}</span>
+                        <span className={`draft-cat-val ${cat.total >= 0 ? 'pos' : 'neg'}`}>
+                          {cat.total >= 0 ? '+' : ''}{cat.total.toFixed(1)}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </>
-            }
-          </div>
-
-          <div className="draft-pick-log">
-            <h3 className="draft-panel-title">Pick Log</h3>
-            {picks.length === 0
-              ? <p className="draft-sidebar-empty">No picks yet</p>
-              : <div className="draft-log-list">
-                  {[...picks].reverse().slice(0, 20).map((pk, i) => (
-                    <div key={i} className={`draft-log-row${pk.isMine ? ' mine' : ''}`}>
-                      <span className="dl-num">#{picks.length - i}</span>
-                      <span className="dl-name">{pk.player.name}</span>
-                      <span className={`dl-who ${pk.isMine ? 'mine' : ''}`}>{pk.isMine ? 'Me' : 'Opp'}</span>
+                    )
+                  })}
+                </div>
+                <div className="draft-roster">
+                  {myRoster.map((p, i) => (
+                    <div key={p.slug} className="draft-roster-row">
+                      <span className="dr-round">R{i + 1}</span>
+                      <span className="dr-name">{p.name}</span>
+                      <span className="dr-pos">{p.position}</span>
                     </div>
                   ))}
                 </div>
-            }
-          </div>
+              </>
+          }
         </div>
       </div>
     </div>
