@@ -2049,6 +2049,18 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
 // ─── Draft Tool ───────────────────────────────────────────────────────────────
 
+const VS_CATS = [
+  { key: 'pts',    label: 'PTS', invert: false, threshold: 5   },
+  { key: 'reb',    label: 'REB', invert: false, threshold: 2   },
+  { key: 'ast',    label: 'AST', invert: false, threshold: 2   },
+  { key: 'stl',    label: 'STL', invert: false, threshold: 0.5 },
+  { key: 'blk',    label: 'BLK', invert: false, threshold: 0.5 },
+  { key: 'tov',    label: 'TO',  invert: true,  threshold: 1   },
+  { key: 'fg3m',   label: '3PM', invert: false, threshold: 1   },
+  { key: 'fg_pct', label: 'FG%', invert: false, threshold: 3   },
+  { key: 'ft_pct', label: 'FT%', invert: false, threshold: 5   },
+]
+
 const NAME_SUFFIXES = new Set(['jr.', 'sr.', 'ii', 'iii', 'iv', 'v'])
 function draftLastName(fullName) {
   const parts = fullName.trim().split(/\s+/)
@@ -2220,49 +2232,58 @@ function DraftPage() {
     })
   }, [myRoster, teamCatTotals, setup])
 
-  const VS_CATS = [
-    { key: 'pts',    label: 'PTS', invert: false, threshold: 5   },
-    { key: 'reb',    label: 'REB', invert: false, threshold: 2   },
-    { key: 'ast',    label: 'AST', invert: false, threshold: 2   },
-    { key: 'stl',    label: 'STL', invert: false, threshold: 0.5 },
-    { key: 'blk',    label: 'BLK', invert: false, threshold: 0.5 },
-    { key: 'tov',    label: 'TO',  invert: true,  threshold: 1   },
-    { key: 'fg3m',   label: '3PM', invert: false, threshold: 1   },
-    { key: 'fg_pct', label: 'FG%', invert: false, threshold: 3   },
-    { key: 'ft_pct', label: 'FT%', invert: false, threshold: 5   },
-  ]
-
   const vsTable = useMemo(() => {
-    if (!setup || myRoster.length === 0) return []
+    if (!setup) return []
     const mySlot = setup.myPickSlot - 1
-    const myAvg = {}
-    for (const cat of VS_CATS) {
-      const vals = myRoster.map(p => p[cat.key] ?? 0)
-      myAvg[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length
-    }
-    const oppSlots = [...new Set(
-      picks.map((_, i) => pickOrder[i].slot).filter(s => s !== mySlot)
-    )]
-    const rows = oppSlots.map(slot => {
+    // Build per-team averages for all slots that have picks
+    const allSlots = [...new Set(picks.map((_, i) => pickOrder[i].slot))]
+    const teamAvgs = {}
+    for (const slot of allSlots) {
       const roster = picks.filter((_, i) => pickOrder[i].slot === slot)
-      if (roster.length === 0) return null
-      const oppAvg = {}
+      if (roster.length === 0) continue
+      const avgs = {}
       for (const cat of VS_CATS) {
         const vals = roster.map(p => p[cat.key] ?? 0)
-        oppAvg[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length
+        avgs[cat.key] = vals.reduce((a, b) => a + b, 0) / vals.length
       }
-      let wins = 0, losses = 0
+      teamAvgs[slot] = avgs
+    }
+    const teamsWithPicks = Object.keys(teamAvgs).map(Number)
+    if (teamsWithPicks.length < 2) return []
+    const myAvgs = teamAvgs[mySlot]
+    // For each team, compute overall win% vs every other team
+    return teamsWithPicks.map(slot => {
+      const isMe = slot === mySlot
+      const teamA = teamAvgs[slot]
+      const others = teamsWithPicks.filter(s => s !== slot)
+      let totalWins = 0, totalLosses = 0
+      for (const other of others) {
+        const teamB = teamAvgs[other]
+        for (const cat of VS_CATS) {
+          const delta = cat.invert ? teamB[cat.key] - teamA[cat.key] : teamA[cat.key] - teamB[cat.key]
+          if (delta > 0) totalWins++
+          else if (delta < 0) totalLosses++
+        }
+      }
+      const overallWinPct = (totalWins + totalLosses) > 0 ? totalWins / (totalWins + totalLosses) : 0
+      // Per-cat: show this team's avgs; delta = my advantage vs them (from my POV)
       const cats = VS_CATS.map(cat => {
-        const delta = cat.invert ? oppAvg[cat.key] - myAvg[cat.key] : myAvg[cat.key] - oppAvg[cat.key]
-        if (delta > 0) wins++
-        else if (delta < 0) losses++
-        return { key: cat.key, label: cat.label, oppVal: oppAvg[cat.key], delta, threshold: cat.threshold }
+        const delta = !isMe && myAvgs
+          ? (cat.invert ? teamA[cat.key] - myAvgs[cat.key] : myAvgs[cat.key] - teamA[cat.key])
+          : null
+        return { key: cat.key, label: cat.label, val: teamA[cat.key], delta, threshold: cat.threshold }
       })
-      const winPct = wins / VS_CATS.length
-      return { slot, teamLabel: `T${slot + 1}`, winPct, wins, losses, cats }
-    }).filter(Boolean)
-    return rows.sort((a, b) => b.winPct - a.winPct)
-  }, [picks, pickOrder, myRoster, setup])
+      return {
+        slot,
+        isMe,
+        teamLabel: isMe ? 'You' : `T${slot + 1}`,
+        overallWinPct,
+        totalWins,
+        totalLosses,
+        cats,
+      }
+    }).sort((a, b) => b.overallWinPct - a.overallWinPct)
+  }, [picks, pickOrder, setup])
 
   function draftPlayer(player) {
     if (isComplete) return
@@ -2380,38 +2401,42 @@ function DraftPage() {
               {/* VS Each Opponent table */}
               {vsTable.length > 0 && (
                 <div className="draft-vs-wrap">
-                  <span className="draft-vs-title">VS Each Opponent</span>
+                  <span className="draft-vs-title">Team Rankings</span>
                   <div className="draft-vs-scroll">
                     <table className="draft-vs-table">
                       <thead>
                         <tr>
+                          <th className="dvt-th dvt-rank">#</th>
                           <th className="dvt-th dvt-team">Team</th>
                           <th className="dvt-th dvt-winpct">Win%</th>
-                          <th className="dvt-th dvt-record">You vs</th>
+                          <th className="dvt-th dvt-record">W–L</th>
                           {VS_CATS.map(c => <th key={c.key} className="dvt-th dvt-stat">{c.label}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {vsTable.map(row => (
-                          <tr key={row.slot} className="dvt-row">
+                        {vsTable.map((row, rank) => (
+                          <tr key={row.slot} className={`dvt-row${row.isMe ? ' mine' : ''}`}>
+                            <td className="dvt-td dvt-rank">{rank + 1}</td>
                             <td className="dvt-td dvt-team">{row.teamLabel}</td>
-                            <td className="dvt-td dvt-winpct">{Math.round(row.winPct * 100)}%</td>
-                            <td className="dvt-td dvt-record">{row.wins}–{row.losses}</td>
+                            <td className="dvt-td dvt-winpct">{Math.round(row.overallWinPct * 100)}%</td>
+                            <td className="dvt-td dvt-record">{row.totalWins}–{row.totalLosses}</td>
                             {row.cats.map(cat => {
-                              const intensity = Math.min(Math.abs(cat.delta) / cat.threshold, 1) * 0.45
-                              const bg = cat.delta > 0
+                              const decimals = cat.key === 'stl' || cat.key === 'blk' ? 2 : 1
+                              const hasDelta = cat.delta !== null
+                              const intensity = hasDelta ? Math.min(Math.abs(cat.delta) / cat.threshold, 1) * 0.45 : 0
+                              const bg = hasDelta && cat.delta > 0
                                 ? `rgba(0,230,118,${intensity})`
-                                : cat.delta < 0
+                                : hasDelta && cat.delta < 0
                                 ? `rgba(255,107,107,${intensity})`
                                 : 'transparent'
-                              const sign = cat.delta > 0 ? '+' : ''
-                              const decimals = cat.key === 'stl' || cat.key === 'blk' ? 2 : 1
                               return (
                                 <td key={cat.key} className="dvt-td dvt-stat" style={{ background: bg }}>
-                                  <span className="dvt-opp">{cat.oppVal.toFixed(decimals)}</span>
-                                  <span className={`dvt-delta ${cat.delta >= 0 ? 'pos' : 'neg'}`}>
-                                    {sign}{cat.delta.toFixed(decimals)}
-                                  </span>
+                                  <span className="dvt-opp">{cat.val.toFixed(decimals)}</span>
+                                  {hasDelta && (
+                                    <span className={`dvt-delta ${cat.delta >= 0 ? 'pos' : 'neg'}`}>
+                                      {cat.delta >= 0 ? '+' : ''}{cat.delta.toFixed(decimals)}
+                                    </span>
+                                  )}
                                 </td>
                               )
                             })}
