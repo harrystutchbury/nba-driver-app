@@ -623,74 +623,74 @@ function buildWaterfall(result) {
   const drivers = [...result.drivers].sort(
     (a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99)
   )
-  const labels       = ['Baseline', ...drivers.map(d => LABEL_DISPLAY[d.label] ?? d.label), 'Comparison']
-  const floatData    = []
-  const barData      = []
-  const colors       = []
-  const tipLabels    = []
+  const labels        = ['Baseline', ...drivers.map(d => LABEL_DISPLAY[d.label] ?? d.label), 'Comparison']
+  const barRanges     = []   // [from, to] — proper floating bars
+  const colors        = []
+  const tipLabels     = []
   const displayLabels = []
+  const isNegative    = []
 
-  const baselineColor = isDark() ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'
-  floatData.push(0)
-  barData.push(period_a.value)
+  const baselineColor = isDark() ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'
+  barRanges.push([0, period_a.value])
   colors.push(baselineColor)
   tipLabels.push(`Baseline: ${period_a.value.toFixed(2)}`)
   displayLabels.push(period_a.value.toFixed(1))
+  isNegative.push(false)
 
   let running = period_a.value
   for (const d of drivers) {
     const c = d.contribution
-    floatData.push(c >= 0 ? running : running + c)
-    barData.push(Math.abs(c))
+    barRanges.push([Math.min(running, running + c), Math.max(running, running + c)])
     colors.push(getBarColor(d.category))
     tipLabels.push(`${d.label}: ${c >= 0 ? '+' : ''}${c.toFixed(3)}`)
     displayLabels.push(`${c >= 0 ? '+' : ''}${c.toFixed(2)}`)
+    isNegative.push(c < 0)
     running += c
   }
 
-  floatData.push(0)
-  barData.push(period_b.value)
+  barRanges.push([0, period_b.value])
   colors.push(TOTAL_COLOR)
   tipLabels.push(`Comparison: ${period_b.value.toFixed(2)}`)
   displayLabels.push(period_b.value.toFixed(1))
+  isNegative.push(false)
 
-  return { labels, floatData, barData, colors, tipLabels, displayLabels }
+  return { labels, barRanges, colors, tipLabels, displayLabels, isNegative }
 }
 
 function buildZWaterfall(zResult) {
   const { period_a, period_b, categories } = zResult
-  const baselineColor = isDark() ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'
+  const baselineColor = isDark() ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'
   const labels        = ['Baseline', ...categories.map(c => c.label), 'Comparison']
-  const floatData     = []
-  const barData       = []
+  const barRanges     = []
   const colors        = []
   const tipLabels     = []
   const displayLabels = []
+  const isNegative    = []
 
-  floatData.push(0)
-  barData.push(period_a.z_total)
+  barRanges.push([0, period_a.z_total])
   colors.push(baselineColor)
   tipLabels.push(`Baseline Z: ${period_a.z_total.toFixed(2)}`)
   displayLabels.push(period_a.z_total.toFixed(1))
+  isNegative.push(false)
 
   let running = period_a.z_total
   for (const c of categories) {
     const d = c.delta
-    floatData.push(d >= 0 ? running : running + d)
-    barData.push(Math.abs(d))
+    barRanges.push([Math.min(running, running + d), Math.max(running, running + d)])
     colors.push(d >= 0 ? '#00e676' : '#ff6b6b')
-    tipLabels.push(`${c.label}: ${d >= 0 ? '+' : ''}${d.toFixed(3)} (${period_a.z_total >= 0 ? '' : ''}A: ${c.z_a.toFixed(2)}, B: ${c.z_b.toFixed(2)})`)
+    tipLabels.push(`${c.label}: ${d >= 0 ? '+' : ''}${d.toFixed(3)} (A: ${c.z_a.toFixed(2)}, B: ${c.z_b.toFixed(2)})`)
     displayLabels.push(`${d >= 0 ? '+' : ''}${d.toFixed(2)}`)
+    isNegative.push(d < 0)
     running += d
   }
 
-  floatData.push(0)
-  barData.push(period_b.z_total)
+  barRanges.push([0, period_b.z_total])
   colors.push(TOTAL_COLOR)
   tipLabels.push(`Comparison Z: ${period_b.z_total.toFixed(2)}`)
   displayLabels.push(period_b.z_total.toFixed(1))
+  isNegative.push(false)
 
-  return { labels, floatData, barData, colors, tipLabels, displayLabels }
+  return { labels, barRanges, colors, tipLabels, displayLabels, isNegative }
 }
 
 function generateInsights(result, statLabel) {
@@ -7894,19 +7894,46 @@ function AppMain({ onLogout, onOpenAccount }) {
     id: 'waterfallLabels',
     afterDraw(chart) {
       if (!activeWf) return
-      const meta = chart.getDatasetMeta(1)
+      const meta = chart.getDatasetMeta(0)
       if (!meta?.data) return
       const { ctx } = chart
+      const yScale = chart.scales.y
+      const dark = isDark()
       ctx.save()
-      ctx.font = "500 12px 'DM Mono', monospace"
+      ctx.font = "500 11px 'DM Mono', monospace"
       ctx.textAlign = 'center'
-      ctx.textBaseline = 'bottom'
+
       meta.data.forEach((bar, i) => {
-        if (activeWf.barData[i] === 0) return
-        ctx.fillStyle = i === 0 || i === activeWf.labels.length - 1
-          ? 'rgba(232,232,232,0.5)'
+        const [from, to] = activeWf.barRanges[i]
+        if (Math.abs(to - from) < 1e-9) return
+        const neg = activeWf.isNegative[i]
+        const isEndBar = i === 0 || i === activeWf.labels.length - 1
+
+        // Label: above the top of the bar (min pixel y = max data y)
+        ctx.fillStyle = isEndBar
+          ? (dark ? 'rgba(220,220,220,0.75)' : 'rgba(30,30,30,0.75)')
           : activeWf.colors[i]
-        ctx.fillText(activeWf.displayLabels[i], bar.x, bar.y - 4)
+        ctx.textBaseline = neg ? 'top' : 'bottom'
+        const labelPx = neg ? bar.base + 5 : bar.y - 5
+        ctx.fillText(activeWf.displayLabels[i], bar.x, labelPx)
+
+        // Connector: thin dashed line from this bar's "end" to the next bar's start edge
+        if (i < meta.data.length - 2) {   // skip connector before comparison bar
+          const nextBar = meta.data[i + 1]
+          // Running total after this bar = the value where next bar should start
+          const connectVal = neg ? from : to
+          const connectPx  = yScale.getPixelForValue(connectVal)
+          const x1 = bar.x + bar.width / 2
+          const x2 = nextBar.x - nextBar.width / 2
+          ctx.strokeStyle = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)'
+          ctx.lineWidth = 1
+          ctx.setLineDash([3, 3])
+          ctx.beginPath()
+          ctx.moveTo(x1, connectPx)
+          ctx.lineTo(x2, connectPx)
+          ctx.stroke()
+          ctx.setLineDash([])
+        }
       })
       ctx.restore()
     },
@@ -7914,21 +7941,23 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   const chartData = activeWf && {
     labels: activeWf.labels,
-    datasets: [
-      { label: 'float', data: activeWf.floatData, backgroundColor: 'transparent', borderWidth: 0, stack: 'wf' },
-      { label: 'value', data: activeWf.barData, backgroundColor: activeWf.colors, borderRadius: 2, borderWidth: 0, stack: 'wf' },
-    ],
+    datasets: [{
+      label: 'value',
+      data: activeWf.barRanges,
+      backgroundColor: activeWf.colors,
+      borderRadius: 2,
+      borderWidth: 0,
+    }],
   }
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { top: 20 } },
+    layout: { padding: { top: 24 } },
     plugins: {
       datalabels: { display: false },
       legend: { display: false },
       tooltip: {
-        filter: (item) => item.datasetIndex === 1,
         callbacks: { label: (ctx) => ' ' + (activeWf?.tipLabels[ctx.dataIndex] ?? '') },
         backgroundColor: '#1c1c1c',
         borderColor: '#2a2a2a',
@@ -7943,9 +7972,8 @@ function AppMain({ onLogout, onOpenAccount }) {
     },
     scales: {
       x: {
-        stacked: true,
-        grid: { color: '#1a1a1a', drawTicks: false },
-        border: { color: '#222' },
+        grid: { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.04)', drawTicks: false },
+        border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.1)' },
         ticks: {
           color: '#bbb',
           font: { family: "'DM Mono', monospace", size: 11 },
@@ -7954,7 +7982,6 @@ function AppMain({ onLogout, onOpenAccount }) {
         },
       },
       y: {
-        stacked: true,
         display: false,
       },
     },
