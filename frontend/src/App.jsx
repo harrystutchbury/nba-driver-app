@@ -8023,7 +8023,7 @@ function AppMain({ onLogout, onOpenAccount }) {
           {data.rank ?? '—'}
         </td>
         {STAT_COLS.map(c => (
-          <StatCell key={c.key} val={data[c.key]} col={c.key} z={data[`z_${c.key}`]} noZ={c.noZ} />
+          <StatCell key={c.key} val={highlight === 'p30' && c.key === 'min_pg' ? 30 : data[c.key]} col={c.key} z={data[`z_${c.key}`]} noZ={c.noZ} />
         ))}
       </tr>
     )
