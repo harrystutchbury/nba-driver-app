@@ -5472,7 +5472,7 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .mod-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
 .mod-tab { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: var(--muted); border-radius: 6px; padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
 .mod-tab:hover { color: var(--text); background: rgba(255,255,255,0.08); }
-.mod-tab.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.mod-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 
 .mod-loading, .mod-empty { color: var(--muted); font-size: 14px; padding: 20px 0; }
 
@@ -5506,7 +5506,7 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .mod-words-add { display: flex; gap: 8px; margin-bottom: 16px; }
 .mod-words-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 6px; padding: 7px 12px; font-size: 13px; width: 220px; }
 .mod-words-input:focus { outline: none; border-color: var(--accent); }
-.mod-words-add-btn { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.mod-words-add-btn { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .mod-words-add-btn:hover { opacity: 0.85; }
 
 .mod-words-list { display: flex; flex-wrap: wrap; gap: 8px; }
