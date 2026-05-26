@@ -3237,6 +3237,73 @@ _DEPTH_CACHE_TTL = 10800   # 3 hours
 
 _POSITION_ORDER = ["PG", "SG", "SF", "PF", "C"]
 
+def _depth_from_db() -> list:
+    """Build depth charts from game_logs when Tank01 returns empty data."""
+    import re as _re
+    _POS_NORM = {"PG": "PG", "SG": "SG", "SF": "SF", "PF": "PF", "C": "C",
+                 "G": "SG", "F": "SF", "FC": "PF", "CF": "C", "GF": "SF"}
+
+    def _norm_pos(raw: str) -> str:
+        p = raw.strip().upper().split("-")[0].split("/")[0]
+        return _POS_NORM.get(p, "SF")
+
+    _TEAM_CONF = {
+        "ATL":"East","BOS":"East","BKN":"East","CHA":"East","CHI":"East",
+        "CLE":"East","DET":"East","IND":"East","MIA":"East","MIL":"East",
+        "NY":"East","NYK":"East","ORL":"East","PHI":"East","TOR":"East","WAS":"East",
+        "DAL":"West","DEN":"West","GS":"West","GSW":"West","HOU":"West",
+        "LAC":"West","LAL":"West","MEM":"West","MIN":"West","NO":"West","NOP":"West",
+        "OKC":"West","PHO":"West","POR":"West","SA":"West","SAS":"West",
+        "SAC":"West","UTA":"West",
+    }
+    try:
+        conn = get_conn()
+        rows = conn.execute("""
+            SELECT
+                gl.player_slug   AS slug,
+                pl.full_name     AS name,
+                gl.team,
+                COALESCE(tpm.position, '') AS position,
+                AVG(gl.min)      AS avg_min,
+                COUNT(*)         AS gp,
+                inj.designation  AS injury
+            FROM game_logs gl
+            JOIN players pl ON pl.slug = gl.player_slug AND pl.season = gl.season
+            LEFT JOIN tank01_player_map tpm ON tpm.br_slug = gl.player_slug
+            LEFT JOIN injuries inj ON inj.player_slug = gl.player_slug
+            WHERE gl.season = (SELECT MAX(season) FROM game_logs)
+              AND gl.min > 0
+            GROUP BY gl.player_slug, gl.team
+            HAVING gp >= 10
+            ORDER BY gl.team, avg_min DESC
+        """).fetchall()
+        conn.close()
+        teams: dict = {}
+        for r in rows:
+            tabv = r["team"]
+            if tabv not in teams:
+                teams[tabv] = {pos: [] for pos in _POSITION_ORDER}
+            pos = _norm_pos(r["position"]) if r["position"] else "SF"
+            teams[tabv][pos].append({
+                "name":   r["name"],
+                "depth":  "",
+                "slug":   r["slug"],
+                "injury": r["injury"],
+            })
+        result = []
+        for tabv, positions in sorted(teams.items()):
+            result.append({
+                "team":       tabv,
+                "team_name":  _TEAM_ABBREV.get(tabv, tabv),
+                "conference": _TEAM_CONF.get(tabv, ""),
+                "positions":  positions,
+                "source":     "db",
+            })
+        return result
+    except Exception:
+        return []
+
+
 @router.get("/depth-charts")
 def get_depth_charts():
     import time as _t
@@ -3245,73 +3312,95 @@ def get_depth_charts():
     if cached and (_t.time() - cached[0]) < _DEPTH_CACHE_TTL:
         return cached[1]
 
+    result = []
     try:
         # 1. Depth chart data — ordered positions per team
         dc_data  = _tank01_get("getNBADepthCharts", {})
         dc_teams = dc_data.get("body", [])
-        if not dc_teams:
-            raise HTTPException(status_code=502, detail="Empty depth chart response from Tank01")
 
-        # 2. Roster data — playerID → bRefID + injury + team conference
-        roster_data  = _tank01_get("getNBATeams", {"rosters": "true"})
-        roster_body  = roster_data.get("body", {})
-        roster_teams = list(roster_body.values()) if isinstance(roster_body, dict) else (roster_body or [])
+        if dc_teams:
+            # 2. Roster data — playerID → bRefID + injury + team conference
+            roster_data  = _tank01_get("getNBATeams", {"rosters": "true"})
+            roster_body  = roster_data.get("body", {})
+            roster_teams = list(roster_body.values()) if isinstance(roster_body, dict) else (roster_body or [])
 
-        player_map: dict = {}   # playerID → {slug, injury}
-        team_meta:  dict = {}   # teamAbv  → {conference, name}
-        for team in roster_teams:
-            tabv = team.get("teamAbv", "")
-            team_meta[tabv] = {
-                "conference": team.get("conferenceAbv", ""),
-                "name":       f"{team.get('teamCity','')} {team.get('teamName','')}".strip(),
-            }
-            roster  = team.get("Roster", {})
-            players = list(roster.values()) if isinstance(roster, dict) else (roster or [])
-            for p in players:
-                pid = (p.get("playerID") or "").strip()
-                if not pid:
-                    continue
-                inj         = p.get("injury") or {}
-                designation = (inj.get("designation") or "").strip() or None
-                player_map[pid] = {
-                    "slug":   (p.get("bRefID") or "").strip() or None,
-                    "injury": designation,
+            player_map: dict = {}   # playerID → {slug, injury}
+            team_meta:  dict = {}   # teamAbv  → {conference, name}
+            for team in roster_teams:
+                tabv = team.get("teamAbv", "")
+                team_meta[tabv] = {
+                    "conference": team.get("conferenceAbv", ""),
+                    "name":       f"{team.get('teamCity','')} {team.get('teamName','')}".strip(),
                 }
-
-        # 3. Build result
-        result = []
-        for team in dc_teams:
-            tabv = team.get("teamAbv", "")
-            dc   = team.get("depthChart", {})
-            meta = team_meta.get(tabv, {"conference": "", "name": tabv})
-            positions = {}
-            for pos in _POSITION_ORDER:
-                enriched = []
-                for p in dc.get(pos, []):
+                roster  = team.get("Roster", {})
+                players = list(roster.values()) if isinstance(roster, dict) else (roster or [])
+                for p in players:
                     pid = (p.get("playerID") or "").strip()
-                    pm  = player_map.get(pid, {})
-                    enriched.append({
-                        "name":   p.get("longName", ""),
-                        "depth":  p.get("depthPosition", ""),
-                        "slug":   pm.get("slug"),
-                        "injury": pm.get("injury"),
-                    })
-                positions[pos] = enriched
-            result.append({
-                "team":       tabv,
-                "team_name":  meta["name"],
-                "conference": meta["conference"],
-                "positions":  positions,
-            })
+                    if not pid:
+                        continue
+                    inj         = p.get("injury") or {}
+                    designation = (inj.get("designation") or "").strip() or None
+                    player_map[pid] = {
+                        "slug":   (p.get("bRefID") or "").strip() or None,
+                        "injury": designation,
+                    }
 
-        result.sort(key=lambda t: t["team"])
-        _depth_cache["all"] = (_t.time(), result)
-        return result
+            # 3. Build result — also check all known position key variants
+            _POS_VARIANTS = {
+                "PG": ["PG", "PG1", "Point Guard"],
+                "SG": ["SG", "SG1", "Shooting Guard"],
+                "SF": ["SF", "SF1", "Small Forward"],
+                "PF": ["PF", "PF1", "Power Forward"],
+                "C":  ["C",  "C1",  "Center"],
+            }
+            for team in dc_teams:
+                tabv = team.get("teamAbv", "")
+                dc   = team.get("depthChart", {}) or {}
+                meta = team_meta.get(tabv, {"conference": "", "name": tabv})
+                positions = {}
+                for pos in _POSITION_ORDER:
+                    enriched = []
+                    candidates = []
+                    for variant in _POS_VARIANTS[pos]:
+                        candidates = dc.get(variant, [])
+                        if candidates:
+                            break
+                    for p in candidates:
+                        pid = (p.get("playerID") or "").strip()
+                        pm  = player_map.get(pid, {})
+                        enriched.append({
+                            "name":   p.get("longName", p.get("nbaComName", "")),
+                            "depth":  p.get("depthPosition", ""),
+                            "slug":   pm.get("slug"),
+                            "injury": pm.get("injury"),
+                        })
+                    positions[pos] = enriched
+                result.append({
+                    "team":       tabv,
+                    "team_name":  meta["name"],
+                    "conference": meta["conference"],
+                    "positions":  positions,
+                })
 
-    except HTTPException:
-        raise
+            result.sort(key=lambda t: t["team"])
+
+        # If Tank01 returned nothing useful, fall back to DB
+        has_players = any(
+            any(len(t["positions"].get(p, [])) > 0 for p in _POSITION_ORDER)
+            for t in result
+        )
+        if not has_players:
+            result = _depth_from_db()
+
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Depth chart fetch failed: {e}")
+        # Tank01 completely unavailable — use DB
+        result = _depth_from_db()
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Depth chart data unavailable")
+
+    _depth_cache["all"] = (_t.time(), result)
+    return result
 
 
 # -----------------------------------------------------------------------

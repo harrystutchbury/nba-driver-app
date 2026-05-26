@@ -2062,12 +2062,19 @@ const VS_CATS = [
 ]
 
 const NAME_SUFFIXES = new Set(['jr.', 'sr.', 'ii', 'iii', 'iv', 'v'])
+function _stripSuffixes(parts) {
+  const p = [...parts]
+  while (p.length > 1 && NAME_SUFFIXES.has(p[p.length - 1].toLowerCase())) p.pop()
+  return p
+}
 function draftLastName(fullName) {
-  const parts = fullName.trim().split(/\s+/)
-  while (parts.length > 1 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase())) {
-    parts.pop()
-  }
+  const parts = _stripSuffixes(fullName.trim().split(/\s+/))
   return parts[parts.length - 1]
+}
+function draftShortName(fullName) {
+  const parts = _stripSuffixes(fullName.trim().split(/\s+/))
+  if (parts.length < 2) return fullName
+  return `${parts[0][0]}. ${parts[parts.length - 1]}`
 }
 
 const DRAFT_CATS = [
@@ -2393,7 +2400,7 @@ function DraftPage() {
               <div className="draft-roster-chips">
                 {myRoster.map((p, i) => (
                   <span key={p.slug} className="draft-roster-chip">
-                    <span className="drc-round">R{i + 1}</span>{p.name}
+                    <span className="drc-round">R{i + 1}</span>{draftShortName(p.name)}
                   </span>
                 ))}
               </div>
@@ -2473,7 +2480,7 @@ function DraftPage() {
               <button key={p.slug} onClick={() => draftPlayer(p)} className="draft-player-row" disabled={isComplete}>
                 <span className="dp-rank">{i + 1}</span>
                 <div className="dp-info">
-                  <span className="dp-name">{p.name}</span>
+                  <span className="dp-name">{draftShortName(p.name)}</span>
                   <span className="dp-meta">{p.position} · {p.team}</span>
                 </div>
                 <span className={`dp-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
