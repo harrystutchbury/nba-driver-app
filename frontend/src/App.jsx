@@ -7903,24 +7903,56 @@ function AppMain({ onLogout, onOpenAccount }) {
       ctx.font = "500 11px 'DM Mono', monospace"
       ctx.textAlign = 'center'
 
+      const { top: cTop, bottom: cBot } = chart.chartArea
+      const MARGIN = 16   // px clearance before we flip inside
+
       meta.data.forEach((bar, i) => {
         const [from, to] = activeWf.barRanges[i]
         if (Math.abs(to - from) < 1e-9) return
         const neg = activeWf.isNegative[i]
         const isEndBar = i === 0 || i === activeWf.labels.length - 1
 
-        // Label: above the top of the bar (min pixel y = max data y)
-        ctx.fillStyle = isEndBar
-          ? (dark ? 'rgba(220,220,220,0.75)' : 'rgba(30,30,30,0.75)')
-          : activeWf.colors[i]
-        ctx.textBaseline = neg ? 'top' : 'bottom'
-        const labelPx = neg ? bar.base + 5 : bar.y - 5
-        ctx.fillText(activeWf.displayLabels[i], bar.x, labelPx)
+        // bar.y = pixel of the bar's top edge (smaller px = higher on screen)
+        // bar.base = pixel of the bar's bottom edge (larger px = lower on screen)
+        const barTopPx = Math.min(bar.y, bar.base)
+        const barBotPx = Math.max(bar.y, bar.base)
+        const barHeightPx = barBotPx - barTopPx
 
-        // Connector: thin dashed line from this bar's "end" to the next bar's start edge
-        if (i < meta.data.length - 2) {   // skip connector before comparison bar
+        ctx.fillStyle = isEndBar
+          ? (dark ? 'rgba(220,220,220,0.8)' : 'rgba(30,30,30,0.8)')
+          : activeWf.colors[i]
+
+        let labelY, baseline
+        if (isEndBar) {
+          // Baseline/Comparison: always inside, near the value end (away from 0)
+          labelY   = barBotPx - 8
+          baseline = 'bottom'
+        } else if (neg) {
+          // Negative driver: prefer label below the bar
+          const outside = barBotPx + 5
+          if (outside + MARGIN <= cBot) {
+            labelY = outside; baseline = 'top'
+          } else {
+            // No room below — flip inside near the bottom
+            labelY = barBotPx - 6; baseline = 'bottom'
+          }
+        } else {
+          // Positive driver: prefer label above the bar
+          const outside = barTopPx - 5
+          if (outside - MARGIN >= cTop) {
+            labelY = outside; baseline = 'bottom'
+          } else {
+            // No room above — flip inside near the top
+            labelY = barTopPx + 6; baseline = 'top'
+          }
+        }
+
+        ctx.textBaseline = baseline
+        ctx.fillText(activeWf.displayLabels[i], bar.x, labelY)
+
+        // Dashed connector to the next bar
+        if (i < meta.data.length - 2) {
           const nextBar = meta.data[i + 1]
-          // Running total after this bar = the value where next bar should start
           const connectVal = neg ? from : to
           const connectPx  = yScale.getPixelForValue(connectVal)
           const x1 = bar.x + bar.width / 2
