@@ -46,7 +46,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from schema import get_conn
-from engine.decompose import decompose
+from engine.decompose import decompose, decompose_fgm_usage, decompose_ftm_usage, fetch_period as fetch_decomp_period
 from engine.shots import decompose_shots, ALL_ZONES
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
@@ -1192,23 +1192,22 @@ def get_z_score_breakdown(
     """
     conn = get_conn()
 
-    ALL_CATS     = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
-    DECOMPOSABLE = ALL_CATS
+    COUNTING_CATS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]
+    ALL_CATS      = COUNTING_CATS + ["fg_pct", "ft_pct"]
 
     def _stds(start, end):
         rows = conn.execute("""
             SELECT AVG(pts) pts, AVG(reb) reb, AVG(ast) ast,
                    AVG(stl) stl, AVG(blk) blk, AVG(tov) tov,
-                   AVG(fg3m) fg3m,
-                   SUM(fgm)*1.0/NULLIF(SUM(fga),0) fg_pct,
-                   SUM(ftm)*1.0/NULLIF(SUM(fta),0) ft_pct
+                   AVG(fg3m) fg3m, AVG(fgm) fgm, AVG(ftm) ftm
             FROM game_logs
             WHERE game_date BETWEEN ? AND ? AND min >= 5
             GROUP BY player_slug HAVING COUNT(*) >= 3
             ORDER BY COUNT(*) DESC LIMIT 200
         """, (start, end)).fetchall()
+        keys = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fgm", "ftm"]
         out = {}
-        for k in ALL_CATS:
+        for k in keys:
             vals = [r[k] for r in rows if r[k] is not None]
             if len(vals) >= 2:
                 mean = sum(vals) / len(vals)
@@ -1221,36 +1220,47 @@ def get_z_score_breakdown(
     stds_a = _stds(pa_start, pa_end)
     stds_b = _stds(pb_start, pb_end)
 
-    # Average the two period stds
-    avg_stds = {}
-    for k in ALL_CATS:
+    def _avg(k):
         sa, sb = stds_a.get(k), stds_b.get(k)
-        if sa and sb:
-            avg_stds[k] = (sa + sb) / 2
-        else:
-            avg_stds[k] = sa or sb
+        return (sa + sb) / 2 if (sa and sb) else (sa or sb)
 
-    # fg_pct and ft_pct stds from _stds are 0-1 scale, but decompose engine
-    # returns contributions in percentage-point (0-100) scale — scale to match
-    for k in ("fg_pct", "ft_pct"):
-        if avg_stds.get(k):
-            avg_stds[k] *= 100
+    avg_stds = {k: _avg(k) for k in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]}
+    # fg_pct/ft_pct columns use FGM/FTM stds (usage-based decomposition)
+    avg_stds["fg_pct"] = _avg("fgm")
+    avg_stds["ft_pct"] = _avg("ftm")
 
     INVERTED_STATS = {"tov"}
 
     result = {}
-    for stat in DECOMPOSABLE:
-        try:
-            decomp = decompose(conn, player, stat, (pa_start, pa_end), (pb_start, pb_end))
-        except Exception:
-            decomp = None
+    for stat in ALL_CATS:
+        # fg_pct/ft_pct: decompose FGM/FTM (usage × efficiency) not the raw percentage
+        if stat == "fg_pct":
+            try:
+                pa = fetch_decomp_period(conn, player, pa_start, pa_end)
+                pb = fetch_decomp_period(conn, player, pb_start, pb_end)
+                drivers = decompose_fgm_usage(pa, pb) if (pa and pb) else None
+            except Exception:
+                drivers = None
+        elif stat == "ft_pct":
+            try:
+                pa = fetch_decomp_period(conn, player, pa_start, pa_end)
+                pb = fetch_decomp_period(conn, player, pb_start, pb_end)
+                drivers = decompose_ftm_usage(pa, pb) if (pa and pb) else None
+            except Exception:
+                drivers = None
+        else:
+            try:
+                decomp = decompose(conn, player, stat, (pa_start, pa_end), (pb_start, pb_end))
+                drivers = decomp.drivers if decomp else None
+            except Exception:
+                drivers = None
 
-        if decomp is None:
+        if drivers is None:
             result[stat] = {"role": None, "rate": None, "pace": None}
             continue
 
         groups = {"role": 0.0, "rate": 0.0, "pace": 0.0}
-        for d in decomp.drivers:
+        for d in drivers:
             if d.category == "role":
                 groups["role"] += d.contribution
             elif d.category == "skill":
@@ -1258,7 +1268,7 @@ def get_z_score_breakdown(
             elif d.category == "team":
                 groups["pace"] += d.contribution
 
-        std = avg_stds.get(stat)
+        std  = avg_stds.get(stat)
         sign = -1 if stat in INVERTED_STATS else 1
         if std:
             result[stat] = {k: round(sign * v / std, 3) for k, v in groups.items()}

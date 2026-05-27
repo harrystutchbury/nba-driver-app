@@ -7543,7 +7543,7 @@ function AppMain({ onLogout, onOpenAccount }) {
           pa_start: periodA.start, pa_end: periodA.end,
           pb_start: periodB.start, pb_end: periodB.end,
         })
-        if (stat === 'pts' || stat === 'fg3m') {
+        if (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') {
           apiFetch(`/api/shot-diet?${shotParams}`)
             .then(r => r.ok ? r.json() : null)
             .then(d => { if (d) setShotDiet(d) })
@@ -8894,7 +8894,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                         </ul>
                       </div>
                     </div>
-                    {shotDiet && (stat === 'pts' || stat === 'fg3m') && (() => {
+                    {shotDiet && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (() => {
                       const zoneRows = ZONE_ORDER.map(zk => {
                         const z = shotDiet.zones.find(r => r.zone === zk) || {
                           zone: zk, label: ZONE_LABELS[zk],
@@ -9810,7 +9810,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </ul>
               </div>
             </div>
-            {shotDiet && (stat === 'pts' || stat === 'fg3m') && (() => {
+            {shotDiet && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (() => {
               // Build per-zone data for courts + bar chart
               const zoneRows = ZONE_ORDER.map(zk => {
                 const z = shotDiet.zones.find(r => r.zone === zk) || {

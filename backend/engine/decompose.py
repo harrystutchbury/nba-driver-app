@@ -153,9 +153,10 @@ def fetch_period(conn, player_slug, date_from, date_to):
 
     # FG%/FT% display values (percentage form) + shot-mix share for fg_pct decompose
     _fga = d["avg_fga"] or 0
-    d["fg3a_share"] = (d["avg_fg3a"] or 0) / _fga if _fga > 0 else 0
-    d["fg_pct_pct"] = (d["avg_fgm"] or 0) / _fga * 100 if _fga > 0 else 0
-    d["ft_pct_pct"] = d["ft_pct"] * 100
+    d["fga_per_min"] = _fga / min_ if min_ else 0
+    d["fg3a_share"]  = (d["avg_fg3a"] or 0) / _fga if _fga > 0 else 0
+    d["fg_pct_pct"]  = (d["avg_fgm"] or 0) / _fga * 100 if _fga > 0 else 0
+    d["ft_pct_pct"]  = d["ft_pct"] * 100
 
     # Assist driver
     d["ast_per_min"] = (d["avg_ast"] or 0) / min_ if min_ else 0
@@ -370,6 +371,44 @@ def decompose_ft_pct(pa, pb):
         "ft_pct_pct": ("FT efficiency", "skill"),
     }
     def formula(d): return d["ft_pct_pct"]
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
+def decompose_fgm_usage(pa, pb):
+    """
+    FGM/g = min × fga_per_min × fg_pct
+    Breaks field-goal production into usage (role) and efficiency (rate).
+    """
+    keys = {
+        "min":         ("Minutes played", "role"),
+        "fga_per_min": ("FGA/min",        "role"),
+        "fg_pct":      ("FG%",            "skill"),
+    }
+    def formula(d): return d["min"] * d["fga_per_min"] * d["fg_pct"]
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
+def decompose_ftm_usage(pa, pb):
+    """
+    FTM/g = min × fta_per_min × ft_pct
+    Breaks free-throw production into usage (role) and efficiency (rate).
+    """
+    keys = {
+        "min":         ("Minutes played", "role"),
+        "fta_per_min": ("FTA/min",        "role"),
+        "ft_pct":      ("FT%",            "skill"),
+    }
+    def formula(d): return d["min"] * d["fta_per_min"] * d["ft_pct"]
     da = {k: pa[k] for k in keys}
     db = {k: pb[k] for k in keys}
     c  = midpoint_decomp(da, db, formula)
