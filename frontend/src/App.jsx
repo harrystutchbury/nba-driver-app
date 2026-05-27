@@ -7305,6 +7305,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [periodB, setPeriodB]         = useState({ start: '2026-02-21', end: '2026-04-06' })
   const [result, setResult]           = useState(null)
   const [zResult, setZResult]         = useState(null)
+  const [zBreakdown, setZBreakdown]   = useState(null)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const [dataRange, setDataRange]     = useState(null)
@@ -7478,6 +7479,7 @@ function AppMain({ onLogout, onOpenAccount }) {
     setError(null)
     setResult(null)
     setZResult(null)
+    setZBreakdown(null)
     setGameLog(null)
     setShotDiet(null)
     try {
@@ -7487,12 +7489,16 @@ function AppMain({ onLogout, onOpenAccount }) {
         pb_start: periodB.start, pb_end: periodB.end,
       })
       if (stat === 'z_scores') {
-        const res = await apiFetch(`/api/z-score-comparison?${params}`)
+        const [res, bdRes] = await Promise.all([
+          apiFetch(`/api/z-score-comparison?${params}`),
+          apiFetch(`/api/z-score-breakdown?${params}`),
+        ])
         if (!res.ok) {
           const body = await res.json().catch(() => ({ detail: 'Request failed' }))
           setError(body.detail ?? 'Request failed')
         } else {
           setZResult(await res.json())
+          if (bdRes.ok) setZBreakdown(await bdRes.json())
         }
         setLoading(false)
         return
@@ -8627,6 +8633,47 @@ function AppMain({ onLogout, onOpenAccount }) {
                     <div className="chart-wrap">
                       <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
                     </div>
+                    {zBreakdown && (
+                      <div className="z-breakdown-wrap">
+                        <table className="z-breakdown-table">
+                          <thead>
+                            <tr>
+                              <th className="zbd-row-label"></th>
+                              {zResult.categories.map(c => (
+                                <th key={c.key} className="zbd-cat">{c.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { key: 'rate', label: 'Rate' },
+                              { key: 'pace', label: 'Pace' },
+                              { key: 'role', label: 'Role' },
+                            ].map(({ key, label }) => (
+                              <tr key={key}>
+                                <td className="zbd-row-label">{label}</td>
+                                {zResult.categories.map(c => {
+                                  const v = zBreakdown[c.key]?.[key]
+                                  return (
+                                    <td key={c.key} className={`zbd-val ${v == null ? 'zbd-null' : v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
+                                      {v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                            <tr className="zbd-total-row">
+                              <td className="zbd-row-label">Δ Z</td>
+                              {zResult.categories.map(c => (
+                                <td key={c.key} className={`zbd-val ${c.delta > 0.005 ? 'pos' : c.delta < -0.005 ? 'neg' : ''}`}>
+                                  {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
                 {result && selectedPlayer && (

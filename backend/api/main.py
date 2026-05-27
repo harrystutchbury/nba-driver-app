@@ -1170,6 +1170,97 @@ def get_z_score_comparison(
 
 
 # -----------------------------------------------------------------------
+# GET /z-score-breakdown
+# -----------------------------------------------------------------------
+
+@router.get("/z-score-breakdown")
+def get_z_score_breakdown(
+    player:   str = Query(...),
+    pa_start: str = Query(...),
+    pa_end:   str = Query(...),
+    pb_start: str = Query(...),
+    pb_end:   str = Query(...),
+):
+    """
+    For each fantasy category, break the Z-score delta into rate / pace / role components.
+    Runs the per-game decompose engine for each decomposable stat, groups driver contributions
+    by category (skill→rate, team→pace, role→role), then converts to Z-score units by
+    dividing by the population std.
+    """
+    conn = get_conn()
+
+    ALL_CATS      = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+    DECOMPOSABLE  = ["pts", "reb", "ast", "stl", "blk", "tov"]
+
+    def _stds(start, end):
+        rows = conn.execute("""
+            SELECT AVG(pts) pts, AVG(reb) reb, AVG(ast) ast,
+                   AVG(stl) stl, AVG(blk) blk, AVG(tov) tov,
+                   AVG(fg3m) fg3m,
+                   SUM(fgm)*1.0/NULLIF(SUM(fga),0) fg_pct,
+                   SUM(ftm)*1.0/NULLIF(SUM(fta),0) ft_pct
+            FROM game_logs
+            WHERE game_date BETWEEN ? AND ? AND min >= 5
+            GROUP BY player_slug HAVING COUNT(*) >= 3
+            ORDER BY COUNT(*) DESC LIMIT 200
+        """, (start, end)).fetchall()
+        out = {}
+        for k in ALL_CATS:
+            vals = [r[k] for r in rows if r[k] is not None]
+            if len(vals) >= 2:
+                mean = sum(vals) / len(vals)
+                std  = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+                out[k] = std if std > 1e-9 else None
+            else:
+                out[k] = None
+        return out
+
+    stds_a = _stds(pa_start, pa_end)
+    stds_b = _stds(pb_start, pb_end)
+
+    # Average the two period stds
+    avg_stds = {}
+    for k in ALL_CATS:
+        sa, sb = stds_a.get(k), stds_b.get(k)
+        if sa and sb:
+            avg_stds[k] = (sa + sb) / 2
+        else:
+            avg_stds[k] = sa or sb
+
+    result = {}
+    for stat in DECOMPOSABLE:
+        try:
+            decomp = decompose(conn, player, stat, (pa_start, pa_end), (pb_start, pb_end))
+        except Exception:
+            decomp = None
+
+        if decomp is None:
+            result[stat] = {"role": None, "rate": None, "pace": None}
+            continue
+
+        groups = {"role": 0.0, "rate": 0.0, "pace": 0.0}
+        for d in decomp.drivers:
+            if d.category == "role":
+                groups["role"] += d.contribution
+            elif d.category == "skill":
+                groups["rate"] += d.contribution
+            elif d.category == "team":
+                groups["pace"] += d.contribution
+
+        std = avg_stds.get(stat)
+        if std:
+            result[stat] = {k: round(v / std, 3) for k, v in groups.items()}
+        else:
+            result[stat] = {"role": None, "rate": None, "pace": None}
+
+    for stat in ["fg3m", "fg_pct", "ft_pct"]:
+        result[stat] = {"role": None, "rate": None, "pace": None}
+
+    conn.close()
+    return result
+
+
+# -----------------------------------------------------------------------
 # GET /seasons
 # -----------------------------------------------------------------------
 

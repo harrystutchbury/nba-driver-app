@@ -2031,6 +2031,66 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   margin-bottom: 32px;
 }
 
+/* ── Z-score breakdown table ─────────────────────────────── */
+.z-breakdown-wrap {
+  margin-bottom: 28px;
+  overflow-x: auto;
+}
+
+.z-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.z-breakdown-table thead th {
+  padding: 0 10px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.z-breakdown-table th.zbd-row-label,
+.z-breakdown-table td.zbd-row-label {
+  text-align: left;
+  padding-left: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  width: 52px;
+  white-space: nowrap;
+}
+
+.z-breakdown-table td.zbd-val {
+  text-align: center;
+  padding: 6px 10px;
+  color: var(--muted);
+}
+
+.z-breakdown-table td.zbd-null {
+  color: var(--border);
+}
+
+.z-breakdown-table tbody tr:not(.zbd-total-row):hover {
+  background: var(--hover);
+}
+
+.z-breakdown-table .zbd-total-row {
+  border-top: 1px solid var(--border);
+}
+
+.z-breakdown-table .zbd-total-row td {
+  padding-top: 8px;
+  font-weight: 600;
+}
+
 /* ── Analysis row ────────────────────────────────────────── */
 .analysis-row {
   display: grid;
