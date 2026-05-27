@@ -909,7 +909,7 @@ def get_decompose(
     Decompose a player's stat change between two periods into driver contributions.
     Returns a waterfall-ready payload.
     """
-    valid_stats = ["reb", "pts", "ast", "stl", "blk", "tov"]
+    valid_stats = ["reb", "pts", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
     if stat not in valid_stats:
         raise HTTPException(
             status_code=400,
@@ -1227,6 +1227,8 @@ def get_z_score_breakdown(
         else:
             avg_stds[k] = sa or sb
 
+    INVERTED_STATS = {"tov"}
+
     result = {}
     for stat in DECOMPOSABLE:
         try:
@@ -1248,8 +1250,9 @@ def get_z_score_breakdown(
                 groups["pace"] += d.contribution
 
         std = avg_stds.get(stat)
+        sign = -1 if stat in INVERTED_STATS else 1
         if std:
-            result[stat] = {k: round(v / std, 3) for k, v in groups.items()}
+            result[stat] = {k: round(sign * v / std, 3) for k, v in groups.items()}
         else:
             result[stat] = {"role": None, "rate": None, "pace": None}
 

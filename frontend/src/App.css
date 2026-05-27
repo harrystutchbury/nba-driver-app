@@ -2078,8 +2078,17 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   color: var(--border);
 }
 
-.z-breakdown-table tbody tr:not(.zbd-total-row):hover {
+.z-breakdown-table tbody tr:not(.zbd-total-row):not(.zbd-league-row):hover {
   background: var(--hover);
+}
+
+.z-breakdown-table .zbd-league-row td {
+  color: var(--text-muted, #666);
+  font-style: italic;
+}
+
+.z-breakdown-table .zbd-league-row {
+  border-top: 1px dashed var(--border);
 }
 
 .z-breakdown-table .zbd-total-row {

@@ -7359,6 +7359,7 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   const searchRef   = useRef(null)
   const debounceRef = useRef(null)
+  const bdLayoutRef = useRef(null)
 
   useEffect(() => {
     if (yahooConnected) window.history.replaceState({}, '', '/')
@@ -7398,6 +7399,17 @@ function AppMain({ onLogout, onOpenAccount }) {
 
   // Reset compare players when main player changes
   useEffect(() => { setCmpPlayers([]) }, [selectedPlayer])
+
+  // Apply breakdown table alignment after zBreakdown renders the table
+  useEffect(() => {
+    if (!zBreakdown || !bdLayoutRef.current) return
+    const wrap = document.getElementById('z-breakdown-table-wrap')
+    if (!wrap) return
+    const { spacerW, colW, totalW } = bdLayoutRef.current
+    wrap.style.setProperty('--tbl-spacer', spacerW + 'px')
+    wrap.style.setProperty('--tbl-col',    colW + 'px')
+    wrap.style.setProperty('--tbl-total',  totalW + 'px')
+  }, [zBreakdown])
 
   const fetchSuggestions = useCallback(async (q) => {
     if (!q.trim()) { setSuggestions([]); return }
@@ -7974,17 +7986,20 @@ function AppMain({ onLogout, onOpenAccount }) {
       ctx.restore()
 
       // Sync breakdown table column widths to bar positions
-      const wrap = document.getElementById('z-breakdown-table-wrap')
-      if (wrap && zwf) {
+      if (zwf) {
         const catBars = meta.data.slice(1, -1)  // skip Baseline and Comparison
         if (catBars.length > 0) {
-          const spacerW = catBars[0].x - catBars[0].width / 2
-          const colW    = catBars.length > 1 ? catBars[1].x - catBars[0].x : catBars[0].width
+          const spacerW   = Math.round(catBars[0].x - catBars[0].width / 2)
+          const colW      = Math.round(catBars.length > 1 ? catBars[1].x - catBars[0].x : catBars[0].width)
           const afterLast = catBars[catBars.length - 1].x + catBars[catBars.length - 1].width / 2
-          const totalW  = Math.max(chart.width - afterLast, 40)
-          wrap.style.setProperty('--tbl-spacer', Math.round(spacerW) + 'px')
-          wrap.style.setProperty('--tbl-col',    Math.round(colW) + 'px')
-          wrap.style.setProperty('--tbl-total',  Math.round(totalW) + 'px')
+          const totalW    = Math.max(Math.round(chart.width - afterLast), 40)
+          bdLayoutRef.current = { spacerW, colW, totalW }
+          const wrap = document.getElementById('z-breakdown-table-wrap')
+          if (wrap) {
+            wrap.style.setProperty('--tbl-spacer', spacerW + 'px')
+            wrap.style.setProperty('--tbl-col',    colW + 'px')
+            wrap.style.setProperty('--tbl-total',  totalW + 'px')
+          }
         }
       }
     },
@@ -8692,6 +8707,31 @@ function AppMain({ onLogout, onOpenAccount }) {
                                 </tr>
                               )
                             })}
+                            <tr className="zbd-league-row">
+                              <td className="zbd-row-label">League</td>
+                              {(() => {
+                                let leagueTotal = 0
+                                let leagueTotalHas = false
+                                const cells = zResult.categories.map(c => {
+                                  const bd = zBreakdown[c.key]
+                                  const hasAny = bd && (bd.rate != null || bd.pace != null || bd.role != null)
+                                  if (!hasAny) return <td key={c.key} className="zbd-val zbd-null">—</td>
+                                  const sumDrivers = (bd.rate ?? 0) + (bd.pace ?? 0) + (bd.role ?? 0)
+                                  const v = c.delta - sumDrivers
+                                  leagueTotal += v
+                                  leagueTotalHas = true
+                                  return (
+                                    <td key={c.key} className={`zbd-val ${v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
+                                      {v >= 0 ? '+' : ''}{v.toFixed(2)}
+                                    </td>
+                                  )
+                                })
+                                const sumCell = leagueTotalHas
+                                  ? <td className={`zbd-val zbd-sum ${leagueTotal > 0.005 ? 'pos' : leagueTotal < -0.005 ? 'neg' : ''}`}>{leagueTotal >= 0 ? '+' : ''}{leagueTotal.toFixed(2)}</td>
+                                  : <td className="zbd-val zbd-null">—</td>
+                                return [...cells, sumCell]
+                              })()}
+                            </tr>
                             <tr className="zbd-total-row">
                               <td className="zbd-row-label">Δ Z</td>
                               {zResult.categories.map(c => (
