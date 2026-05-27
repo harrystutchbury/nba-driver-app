@@ -7925,8 +7925,9 @@ function AppMain({ onLogout, onOpenAccount }) {
       ctx.font = "500 11px 'DM Mono', monospace"
       ctx.textAlign = 'center'
 
-      const { top: cTop, bottom: cBot } = chart.chartArea
-      const MARGIN = 16   // px clearance before we flip inside
+      const { bottom: cBot } = chart.chartArea
+      const CLEAR  = 8   // gap from bar edge to label
+      const TEXT_H = 14  // approx rendered text height
 
       meta.data.forEach((bar, i) => {
         const [from, to] = activeWf.barRanges[i]
@@ -7936,24 +7937,42 @@ function AppMain({ onLogout, onOpenAccount }) {
 
         const barTopPx = Math.min(bar.y, bar.base)
         const barBotPx = Math.max(bar.y, bar.base)
+        const barHeight = barBotPx - barTopPx
+
+        // Skip labels for bars too short to meaningfully display
+        if (!isEndBar && barHeight < 3) return
 
         let labelY, baseline, isInside = false
         if (isEndBar) {
           labelY   = barBotPx - 8
           baseline = 'bottom'
         } else if (neg) {
-          const outside = barBotPx + 5
-          if (outside + MARGIN <= cBot) {
-            labelY = outside; baseline = 'top'
+          // First choice: below bar
+          const below = barBotPx + CLEAR
+          if (below + TEXT_H <= chart.height) {
+            labelY = below; baseline = 'top'
           } else {
-            labelY = barBotPx - 6; baseline = 'bottom'; isInside = true
+            // Second choice: above bar (into top padding zone)
+            const above = barTopPx - CLEAR
+            if (above >= TEXT_H) {
+              labelY = above; baseline = 'bottom'
+            } else {
+              labelY = barBotPx - CLEAR; baseline = 'bottom'; isInside = true
+            }
           }
         } else {
-          const outside = barTopPx - 5
-          if (outside - MARGIN >= cTop) {
-            labelY = outside; baseline = 'bottom'
+          // First choice: above bar (top padding zone is fair game)
+          const above = barTopPx - CLEAR
+          if (above >= TEXT_H) {
+            labelY = above; baseline = 'bottom'
           } else {
-            labelY = barTopPx + 6; baseline = 'top'; isInside = true
+            // Second choice: below bar
+            const below = barBotPx + CLEAR
+            if (below + TEXT_H <= chart.height) {
+              labelY = below; baseline = 'top'
+            } else {
+              labelY = barTopPx + CLEAR; baseline = 'top'; isInside = true
+            }
           }
         }
 
