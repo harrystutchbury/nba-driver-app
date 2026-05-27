@@ -1245,6 +1245,49 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   border-bottom: 1px solid var(--border);
 }
 
+/* ── Aging Curves Table ──────────────────────── */
+.aging-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.aging-table th, .aging-table td {
+  padding: 4px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.aging-th-age, .aging-td-age {
+  text-align: left;
+  font-weight: 600;
+  min-width: 48px;
+}
+.aging-th-n, .aging-td-n {
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 28px;
+}
+.aging-th-stat {
+  color: var(--muted);
+  font-weight: 500;
+  min-width: 44px;
+}
+.aging-td-stat {
+  font-family: var(--mono);
+}
+.aging-up { color: #4caf50; }
+.aging-dn { color: #ef5350; }
+.aging-row-current td {
+  background: rgba(124,140,255,0.08);
+  font-weight: 600;
+}
+.aging-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  text-align: right;
+}
+
 .stats-row-career td {
   background: var(--border);
   color: var(--text);
