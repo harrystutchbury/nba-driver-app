@@ -156,6 +156,7 @@ def fetch_period(conn, player_slug, date_from, date_to):
     d["fga_per_min"] = _fga / min_ if min_ else 0
     d["fg3a_share"]  = (d["avg_fg3a"] or 0) / _fga if _fga > 0 else 0
     d["fg_pct_pct"]  = (d["avg_fgm"] or 0) / _fga * 100 if _fga > 0 else 0
+    d["fg_pct"]      = d["fg_pct_pct"] / 100   # decimal form for fgm decompose
     d["ft_pct_pct"]  = d["ft_pct"] * 100
 
     # Assist driver
