@@ -344,17 +344,12 @@ def decompose_fg3m(pa, pb):
 
 def decompose_fg_pct(pa, pb):
     """
-    FG% = (1 - fg3_share) * fg2_pct + fg3_share * fg3_pct   (output × 100 for %)
-      fg3_share → role (shot-mix decision)
-      fg2_pct, fg3_pct → skill (shooting efficiency)
+    FG% is a pure efficiency stat — one rate driver, no role/pace component.
     """
     keys = {
-        "fg3a_share": ("3pt shot mix", "role"),
-        "fg2_pct":    ("2pt FG%",      "skill"),
-        "fg3_pct":    ("3pt FG%",      "skill"),
+        "fg_pct_pct": ("FG% efficiency", "skill"),
     }
-    def formula(d):
-        return 100 * ((1 - d["fg3a_share"]) * d["fg2_pct"] + d["fg3a_share"] * d["fg3_pct"])
+    def formula(d): return d["fg_pct_pct"]
     da = {k: pa[k] for k in keys}
     db = {k: pb[k] for k in keys}
     c  = midpoint_decomp(da, db, formula)
@@ -430,6 +425,8 @@ STAT_DECOMPOSERS = {
     "fg3m":   decompose_fg3m,
     "fg_pct": decompose_fg_pct,
     "ft_pct": decompose_ft_pct,
+    "fgm":    decompose_fgm_usage,
+    "ftm":    decompose_ftm_usage,
 }
 
 STAT_RAW_KEYS = {
@@ -442,6 +439,8 @@ STAT_RAW_KEYS = {
     "fg3m":   "avg_fg3m",
     "fg_pct": "fg_pct_pct",
     "ft_pct": "ft_pct_pct",
+    "fgm":    "avg_fgm",
+    "ftm":    "avg_ftm",
 }
 
 

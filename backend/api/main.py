@@ -46,7 +46,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from schema import get_conn
-from engine.decompose import decompose, decompose_fgm_usage, decompose_ftm_usage, fetch_period as fetch_decomp_period
+from engine.decompose import decompose
 from engine.shots import decompose_shots, ALL_ZONES
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
@@ -1232,28 +1232,17 @@ def get_z_score_breakdown(
     INVERTED_STATS = {"tov"}
 
     result = {}
+    # For the breakdown table, fg_pct/ft_pct columns use FGM/FTM decomposition
+    # (usage × efficiency) so Role captures minutes + attempts contribution
+    BD_STAT = {"fg_pct": "fgm", "ft_pct": "ftm"}
+
     for stat in ALL_CATS:
-        # fg_pct/ft_pct: decompose FGM/FTM (usage × efficiency) not the raw percentage
-        if stat == "fg_pct":
-            try:
-                pa = fetch_decomp_period(conn, player, pa_start, pa_end)
-                pb = fetch_decomp_period(conn, player, pb_start, pb_end)
-                drivers = decompose_fgm_usage(pa, pb) if (pa and pb) else None
-            except Exception:
-                drivers = None
-        elif stat == "ft_pct":
-            try:
-                pa = fetch_decomp_period(conn, player, pa_start, pa_end)
-                pb = fetch_decomp_period(conn, player, pb_start, pb_end)
-                drivers = decompose_ftm_usage(pa, pb) if (pa and pb) else None
-            except Exception:
-                drivers = None
-        else:
-            try:
-                decomp = decompose(conn, player, stat, (pa_start, pa_end), (pb_start, pb_end))
-                drivers = decomp.drivers if decomp else None
-            except Exception:
-                drivers = None
+        bd_stat = BD_STAT.get(stat, stat)
+        try:
+            decomp = decompose(conn, player, bd_stat, (pa_start, pa_end), (pb_start, pb_end))
+            drivers = decomp.drivers if decomp else None
+        except Exception:
+            drivers = None
 
         if drivers is None:
             result[stat] = {"role": None, "rate": None, "pace": None}
