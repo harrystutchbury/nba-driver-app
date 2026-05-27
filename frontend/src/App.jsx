@@ -8699,58 +8699,68 @@ function AppMain({ onLogout, onOpenAccount }) {
                             </tr>
                           </thead>
                           <tbody>
-                            <tr className="zbd-raw-row">
-                              <td className="zbd-row-label">Raw</td>
-                              {zResult.categories.map(c => {
-                                const isPct = c.key === 'fg_pct' || c.key === 'ft_pct'
-                                const fmtPct = v => v != null ? `${(v * 100).toFixed(1)}%` : '—'
-                                const fmtNum = v => v != null ? v.toFixed(1) : '—'
-                                if (isPct) {
-                                  return (
-                                    <td key={c.key} className="zbd-val zbd-raw-val">
-                                      {fmtPct(c.pct_a)} → {fmtPct(c.pct_b)}
-                                    </td>
-                                  )
-                                }
+                            {(() => {
+                              const fmtCell = (v, colDelta, sumDelta) => {
+                                if (v == null) return '—'
+                                const sign = v >= 0 ? '+' : ''
+                                const denom = sumDelta != null ? sumDelta : colDelta
+                                const pct = denom != null && Math.abs(denom) > 0.001
+                                  ? Math.round(v / denom * 100)
+                                  : null
                                 return (
-                                  <td key={c.key} className="zbd-val zbd-raw-val">
-                                    {fmtNum(c.val_a)} → {fmtNum(c.val_b)}
-                                  </td>
+                                  <>
+                                    {sign}{v.toFixed(2)}
+                                    {pct != null && <span className="zbd-pct"> ({pct >= 0 ? '+' : ''}{pct}%)</span>}
+                                  </>
                                 )
-                              })}
-                              <td className="zbd-val zbd-sum">—</td>
-                            </tr>
-                            {[
-                              { key: 'rate', label: 'Rate' },
-                              { key: 'pace', label: 'Pace' },
-                              { key: 'role', label: 'Role' },
-                            ].map(({ key, label }) => {
-                              const total = zResult.categories.reduce((s, c) => {
-                                const v = zBreakdown[c.key]?.[key]
-                                return v != null ? s + v : s
-                              }, 0)
-                              return (
-                                <tr key={key}>
-                                  <td className="zbd-row-label">{label}</td>
-                                  {zResult.categories.map(c => {
-                                    const v = zBreakdown[c.key]?.[key]
-                                    return (
-                                      <td key={c.key} className={`zbd-val ${v == null ? 'zbd-null' : v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
-                                        {v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
-                                      </td>
-                                    )
-                                  })}
-                                  <td className={`zbd-val zbd-sum ${total > 0.005 ? 'pos' : total < -0.005 ? 'neg' : ''}`}>
-                                    {total >= 0 ? '+' : ''}{total.toFixed(2)}
-                                  </td>
-                                </tr>
-                              )
-                            })}
+                              }
+                              const rows = [
+                                { key: 'rate', label: 'Rate' },
+                                { key: 'pace', label: 'Pace' },
+                                { key: 'role', label: 'Role' },
+                              ]
+                              return rows.map(({ key, label }) => {
+                                const total = zResult.categories.reduce((s, c) => {
+                                  const v = zBreakdown[c.key]?.[key]
+                                  return v != null ? s + v : s
+                                }, 0)
+                                return (
+                                  <tr key={key}>
+                                    <td className="zbd-row-label">{label}</td>
+                                    {zResult.categories.map(c => {
+                                      const v = zBreakdown[c.key]?.[key]
+                                      return (
+                                        <td key={c.key} className={`zbd-val ${v == null ? 'zbd-null' : v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
+                                          {fmtCell(v, c.delta)}
+                                        </td>
+                                      )
+                                    })}
+                                    <td className={`zbd-val zbd-sum ${total > 0.005 ? 'pos' : total < -0.005 ? 'neg' : ''}`}>
+                                      {fmtCell(total, zResult.delta)}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            })()}
                             <tr className="zbd-league-row">
                               <td className="zbd-row-label">League</td>
                               {(() => {
                                 let leagueTotal = 0
                                 let leagueTotalHas = false
+                                const fmtCell = (v, colDelta, sumDelta) => {
+                                  if (v == null) return '—'
+                                  const sign = v >= 0 ? '+' : ''
+                                  const denom = sumDelta != null ? sumDelta : colDelta
+                                  const pct = denom != null && Math.abs(denom) > 0.001
+                                    ? Math.round(v / denom * 100)
+                                    : null
+                                  return (
+                                    <>
+                                      {sign}{v.toFixed(2)}
+                                      {pct != null && <span className="zbd-pct"> ({pct >= 0 ? '+' : ''}{pct}%)</span>}
+                                    </>
+                                  )
+                                }
                                 const cells = zResult.categories.map(c => {
                                   const bd = zBreakdown[c.key]
                                   const hasAny = bd && (bd.rate != null || bd.pace != null || bd.role != null)
@@ -8761,12 +8771,12 @@ function AppMain({ onLogout, onOpenAccount }) {
                                   leagueTotalHas = true
                                   return (
                                     <td key={c.key} className={`zbd-val ${v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
-                                      {v >= 0 ? '+' : ''}{v.toFixed(2)}
+                                      {fmtCell(v, c.delta)}
                                     </td>
                                   )
                                 })
                                 const sumCell = leagueTotalHas
-                                  ? <td className={`zbd-val zbd-sum ${leagueTotal > 0.005 ? 'pos' : leagueTotal < -0.005 ? 'neg' : ''}`}>{leagueTotal >= 0 ? '+' : ''}{leagueTotal.toFixed(2)}</td>
+                                  ? <td className={`zbd-val zbd-sum ${leagueTotal > 0.005 ? 'pos' : leagueTotal < -0.005 ? 'neg' : ''}`}>{fmtCell(leagueTotal, zResult.delta)}</td>
                                   : <td className="zbd-val zbd-null">—</td>
                                 return [...cells, sumCell]
                               })()}
