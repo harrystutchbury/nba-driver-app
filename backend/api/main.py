@@ -1006,23 +1006,26 @@ def get_decompose(
         return {r["opponent"]: (r["allowed"] / league_avg if r["allowed"] and league_avg else 1.0)
                 for r in rows}, league_avg
 
-    opp_factors, _ = _opp_factors_for_stat(stat)
+    # fg_pct and ft_pct have no raw column in game_logs; skip opponent difficulty
+    if stat in {"fg_pct", "ft_pct"}:
+        sched_diff = {"period_a": 1.0, "period_b": 1.0, "position": position, "stat": stat}
+    else:
+        opp_factors, _ = _opp_factors_for_stat(stat)
 
-    def _period_sched_difficulty(start, end):
-        """Avg opponent factor for the stat over games in this period."""
-        opps = conn.execute("""
-            SELECT opponent FROM game_logs
-            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
-        """, (player, start, end)).fetchall()
-        factors = [opp_factors.get(r["opponent"], 1.0) for r in opps]
-        return round(sum(factors) / len(factors), 3) if factors else 1.0
+        def _period_sched_difficulty(start, end):
+            opps = conn.execute("""
+                SELECT opponent FROM game_logs
+                WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
+            """, (player, start, end)).fetchall()
+            factors = [opp_factors.get(r["opponent"], 1.0) for r in opps]
+            return round(sum(factors) / len(factors), 3) if factors else 1.0
 
-    sched_diff = {
-        "period_a": _period_sched_difficulty(pa_start, pa_end),
-        "period_b": _period_sched_difficulty(pb_start, pb_end),
-        "position": position,
-        "stat":     stat,
-    }
+        sched_diff = {
+            "period_a": _period_sched_difficulty(pa_start, pa_end),
+            "period_b": _period_sched_difficulty(pb_start, pb_end),
+            "position": position,
+            "stat":     stat,
+        }
     conn.close()
 
     return {
@@ -1189,8 +1192,8 @@ def get_z_score_breakdown(
     """
     conn = get_conn()
 
-    ALL_CATS      = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
-    DECOMPOSABLE  = ["pts", "reb", "ast", "stl", "blk", "tov"]
+    ALL_CATS     = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+    DECOMPOSABLE = ALL_CATS
 
     def _stds(start, end):
         rows = conn.execute("""
@@ -1227,6 +1230,12 @@ def get_z_score_breakdown(
         else:
             avg_stds[k] = sa or sb
 
+    # fg_pct and ft_pct stds from _stds are 0-1 scale, but decompose engine
+    # returns contributions in percentage-point (0-100) scale — scale to match
+    for k in ("fg_pct", "ft_pct"):
+        if avg_stds.get(k):
+            avg_stds[k] *= 100
+
     INVERTED_STATS = {"tov"}
 
     result = {}
@@ -1255,9 +1264,6 @@ def get_z_score_breakdown(
             result[stat] = {k: round(sign * v / std, 3) for k, v in groups.items()}
         else:
             result[stat] = {"role": None, "rate": None, "pace": None}
-
-    for stat in ["fg3m", "fg_pct", "ft_pct"]:
-        result[stat] = {"role": None, "rate": None, "pace": None}
 
     conn.close()
     return result

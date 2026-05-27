@@ -7986,20 +7986,19 @@ function AppMain({ onLogout, onOpenAccount }) {
       ctx.restore()
 
       // Sync breakdown table column widths to bar positions
-      if (zwf) {
-        const catBars = meta.data.slice(1, -1)  // skip Baseline and Comparison
-        if (catBars.length > 0) {
-          const spacerW   = Math.round(catBars[0].x - catBars[0].width / 2)
-          const colW      = Math.round(catBars.length > 1 ? catBars[1].x - catBars[0].x : catBars[0].width)
-          const afterLast = catBars[catBars.length - 1].x + catBars[catBars.length - 1].width / 2
-          const totalW    = Math.max(Math.round(chart.width - afterLast), 40)
-          bdLayoutRef.current = { spacerW, colW, totalW }
-          const wrap = document.getElementById('z-breakdown-table-wrap')
-          if (wrap) {
-            wrap.style.setProperty('--tbl-spacer', spacerW + 'px')
-            wrap.style.setProperty('--tbl-col',    colW + 'px')
-            wrap.style.setProperty('--tbl-total',  totalW + 'px')
-          }
+      if (zwf && activeWf) {
+        const numBars = activeWf.labels.length  // Baseline + 9 cats + Comparison
+        const areaW   = chart.chartArea.right - chart.chartArea.left
+        const slotW   = areaW / numBars
+        const spacerW = Math.round(chart.chartArea.left + slotW)  // axis gap + Baseline slot
+        const colW    = Math.round(slotW)
+        const totalW  = Math.max(Math.round(chart.width - spacerW - (numBars - 2) * colW), 40)
+        bdLayoutRef.current = { spacerW, colW, totalW }
+        const wrap = document.getElementById('z-breakdown-table-wrap')
+        if (wrap) {
+          wrap.style.setProperty('--tbl-spacer', spacerW + 'px')
+          wrap.style.setProperty('--tbl-col',    colW + 'px')
+          wrap.style.setProperty('--tbl-total',  totalW + 'px')
         }
       }
     },
