@@ -151,6 +151,12 @@ def fetch_period(conn, player_slug, date_from, date_to):
     d["fg3_pct"]      = d["avg_fg3m"] / d["avg_fg3a"] if (d["avg_fg3a"] or 0) > 0 else 0
     d["ft_pct"]       = d["avg_ftm"]  / d["avg_fta"]  if (d["avg_fta"]  or 0) > 0 else 0
 
+    # FG%/FT% display values (percentage form) + shot-mix share for fg_pct decompose
+    _fga = d["avg_fga"] or 0
+    d["fg3a_share"] = (d["avg_fg3a"] or 0) / _fga if _fga > 0 else 0
+    d["fg_pct_pct"] = (d["avg_fgm"] or 0) / _fga * 100 if _fga > 0 else 0
+    d["ft_pct_pct"] = d["ft_pct"] * 100
+
     # Assist driver
     d["ast_per_min"] = (d["avg_ast"] or 0) / min_ if min_ else 0
 
@@ -317,25 +323,86 @@ def decompose_turnovers(pa, pb):
 
 
 # -----------------------------------------------------------------------
+def decompose_fg3m(pa, pb):
+    """
+    3PM/g = min * fg3a_per_min * fg3_pct
+    """
+    keys = {
+        "min":          ("Minutes played",   "role"),
+        "fg3a_per_min": ("3pt attempts/min", "role"),
+        "fg3_pct":      ("3pt FG%",          "skill"),
+    }
+    def formula(d): return d["min"] * d["fg3a_per_min"] * d["fg3_pct"]
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
+def decompose_fg_pct(pa, pb):
+    """
+    FG% = (1 - fg3_share) * fg2_pct + fg3_share * fg3_pct   (output × 100 for %)
+      fg3_share → role (shot-mix decision)
+      fg2_pct, fg3_pct → skill (shooting efficiency)
+    """
+    keys = {
+        "fg3a_share": ("3pt shot mix", "role"),
+        "fg2_pct":    ("2pt FG%",      "skill"),
+        "fg3_pct":    ("3pt FG%",      "skill"),
+    }
+    def formula(d):
+        return 100 * ((1 - d["fg3a_share"]) * d["fg2_pct"] + d["fg3a_share"] * d["fg3_pct"])
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
+def decompose_ft_pct(pa, pb):
+    """
+    FT% is purely a skill metric — one driver, no role/pace component.
+    """
+    keys = {
+        "ft_pct_pct": ("FT efficiency", "skill"),
+    }
+    def formula(d): return d["ft_pct_pct"]
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
 # Registry + entrypoint
 # -----------------------------------------------------------------------
 
 STAT_DECOMPOSERS = {
-    "reb": decompose_rebounds,
-    "pts": decompose_points,
-    "ast": decompose_assists,
-    "stl": decompose_steals,
-    "blk": decompose_blocks,
-    "tov": decompose_turnovers,
+    "reb":    decompose_rebounds,
+    "pts":    decompose_points,
+    "ast":    decompose_assists,
+    "stl":    decompose_steals,
+    "blk":    decompose_blocks,
+    "tov":    decompose_turnovers,
+    "fg3m":   decompose_fg3m,
+    "fg_pct": decompose_fg_pct,
+    "ft_pct": decompose_ft_pct,
 }
 
 STAT_RAW_KEYS = {
-    "reb": "avg_reb",
-    "pts": "avg_pts",
-    "ast": "avg_ast",
-    "stl": "avg_stl",
-    "blk": "avg_blk",
-    "tov": "avg_tov",
+    "reb":    "avg_reb",
+    "pts":    "avg_pts",
+    "ast":    "avg_ast",
+    "stl":    "avg_stl",
+    "blk":    "avg_blk",
+    "tov":    "avg_tov",
+    "fg3m":   "avg_fg3m",
+    "fg_pct": "fg_pct_pct",
+    "ft_pct": "ft_pct_pct",
 }
 
 

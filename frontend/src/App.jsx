@@ -442,12 +442,15 @@ function LoginPage({ onLogin }) {
 
 const STAT_OPTIONS = [
   { value: 'z_scores', label: 'Z-Scores (all cats)' },
-  { value: 'pts', label: 'Points' },
-  { value: 'reb', label: 'Rebounds' },
-  { value: 'ast', label: 'Assists' },
-  { value: 'stl', label: 'Steals' },
-  { value: 'blk', label: 'Blocks' },
-  { value: 'tov', label: 'Turnovers' },
+  { value: 'pts',    label: 'Points' },
+  { value: 'reb',    label: 'Rebounds' },
+  { value: 'ast',    label: 'Assists' },
+  { value: 'stl',    label: 'Steals' },
+  { value: 'blk',    label: 'Blocks' },
+  { value: 'tov',    label: 'Turnovers' },
+  { value: 'fg3m',   label: '3-Pointers' },
+  { value: 'fg_pct', label: 'FG%' },
+  { value: 'ft_pct', label: 'FT%' },
 ]
 
 const PROJ_STAT_OPTIONS = [
@@ -600,6 +603,7 @@ function posAbbr(pos) { return POS_SHORT[pos] || pos || '—' }
 const STAT_LABELS_SHORT = {
   pts: 'Pts/g', reb: 'Rebounds/g', ast: 'Ast/g',
   stl: 'Stl/g', blk: 'Blk/g', tov: 'Tov/g',
+  fg3m: '3PM/g', fg_pct: 'FG%', ft_pct: 'FT%',
 }
 
 const CATEGORY_COLORS = {
@@ -7918,40 +7922,34 @@ function AppMain({ onLogout, onOpenAccount }) {
         const neg = activeWf.isNegative[i]
         const isEndBar = i === 0 || i === activeWf.labels.length - 1
 
-        // bar.y = pixel of the bar's top edge (smaller px = higher on screen)
-        // bar.base = pixel of the bar's bottom edge (larger px = lower on screen)
         const barTopPx = Math.min(bar.y, bar.base)
         const barBotPx = Math.max(bar.y, bar.base)
-        const barHeightPx = barBotPx - barTopPx
 
-        ctx.fillStyle = isEndBar
-          ? (dark ? 'rgba(220,220,220,0.8)' : 'rgba(30,30,30,0.8)')
-          : activeWf.colors[i]
-
-        let labelY, baseline
+        let labelY, baseline, isInside = false
         if (isEndBar) {
-          // Baseline/Comparison: always inside, near the value end (away from 0)
           labelY   = barBotPx - 8
           baseline = 'bottom'
         } else if (neg) {
-          // Negative driver: prefer label below the bar
           const outside = barBotPx + 5
           if (outside + MARGIN <= cBot) {
             labelY = outside; baseline = 'top'
           } else {
-            // No room below — flip inside near the bottom
-            labelY = barBotPx - 6; baseline = 'bottom'
+            labelY = barBotPx - 6; baseline = 'bottom'; isInside = true
           }
         } else {
-          // Positive driver: prefer label above the bar
           const outside = barTopPx - 5
           if (outside - MARGIN >= cTop) {
             labelY = outside; baseline = 'bottom'
           } else {
-            // No room above — flip inside near the top
-            labelY = barTopPx + 6; baseline = 'top'
+            labelY = barTopPx + 6; baseline = 'top'; isInside = true
           }
         }
+
+        ctx.fillStyle = isEndBar
+          ? (dark ? 'rgba(220,220,220,0.8)' : 'rgba(30,30,30,0.8)')
+          : isInside
+          ? (dark ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,20,0.9)')
+          : activeWf.colors[i]
 
         ctx.textBaseline = baseline
         ctx.fillText(activeWf.displayLabels[i], bar.x, labelY)
@@ -7974,6 +7972,21 @@ function AppMain({ onLogout, onOpenAccount }) {
         }
       })
       ctx.restore()
+
+      // Sync breakdown table column widths to bar positions
+      const wrap = document.getElementById('z-breakdown-table-wrap')
+      if (wrap && zwf) {
+        const catBars = meta.data.slice(1, -1)  // skip Baseline and Comparison
+        if (catBars.length > 0) {
+          const spacerW = catBars[0].x - catBars[0].width / 2
+          const colW    = catBars.length > 1 ? catBars[1].x - catBars[0].x : catBars[0].width
+          const afterLast = catBars[catBars.length - 1].x + catBars[catBars.length - 1].width / 2
+          const totalW  = Math.max(chart.width - afterLast, 40)
+          wrap.style.setProperty('--tbl-spacer', Math.round(spacerW) + 'px')
+          wrap.style.setProperty('--tbl-col',    Math.round(colW) + 'px')
+          wrap.style.setProperty('--tbl-total',  Math.round(totalW) + 'px')
+        }
+      }
     },
   }
 
@@ -8634,14 +8647,22 @@ function AppMain({ onLogout, onOpenAccount }) {
                       <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
                     </div>
                     {zBreakdown && (
-                      <div className="z-breakdown-wrap">
-                        <table className="z-breakdown-table">
+                      <div id="z-breakdown-table-wrap" className="z-breakdown-wrap">
+                        <table className="z-breakdown-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+                          <colgroup>
+                            <col style={{ width: 'var(--tbl-spacer, 120px)' }} />
+                            {zResult.categories.map(c => (
+                              <col key={c.key} style={{ width: 'var(--tbl-col, auto)' }} />
+                            ))}
+                            <col style={{ width: 'var(--tbl-total, 80px)' }} />
+                          </colgroup>
                           <thead>
                             <tr>
                               <th className="zbd-row-label"></th>
                               {zResult.categories.map(c => (
                                 <th key={c.key} className="zbd-cat">{c.label}</th>
                               ))}
+                              <th className="zbd-cat zbd-sum-hd">Σ</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -8649,19 +8670,28 @@ function AppMain({ onLogout, onOpenAccount }) {
                               { key: 'rate', label: 'Rate' },
                               { key: 'pace', label: 'Pace' },
                               { key: 'role', label: 'Role' },
-                            ].map(({ key, label }) => (
-                              <tr key={key}>
-                                <td className="zbd-row-label">{label}</td>
-                                {zResult.categories.map(c => {
-                                  const v = zBreakdown[c.key]?.[key]
-                                  return (
-                                    <td key={c.key} className={`zbd-val ${v == null ? 'zbd-null' : v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
-                                      {v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            ))}
+                            ].map(({ key, label }) => {
+                              const total = zResult.categories.reduce((s, c) => {
+                                const v = zBreakdown[c.key]?.[key]
+                                return v != null ? s + v : s
+                              }, 0)
+                              return (
+                                <tr key={key}>
+                                  <td className="zbd-row-label">{label}</td>
+                                  {zResult.categories.map(c => {
+                                    const v = zBreakdown[c.key]?.[key]
+                                    return (
+                                      <td key={c.key} className={`zbd-val ${v == null ? 'zbd-null' : v > 0.005 ? 'pos' : v < -0.005 ? 'neg' : ''}`}>
+                                        {v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
+                                      </td>
+                                    )
+                                  })}
+                                  <td className={`zbd-val zbd-sum ${total > 0.005 ? 'pos' : total < -0.005 ? 'neg' : ''}`}>
+                                    {total >= 0 ? '+' : ''}{total.toFixed(2)}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                             <tr className="zbd-total-row">
                               <td className="zbd-row-label">Δ Z</td>
                               {zResult.categories.map(c => (
@@ -8669,6 +8699,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                                   {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
                                 </td>
                               ))}
+                              <td className={`zbd-val zbd-sum ${zResult.delta > 0.005 ? 'pos' : zResult.delta < -0.005 ? 'neg' : ''}`}>
+                                {zResult.delta >= 0 ? '+' : ''}{zResult.delta.toFixed(2)}
+                              </td>
                             </tr>
                           </tbody>
                         </table>

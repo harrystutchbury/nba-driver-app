@@ -2091,6 +2091,15 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-weight: 600;
 }
 
+.z-breakdown-table .zbd-sum-hd {
+  border-left: 1px solid var(--border);
+}
+
+.z-breakdown-table .zbd-sum {
+  border-left: 1px solid var(--border);
+  font-weight: 600;
+}
+
 /* ── Analysis row ────────────────────────────────────────── */
 .analysis-row {
   display: grid;
