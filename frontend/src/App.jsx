@@ -8413,6 +8413,9 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </thead>
                 <tbody>
                   <StatsRow label={playerStats.seasons[0]?.period} data={playerStats.seasons[0]} />
+                  {playerStats.seasons[1] && (
+                    <StatsRow label={playerStats.seasons[1].period} data={playerStats.seasons[1]} highlight="prev-season" />
+                  )}
                   <StatsRow label="Per 30 min" data={playerStats.p30} highlight="p30" />
                   <StatsRow label="Last 14 days" data={playerStats.l14} highlight="recent" />
                   <StatsRow label="Last 30 days" data={playerStats.l30} highlight="recent" />

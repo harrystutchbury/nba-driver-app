@@ -1240,6 +1240,11 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   border-right: none !important;
 }
 
+.stats-row-prev-season td {
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .stats-row-career td {
   background: var(--border);
   color: var(--text);
