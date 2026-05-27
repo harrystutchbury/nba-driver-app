@@ -1102,6 +1102,8 @@ def get_z_score_comparison(
                    AVG(fg3m) as fg3m,
                    AVG(fgm) as fg_pct,
                    AVG(ftm) as ft_pct,
+                   SUM(fgm)*1.0/NULLIF(SUM(fga),0) as fg_pct_raw,
+                   SUM(ftm)*1.0/NULLIF(SUM(fta),0) as ft_pct_raw,
                    COUNT(*) as gp
             FROM game_logs
             WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
@@ -1152,7 +1154,7 @@ def get_z_score_comparison(
         z_total_a += z_a
         z_total_b += z_b
 
-        categories.append({
+        entry = {
             "key":   key,
             "label": label,
             "z_a":   round(z_a, 3),
@@ -1160,7 +1162,14 @@ def get_z_score_comparison(
             "delta": round(z_b - z_a, 3),
             "val_a": round(val_a, 3) if val_a is not None else None,
             "val_b": round(val_b, 3) if val_b is not None else None,
-        })
+        }
+        if key in ("fg_pct", "ft_pct"):
+            raw_key = key + "_raw"
+            pct_a = stats_a.get(raw_key) if stats_a else None
+            pct_b = stats_b.get(raw_key) if stats_b else None
+            entry["pct_a"] = round(pct_a, 4) if pct_a is not None else None
+            entry["pct_b"] = round(pct_b, 4) if pct_b is not None else None
+        categories.append(entry)
 
     conn.close()
     return {

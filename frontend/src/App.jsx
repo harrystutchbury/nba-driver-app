@@ -8699,6 +8699,27 @@ function AppMain({ onLogout, onOpenAccount }) {
                             </tr>
                           </thead>
                           <tbody>
+                            <tr className="zbd-raw-row">
+                              <td className="zbd-row-label">Raw</td>
+                              {zResult.categories.map(c => {
+                                const isPct = c.key === 'fg_pct' || c.key === 'ft_pct'
+                                const fmtPct = v => v != null ? `${(v * 100).toFixed(1)}%` : '—'
+                                const fmtNum = v => v != null ? v.toFixed(1) : '—'
+                                if (isPct) {
+                                  return (
+                                    <td key={c.key} className="zbd-val zbd-raw-val">
+                                      {fmtPct(c.pct_a)} → {fmtPct(c.pct_b)}
+                                    </td>
+                                  )
+                                }
+                                return (
+                                  <td key={c.key} className="zbd-val zbd-raw-val">
+                                    {fmtNum(c.val_a)} → {fmtNum(c.val_b)}
+                                  </td>
+                                )
+                              })}
+                              <td className="zbd-val zbd-sum">—</td>
+                            </tr>
                             {[
                               { key: 'rate', label: 'Rate' },
                               { key: 'pace', label: 'Pace' },
