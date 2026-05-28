@@ -8232,7 +8232,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </div>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['fantasy','adjustments'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['fantasy','adjustments','draft'].includes(page) ? ' active' : ''}`}>
                     Fantasy <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
@@ -8241,6 +8241,7 @@ function AppMain({ onLogout, onOpenAccount }) {
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('roster');     go('fantasy') }}>Roster Analysis</button>
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('trade');      go('fantasy') }}>Trade Analysis</button>
                     <button className="nav-drop-item" onClick={() => { setFantasyTab('matchup');    go('fantasy') }}>Matchup Analysis</button>
+                    <button className="nav-drop-item" onClick={() => go('draft')}>Draft</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
                   </div>
                 </div>
@@ -8248,8 +8249,6 @@ function AppMain({ onLogout, onOpenAccount }) {
                 <button className={`nav-btn${page === 'blog' ? ' active' : ''}`} onClick={() => go('blog')}>Blog</button>
 
                 <button className={`nav-btn${page === 'forum' ? ' active' : ''}`} onClick={() => go('forum')}>Community</button>
-
-                <button className={`nav-btn${page === 'draft' ? ' active' : ''}`} onClick={() => go('draft')}>Draft</button>
 
                 <a className="nav-btn" href="https://roto-intel-landing.onrender.com/docs.html" target="_blank" rel="noopener noreferrer">Explainer</a>
 
