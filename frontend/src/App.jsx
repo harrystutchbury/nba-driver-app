@@ -7875,8 +7875,8 @@ function AppMain({ onLogout, onOpenAccount, token }) {
         if (v == null) return 'transparent'
         const ease = maGames[i]?.opp_ease
         if (ease == null) return 'rgba(150,150,255,0.7)'
-        if (ease > 3)  return 'rgba(0,230,118,0.65)'
-        if (ease < -3) return 'rgba(255,107,107,0.65)'
+        if (ease > 1.5)  return 'rgba(0,230,118,0.65)'
+        if (ease < -1.5) return 'rgba(255,107,107,0.65)'
         return 'rgba(150,150,255,0.7)'
       }),
       borderColor: 'transparent',
