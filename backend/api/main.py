@@ -1828,9 +1828,11 @@ def get_projection(
         total += z_ft
         return round(total, 2)
 
-    # Build a z_sum distribution for all players (most recent season) to enable ranking
+    # Build a z_sum distribution for all players (current season only) to enable ranking
     import bisect as _bisect
-    latest_per_player = df.sort_values('season').groupby('player_slug').last().reset_index()
+    _cur_yr = _current_season_end_year()
+    _cur_season = f"{_cur_yr - 1}-{str(_cur_yr)[2:]}"
+    latest_per_player = df[df['season'] == _cur_season].groupby('player_slug').last().reset_index()
     all_player_z = []
     for _, _row in latest_per_player.iterrows():
         _p30d = {}
