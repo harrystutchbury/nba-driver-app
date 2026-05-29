@@ -1092,6 +1092,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 /* ── Player profile ──────────────────────────────────────── */
 .player-profile {
   margin-bottom: 32px;
+  padding-top: 20px;
 }
 
 .player-profile-header {
