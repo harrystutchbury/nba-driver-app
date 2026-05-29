@@ -9507,7 +9507,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                   </div>
                 )}
 
-                {!projLoading && projExpanded && (isPro ? <>
+                {!projLoading && projExpanded && <>
                 <div className="proj-scenario-row">
                   {['pessimistic', 'baseline', 'optimistic'].map(s => (
                     <button
@@ -9559,7 +9559,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                 <div className="trend-chart-wrap">
                   {trendChartData && <Line data={trendChartData} options={trendChartOptions} />}
                 </div>
-                </>)}
+                </>}
               </div>
             )}
 
