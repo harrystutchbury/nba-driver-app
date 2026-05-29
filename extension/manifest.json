@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Roto Intel",
+  "version": "0.1.0",
+  "description": "Fantasy basketball matchup overlay powered by Roto Intel",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://fantasy.espn.com/*",
+    "https://app.rotointel.com/*",
+    "https://www.rotointel.com/*"
+  ],
+  "content_scripts": [{
+    "matches": ["https://fantasy.espn.com/basketball/*"],
+    "js": ["content.js"],
+    "css": ["content.css"],
+    "run_at": "document_idle"
+  }],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Roto Intel",
+    "default_popup": "popup.html"
+  }
+}

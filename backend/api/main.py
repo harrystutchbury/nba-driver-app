@@ -321,7 +321,9 @@ app.add_middleware(
         "https://roto-intel-landing.onrender.com",
         "https://app.rotointel.com",
         "https://www.rotointel.com",
+        "https://fantasy.espn.com",
     ],
+    allow_origin_regex=r"chrome-extension://.*",
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
@@ -8776,6 +8778,105 @@ def search_br_players(q: str = Query(..., min_length=2),
 app.include_router(admin_router)
 app.include_router(fantasy_router)
 app.include_router(auth_router)
+
+
+# ── Chrome Extension: public ESPN matchup endpoint ────────────────────────────
+
+@router.get("/espn-matchup")
+def espn_matchup_overlay(my_ids: str = Query(""), opp_ids: str = Query("")):
+    """
+    Accept comma-separated ESPN player IDs for two teams.
+    Returns projected per-game stats for each team, aggregated by category.
+    No auth required — used by the Roto Intel Chrome extension.
+    """
+    def parse_ids(raw):
+        return [i.strip() for i in raw.split(",") if i.strip()] if raw else []
+
+    my_espn  = parse_ids(my_ids)
+    opp_espn = parse_ids(opp_ids)
+
+    conn = get_conn()
+    cur_yr     = _current_season_end_year()
+    cur_season = f"{cur_yr - 1}-{str(cur_yr)[2:]}"
+
+    def resolve_players(espn_ids):
+        if not espn_ids:
+            return [], []
+        placeholders = ",".join("?" * len(espn_ids))
+        rows = conn.execute(f"""
+            SELECT fpm.provider_id, fpm.br_slug, fpm.provider_name
+            FROM fantasy_player_map fpm
+            WHERE fpm.provider = 'espn' AND fpm.provider_id IN ({placeholders})
+        """, espn_ids).fetchall()
+
+        matched   = {r["provider_id"]: (r["br_slug"], r["provider_name"]) for r in rows}
+        unmatched = [eid for eid in espn_ids if eid not in matched]
+        return matched, unmatched
+
+    CATS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]
+
+    def get_player_projection(br_slug):
+        row = conn.execute("""
+            SELECT
+                AVG(min)  AS min_pg,
+                AVG(pts)  AS pts,
+                AVG(reb)  AS reb,
+                AVG(ast)  AS ast,
+                AVG(stl)  AS stl,
+                AVG(blk)  AS blk,
+                AVG(tov)  AS tov,
+                AVG(fg3m) AS fg3m,
+                SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
+                COUNT(*)  AS gp
+            FROM game_logs
+            WHERE player_slug = ? AND season = ? AND min > 0
+        """, [br_slug, cur_season]).fetchone()
+        if not row or not row["min_pg"] or row["gp"] < 5:
+            return None
+        mpg = row["min_pg"]
+        return {
+            "pts":    round(row["pts"]  or 0, 2),
+            "reb":    round(row["reb"]  or 0, 2),
+            "ast":    round(row["ast"]  or 0, 2),
+            "stl":    round(row["stl"]  or 0, 2),
+            "blk":    round(row["blk"]  or 0, 2),
+            "tov":    round(row["tov"]  or 0, 2),
+            "fg3m":   round(row["fg3m"] or 0, 2),
+            "fg_pct": round(row["fg_pct"] or 0, 1),
+            "ft_pct": round(row["ft_pct"] or 0, 1),
+            "min_pg": round(mpg, 1),
+            "gp":     row["gp"],
+        }
+
+    def build_team(espn_ids):
+        matched, unmatched = resolve_players(espn_ids)
+        players = []
+        fg_num = ft_num = fg_den = ft_den = 0.0
+
+        for eid, (slug, name) in matched.items():
+            proj = get_player_projection(slug)
+            if not proj:
+                unmatched.append(eid)
+                continue
+            players.append({"espn_id": eid, "name": name, "slug": slug, "projection": proj})
+            mpg = proj["min_pg"] or 0
+            fg_num += proj["fg_pct"] * mpg
+            ft_num += proj["ft_pct"] * mpg
+            fg_den += mpg
+            ft_den += mpg
+
+        totals = {cat: round(sum(p["projection"][cat] for p in players), 2) for cat in CATS}
+        totals["fg_pct"] = round(fg_num / fg_den, 1) if fg_den > 0 else None
+        totals["ft_pct"] = round(ft_num / ft_den, 1) if ft_den > 0 else None
+
+        return {"players": players, "totals": totals, "unmatched": unmatched}
+
+    my_team  = build_team(my_espn)
+    opp_team = build_team(opp_espn)
+    conn.close()
+
+    return {"my_team": my_team, "opp_team": opp_team, "season": cur_season}
 
 # ── Stripe ────────────────────────────────────────────────────────────────────
 

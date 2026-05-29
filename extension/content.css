@@ -1,0 +1,157 @@
+#ri-toggle-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999998;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #1a1a2e;
+  border: 2px solid #7c8cff;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+#ri-toggle-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(124,140,255,0.4);
+}
+
+#roto-intel-panel {
+  position: fixed;
+  bottom: 84px;
+  right: 24px;
+  z-index: 999999;
+  width: 300px;
+  background: #111118;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #e0e0e0;
+  overflow: hidden;
+}
+
+.ri-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #2a2a3a;
+  background: #16161f;
+}
+.ri-logo {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.ri-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.ri-close:hover { color: #fff; }
+
+.ri-subhead {
+  font-size: 10px;
+  color: #666;
+  padding: 6px 14px 0;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ri-teams {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 14px 4px;
+}
+.ri-team-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #aaa;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ri-table {
+  width: 100%;
+  border-collapse: collapse;
+  padding: 0 8px;
+}
+.ri-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #1e1e2a;
+}
+.ri-val {
+  font-family: 'DM Mono', 'Courier New', monospace;
+  font-size: 12px;
+  text-align: right;
+  width: 70px;
+  color: #bbb;
+}
+.ri-cat {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ri-win  { color: #00e676; font-weight: 600; }
+.ri-lose { color: #666; }
+
+.ri-warn {
+  font-size: 10px;
+  color: #f5a623;
+  padding: 4px 14px 0;
+  margin: 0;
+}
+
+.ri-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 14px;
+  color: #888;
+  font-size: 12px;
+}
+.ri-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #333;
+  border-top-color: #7c8cff;
+  border-radius: 50%;
+  animation: ri-spin 0.7s linear infinite;
+}
+@keyframes ri-spin { to { transform: rotate(360deg); } }
+
+.ri-error {
+  padding: 16px 14px;
+  color: #ff6b6b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ri-footer {
+  padding: 8px 14px 10px;
+  border-top: 1px solid #1e1e2a;
+  text-align: right;
+}
+.ri-footer a {
+  font-size: 10px;
+  color: #7c8cff;
+  text-decoration: none;
+}
+.ri-footer a:hover { text-decoration: underline; }
