@@ -24,7 +24,7 @@ function apiFetch(url, opts = {}) {
   const headers = { ...(opts.headers || {}) }
   if (token) headers['Authorization'] = `Bearer ${token}`
   return fetch(url, { ...opts, headers }).then(res => {
-    if (res.status === 401) {
+    if (res.status === 401 && token) {
       localStorage.removeItem('nba_token')
       window.location.reload()
     }
@@ -6936,6 +6936,19 @@ function PageLock({ onUpgrade }) {
   )
 }
 
+function FantasySignupPrompt({ onSignup }) {
+  return (
+    <div className="progate-page">
+      <div className="progate-page-card">
+        <div className="progate-page-icon">🏀</div>
+        <h2 className="progate-page-title">Connect your fantasy league</h2>
+        <p className="progate-page-sub">Sign up for free to integrate with ESPN and Yahoo Fantasy and unlock roster analysis, trade tools, matchup planning and more.</p>
+        <button className="progate-page-btn" onClick={onSignup}>Sign up free</button>
+      </div>
+    </div>
+  )
+}
+
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
@@ -7261,7 +7274,7 @@ function ModerationPage() {
 }
 
 
-function AppMain({ onLogout, onOpenAccount }) {
+function AppMain({ onLogout, onOpenAccount, token }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
   useEffect(() => {
@@ -7355,7 +7368,7 @@ function AppMain({ onLogout, onOpenAccount }) {
   const [cmpShow,     setCmpShow]     = useState(false)
   const [cmpPlayers,  setCmpPlayers]  = useState([]) // [{player, stats}]
 
-  const isPro = tier === 'pro' || tier === 'elite'
+  const isPro = true // all features open
 
   const searchRef   = useRef(null)
   const debounceRef = useRef(null)
@@ -8257,8 +8270,16 @@ function AppMain({ onLogout, onOpenAccount }) {
                   <button className="nav-drop-item" onClick={() => setDark(d => !d)}>
                     {dark ? '☀︎ Light mode' : '☾ Dark mode'}
                   </button>
-                  <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Account</button>
-                  <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                  {token
+                    ? <>
+                        <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Account</button>
+                        <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                      </>
+                    : <>
+                        <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Sign up free</button>
+                        <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Log in</button>
+                      </>
+                  }
                 </div>
               </>)
             })()}
@@ -8298,9 +8319,17 @@ function AppMain({ onLogout, onOpenAccount }) {
                 </svg>
               </button>
               <div className="nav-dropdown nav-dropdown-right">
-                <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
-                {isAdmin && <button className="nav-drop-item" onClick={() => setPage('moderation')}>Moderation</button>}
-                <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                {token
+                  ? <>
+                      <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
+                      {isAdmin && <button className="nav-drop-item" onClick={() => setPage('moderation')}>Moderation</button>}
+                      <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                    </>
+                  : <>
+                      <button className="nav-drop-item" onClick={onOpenAccount}>Sign up free</button>
+                      <button className="nav-drop-item" onClick={onOpenAccount}>Log in</button>
+                    </>
+                }
               </div>
             </div>
           </div>
@@ -8324,18 +8353,18 @@ function AppMain({ onLogout, onOpenAccount }) {
 
       {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} initialDate={boxScoreDate} />}
 
-      {page === 'projections' && (isPro
-        ? <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />
-        : <PageLock onUpgrade={onOpenAccount} />
+      {page === 'projections' && (
+        <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />
       )}
 
       {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
 
       {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
 
-      {page === 'fantasy' && (isPro
-        ? <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />
-        : <PageLock onUpgrade={onOpenAccount} />
+      {page === 'fantasy' && (
+        token
+          ? <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />
+          : <FantasySignupPrompt onSignup={onOpenAccount} />
       )}
 
       {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
@@ -10084,9 +10113,8 @@ export default function App() {
   function handleTokenRefresh(t) { localStorage.setItem('nba_token', t); setToken(t) }
   function closeAccount()        { setShowAccount(false); setAutoUpgradeTier(null); window.history.replaceState({}, '', '/') }
 
-  if (!token) return <LoginPage onLogin={handleLogin} />
   return <>
-    <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} />
+    <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} token={token} />
     {showAccount && (
       <AccountModal
         onClose={closeAccount}
