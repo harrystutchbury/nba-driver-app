@@ -7786,10 +7786,6 @@ function AppMain({ onLogout, onOpenAccount, token }) {
       : `${MA_MONTHS[+m - 1]} '${y.slice(2)}`
   }
 
-  // Ease table threshold
-  const MA_TABLE_THRESHOLD = 30
-  const maShowTable = maGames.length <= MA_TABLE_THRESHOLD
-
   const maChartData = maGames.length > 0 ? {
     labels: maGames.map(g => g.game_date),
     datasets: [
@@ -7877,16 +7873,11 @@ function AppMain({ onLogout, onOpenAccount, token }) {
       data: maRawVals,
       backgroundColor: maRawVals.map((v, i) => {
         if (v == null) return 'transparent'
-        if (!maShowTable) {
-          // Colour bars by ease rating when table is hidden
-          const ease = maGames[i]?.opp_ease
-          if (ease == null) return 'rgba(150,150,255,0.7)'
-          if (ease > 3)  return 'rgba(0,230,118,0.65)'
-          if (ease < -3) return 'rgba(255,107,107,0.65)'
-          return 'rgba(150,150,255,0.7)'
-        }
-        if (maStat === 'tov') return v > 3 ? 'rgba(255,107,107,0.7)' : 'rgba(150,150,255,0.7)'
-        return v === 0 ? 'rgba(100,100,100,0.3)' : 'rgba(150,150,255,0.7)'
+        const ease = maGames[i]?.opp_ease
+        if (ease == null) return 'rgba(150,150,255,0.7)'
+        if (ease > 3)  return 'rgba(0,230,118,0.65)'
+        if (ease < -3) return 'rgba(255,107,107,0.65)'
+        return 'rgba(150,150,255,0.7)'
       }),
       borderColor: 'transparent',
       borderRadius: 2,
@@ -7902,7 +7893,15 @@ function AppMain({ onLogout, onOpenAccount, token }) {
       tooltip: {
         callbacks: {
           title: (items) => { const d = maGames[items[0].dataIndex]?.game_date; if (!d) return ''; const [y,m,day] = d.split('-'); const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${months[+m-1]} ${+day} '${y.slice(2)}` },
-          label: (ctx) => { const v = ctx.parsed.y; if (v == null) return null; return (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(2)}` },
+          label: (ctx) => {
+            const v = ctx.parsed.y
+            if (v == null) return null
+            const statStr = (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(2)}`
+            const ease = maGames[ctx.dataIndex]?.opp_ease
+            const opp = maGames[ctx.dataIndex]?.opponent ?? ''
+            const easeStr = ease != null ? `  Ease vs ${opp}: ${ease > 0 ? '+' : ''}${ease}%` : ''
+            return [statStr, easeStr].filter(Boolean)
+          },
         },
         backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1,
         titleColor: '#aaa', bodyColor: '#eee',
@@ -9627,40 +9626,11 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                     ? maChartData && <Line data={maChartData} options={maChartOptions} />
                     : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
                 </div>
-                {maShowTable && maGames.length > 0 && (
-                  <div className="form-ease-wrap">
-                    <table className="form-ease-table">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Opponent</th>
-                          <th className="num">{maStatLabel}</th>
-                          <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...maGames].reverse().map((g, i) => {
-                          const ri = maGames.length - 1 - i
-                          const val = maRawVals[ri]
-                          const ease = g.opp_ease
-                          return (
-                            <tr key={g.game_date} className={g.injured ? 'gl-injured' : ''}>
-                              <td className="mono">{g.game_date}</td>
-                              <td>
-                                <span className="opp-cell">
-                                  <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
-                                  {g.opponent}
-                                </span>
-                              </td>
-                              <td className="num mono">{g.injured ? <span className="gl-dnp">DNP</span> : val != null ? val.toFixed(1) : '—'}</td>
-                              <td className="num mono" style={{ color: ease == null ? '#666' : ease > 3 ? '#00e676' : ease < -3 ? '#ff6b6b' : '#888' }}>
-                                {ease != null ? (ease > 0 ? '+' : '') + ease + '%' : '—'}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                {maChartType === 'bar' && (
+                  <div className="ease-legend">
+                    <span className="ease-legend-item ease-legend-easy">Easy matchup</span>
+                    <span className="ease-legend-item ease-legend-mid">Neutral</span>
+                    <span className="ease-legend-item ease-legend-hard">Hard matchup</span>
                   </div>
                 )}
                 </> : <SectionLock onUpgrade={onOpenAccount} />)}
