@@ -8163,7 +8163,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
     )
   }
 
-  function ProjectionRow({ label, data, note, scenario, projRank, projRankN }) {
+  function ProjectionRow({ label, data, note, scenario, projRank, projRankN, currentMpg }) {
     if (!data) return null
     const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Forecast'
     const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#00e676' : '#0a7a36'
@@ -8187,14 +8187,15 @@ function AppMain({ onLogout, onOpenAccount, token }) {
           {projRank ? projRank : '—'}
         </td>
         {STAT_COLS.map(c => {
-          const val = data[c.key]
+          const rawVal = c.key === 'min_pg' && currentMpg != null ? currentMpg : data[c.key]
+          const val = rawVal
           if (val === null || val === undefined) {
             return <Fragment key={c.key}><td className="num mono stat-cell">—</td>{!c.noZ && <td className="num mono z-cell">—</td>}</Fragment>
           }
           const display = (c.key === 'fg_pct' || c.key === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
           return (
             <Fragment key={c.key}>
-              <td className="num mono stat-cell" style={{ color: scenarioColor }}>{display}</td>
+              <td className="num mono stat-cell" style={{ color: c.key === 'min_pg' ? undefined : scenarioColor }}>{display}</td>
               {!c.noZ && <td className="num mono z-cell">—</td>}
             </Fragment>
           )
@@ -8475,6 +8476,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                         scenario={projScenario}
                         projRank={activeProjSrc?.proj_rank}
                         projRankN={activeProjSrc?.proj_rank_n}
+                        currentMpg={playerStats.seasons[0]?.min_pg}
                       />
                   }
                   <StatsRow label="Career" data={{ ...playerStats.career, rank: null }} highlight="career" />
