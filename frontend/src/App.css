@@ -1302,6 +1302,10 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   margin: auto;
 }
 
+.proj-skeleton-box {
+  padding: 16px;
+}
+
 /* ── Projection section ─────────────────────────────────── */
 .projection-section {
   border-top: 1px solid var(--border);

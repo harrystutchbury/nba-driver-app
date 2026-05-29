@@ -9493,14 +9493,21 @@ function AppMain({ onLogout, onOpenAccount, token }) {
             })()}
 
             {/* ── Projection controls + trend chart ────────── */}
-            {projection && (
+            {(projection || projLoading) && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setProjExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Career Projection {!isPro && <span className="pro-badge">PRO</span>}</h3>
+                  <h3 className="panel-title">Career Projection</h3>
                   <span className="proj-toggle">{projExpanded ? '▲' : '▼'}</span>
                 </div>
 
-                {projExpanded && (isPro ? <>
+                {projLoading && !projection && projExpanded && (
+                  <div className="proj-skeleton-box">
+                    <div className="skel-line" style={{ width: '60%', height: 12, marginBottom: 12 }} />
+                    <div className="skel-line" style={{ width: '100%', height: 140 }} />
+                  </div>
+                )}
+
+                {!projLoading && projExpanded && (isPro ? <>
                 <div className="proj-scenario-row">
                   {['pessimistic', 'baseline', 'optimistic'].map(s => (
                     <button
@@ -9552,7 +9559,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                 <div className="trend-chart-wrap">
                   {trendChartData && <Line data={trendChartData} options={trendChartOptions} />}
                 </div>
-                </> : <SectionLock onUpgrade={onOpenAccount} />)}
+                </>)}
               </div>
             )}
 
