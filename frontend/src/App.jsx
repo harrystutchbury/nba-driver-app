@@ -7330,6 +7330,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
   const [shotDiet, setShotDiet]       = useState(null)
   const [playerStats, setPlayerStats] = useState(null)
   const [projection, setProjection]   = useState(null)
+  const [projLoading, setProjLoading] = useState(false)
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [histMode, setHistMode]       = useState('pg')   // 'pg' | 'p36'
@@ -7455,6 +7456,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
     setShotDiet(null)
     setPlayerStats(null)
     setProjection(null)
+    setProjLoading(true)
     setPlayerGames(null)
     setMaRangeStart(0); setMaRangeEnd(null)
     setSchedProj(null)
@@ -7475,6 +7477,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
         }
       })
       .catch(() => {})
+      .finally(() => setProjLoading(false))
     apiFetch(`/api/player-games?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
@@ -8450,14 +8453,30 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                   <StatsRow label="Per 30 min" data={playerStats.p30} highlight="p30" />
                   <StatsRow label="Last 14 days" data={playerStats.l14} highlight="recent" />
                   <StatsRow label="Last 30 days" data={playerStats.l30} highlight="recent" />
-                  <ProjectionRow
-                    label={activeProj ? activeProj.season : 'Projected'}
-                    data={projRowData}
-                    note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
-                    scenario={projScenario}
-                    projRank={activeProjSrc?.proj_rank}
-                    projRankN={activeProjSrc?.proj_rank_n}
-                  />
+                  {projLoading && !projection
+                    ? (
+                      <tr className="stats-row-projection stats-row-skeleton">
+                        <td className="stats-period-cell"><div className="skel-line" style={{width:64}} /></td>
+                        <td className="stats-period-cell"><div className="skel-line" style={{width:24}} /></td>
+                        <td className="num"><div className="skel-line" style={{width:20}} /></td>
+                        <td className="num" colSpan={2}><div className="skel-line" style={{width:28}} /></td>
+                        {STAT_COLS.map(c => (
+                          <Fragment key={c.key}>
+                            <td className="num"><div className="skel-line" style={{width:28}} /></td>
+                            {!c.noZ && <td className="num"><div className="skel-line" style={{width:22}} /></td>}
+                          </Fragment>
+                        ))}
+                      </tr>
+                    )
+                    : <ProjectionRow
+                        label={activeProj ? activeProj.season : 'Projected'}
+                        data={projRowData}
+                        note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
+                        scenario={projScenario}
+                        projRank={activeProjSrc?.proj_rank}
+                        projRankN={activeProjSrc?.proj_rank_n}
+                      />
+                  }
                   <StatsRow label="Career" data={{ ...playerStats.career, rank: null }} highlight="career" />
                 </tbody>
               </table>

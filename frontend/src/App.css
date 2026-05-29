@@ -1288,6 +1288,20 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-weight: 500;
 }
 
+/* ── Skeleton loading ───────────────────────────────────── */
+@keyframes skel-shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+.skel-line {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--hover) 50%, var(--border) 75%);
+  background-size: 400px 100%;
+  animation: skel-shimmer 1.2s infinite linear;
+  margin: auto;
+}
+
 /* ── Projection section ─────────────────────────────────── */
 .projection-section {
   border-top: 1px solid var(--border);
