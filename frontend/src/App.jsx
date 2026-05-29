@@ -8254,6 +8254,9 @@ function AppMain({ onLogout, onOpenAccount }) {
 
                 {/* Mobile-only: account links inside menu */}
                 <div className="mobile-nav-footer">
+                  <button className="nav-drop-item" onClick={() => setDark(d => !d)}>
+                    {dark ? '☀︎ Light mode' : '☾ Dark mode'}
+                  </button>
                   <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Account</button>
                   <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
                 </div>
