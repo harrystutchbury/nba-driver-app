@@ -8837,11 +8837,17 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                             </tr>
                             <tr className="zbd-total-row">
                               <td className="zbd-row-label">Δ Z</td>
-                              {zResult.categories.map(c => (
-                                <td key={c.key} className={`zbd-val ${c.delta > 0.005 ? 'pos' : c.delta < -0.005 ? 'neg' : ''}`}>
-                                  {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
-                                </td>
-                              ))}
+                              {zResult.categories.map(c => {
+                                const pct = Math.abs(zResult.delta) > 0.001
+                                  ? Math.round(c.delta / zResult.delta * 100)
+                                  : null
+                                return (
+                                  <td key={c.key} className={`zbd-val ${c.delta > 0.005 ? 'pos' : c.delta < -0.005 ? 'neg' : ''}`}>
+                                    {c.delta >= 0 ? '+' : ''}{c.delta.toFixed(2)}
+                                    {pct != null && <span className="zbd-pct"> ({pct >= 0 ? '+' : ''}{pct}%)</span>}
+                                  </td>
+                                )
+                              })}
                               <td className={`zbd-val zbd-sum ${zResult.delta > 0.005 ? 'pos' : zResult.delta < -0.005 ? 'neg' : ''}`}>
                                 {zResult.delta >= 0 ? '+' : ''}{zResult.delta.toFixed(2)}
                               </td>
