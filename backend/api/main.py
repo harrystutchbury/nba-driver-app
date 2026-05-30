@@ -806,10 +806,48 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
     conn.close()
 
+    def _rank_player_against_pool(avg, league, player_rows):
+        """Rank the player against a league pool even if they're not in it."""
+        if not league or avg is None:
+            return None, None
+        fg_mean = league.get('_fg_mean')
+        ft_mean = league.get('_ft_mean')
+        player_with_impact = {
+            **avg,
+            'player_slug': player,
+            'fg_impact': (
+                (avg['fg_pct'] - fg_mean) * avg['fga_pg']
+                if avg.get('fg_pct') is not None and fg_mean is not None else None
+            ),
+            'ft_impact': (
+                (avg['ft_pct'] - ft_mean) * avg['fta_pg']
+                if avg.get('ft_pct') is not None and ft_mean is not None else None
+            ),
+        }
+        # Build score list from pool; inject player if missing
+        scores = []
+        player_in_pool = False
+        for r in player_rows:
+            cz = _composite_z(r, league)
+            if cz is not None:
+                scores.append((r['player_slug'], cz))
+                if r['player_slug'] == player:
+                    player_in_pool = True
+        if not player_in_pool:
+            cz = _composite_z(player_with_impact, league)
+            if cz is not None:
+                scores.append((player, cz))
+        scores.sort(key=lambda x: x[1], reverse=True)
+        n = len(scores)
+        for i, (slug, _) in enumerate(scores):
+            if slug == player:
+                return i + 1, n
+        return None, n
+
     def with_rank(avg, league, player_rows):
         if avg is None:
             return None
-        rank, n = _player_rank(player, player_rows, league)
+        rank, n = _rank_player_against_pool(avg, league, player_rows)
         return {**_with_zscores(avg, league), "rank": rank, "rank_n": n}
 
     season_avgs = [
@@ -842,17 +880,36 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
                 z_totals.append(round(z, 2))
         z_total_dist = sorted(z_totals)
 
-    # Per-30 stats for current season
+    # Per-30 stats for current season — always computed from player's own game logs,
+    # z-scores and rank derived from league pool regardless of pool membership.
     p30_data = None
-    if current_season and current_season in rows_by_season:
-        p30_rows = [_row_to_p30(r) for r in rows_by_season[current_season]]
-        p30_rows = [r for r in p30_rows if r is not None]
-        p30_league = _p30_league_stats(p30_rows)
-        if p30_league:
-            player_p30 = next((r for r in p30_rows if r['player_slug'] == player), None)
+    if current_season and seasons.get(current_season):
+        player_season_avg = _avg_row(seasons[current_season], team_game_map)
+        if player_season_avg and (player_season_avg.get('min_pg') or 0) >= 5:
+            player_p30 = _row_to_p30({**player_season_avg, 'player_slug': player})
             if player_p30:
-                p30_with_z = _with_zscores(player_p30, p30_league)
-                p30_rank, p30_rank_n = _player_rank(player, p30_rows, p30_league)
+                p30_rank, p30_rank_n = None, None
+                p30_with_z = dict(player_p30)
+                if current_season in rows_by_season:
+                    p30_rows = [_row_to_p30(r) for r in rows_by_season[current_season]]
+                    p30_rows = [r for r in p30_rows if r is not None]
+                    p30_league = _p30_league_stats(p30_rows)
+                    if p30_league:
+                        # Compute impact values needed for z-scores
+                        fg_mean = p30_league.get('_fg_mean')
+                        ft_mean = p30_league.get('_ft_mean')
+                        player_p30['fg_impact'] = (
+                            (player_p30['fg_pct'] - fg_mean) * player_p30['fga_pg']
+                            if player_p30.get('fg_pct') is not None and fg_mean is not None else None
+                        )
+                        player_p30['ft_impact'] = (
+                            (player_p30['ft_pct'] - ft_mean) * player_p30['fta_pg']
+                            if player_p30.get('ft_pct') is not None and ft_mean is not None else None
+                        )
+                        p30_with_z = _with_zscores(player_p30, p30_league)
+                        p30_rank, p30_rank_n = _rank_player_against_pool(
+                            player_p30, p30_league, p30_rows
+                        )
                 for k in ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']:
                     if p30_with_z.get(k) is not None:
                         p30_with_z[k] = round(p30_with_z[k], 1)
