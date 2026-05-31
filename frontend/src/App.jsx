@@ -3767,7 +3767,10 @@ function BlogPage({ setPage, initSlug, onMount }) {
   const [blogComments, setBlogComments] = useState([])
   const [commentDraft, setCommentDraft] = useState('')
   const [posting, setPosting]       = useState(false)
+  const [imgUploading, setImgUploading] = useState(false)
   const textareaRef                 = useRef(null)
+  const coverFileRef                = useRef(null)
+  const inlineFileRef               = useRef(null)
 
   useEffect(() => {
     if (initSlug) { onMount?.(); openPost(initSlug) }
@@ -3831,19 +3834,56 @@ function BlogPage({ setPage, initSlug, onMount }) {
     loadList()
   }
 
-  function insertImage() {
-    const url = window.prompt('Image URL:')
-    if (!url) return
-    const alt = window.prompt('Alt text (optional):') || ''
-    const tag = `\n\n![${alt}](${url})\n\n`
-    const el  = textareaRef.current
-    if (el) {
-      const s = el.selectionStart, e = el.selectionEnd
-      const next = editDraft.content.slice(0, s) + tag + editDraft.content.slice(e)
-      setEditDraft(d => ({ ...d, content: next }))
-      setTimeout(() => { el.selectionStart = el.selectionEnd = s + tag.length }, 0)
-    } else {
-      setEditDraft(d => ({ ...d, content: d.content + tag }))
+  async function uploadToCloudinary(file) {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('upload_preset', 'roto-intel-blog')
+    const res = await fetch('https://api.cloudinary.com/v1_1/dm4bylmx5/image/upload', { method: 'POST', body: fd })
+    if (!res.ok) throw new Error('Upload failed')
+    const data = await res.json()
+    return data.secure_url
+  }
+
+  async function insertImage() {
+    inlineFileRef.current?.click()
+  }
+
+  async function handleInlineFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImgUploading(true)
+    try {
+      const url = await uploadToCloudinary(file)
+      const tag = `\n\n![](${url})\n\n`
+      const el  = textareaRef.current
+      if (el) {
+        const s = el.selectionStart, end = el.selectionEnd
+        const next = editDraft.content.slice(0, s) + tag + editDraft.content.slice(end)
+        setEditDraft(d => ({ ...d, content: next }))
+        setTimeout(() => { el.selectionStart = el.selectionEnd = s + tag.length }, 0)
+      } else {
+        setEditDraft(d => ({ ...d, content: d.content + tag }))
+      }
+    } catch {
+      alert('Image upload failed. Please try again.')
+    } finally {
+      setImgUploading(false)
+    }
+  }
+
+  async function handleCoverFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImgUploading(true)
+    try {
+      const url = await uploadToCloudinary(file)
+      setEditDraft(d => ({ ...d, cover_image: url }))
+    } catch {
+      alert('Cover image upload failed. Please try again.')
+    } finally {
+      setImgUploading(false)
     }
   }
 
@@ -4004,15 +4044,25 @@ function BlogPage({ setPage, initSlug, onMount }) {
             onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))} placeholder="e.g. Analysis" />
         </div>
         <div className="blog-editor-row">
-          <label className="blog-editor-label">Cover Image URL</label>
-          <input className="blog-editor-input" value={editDraft.cover_image}
-            onChange={e => setEditDraft(d => ({ ...d, cover_image: e.target.value }))} placeholder="https://…" />
+          <label className="blog-editor-label">Cover Image</label>
+          <div className="blog-editor-cover-row">
+            <input className="blog-editor-input blog-editor-cover-url" value={editDraft.cover_image}
+              onChange={e => setEditDraft(d => ({ ...d, cover_image: e.target.value }))} placeholder="https://… or upload →" />
+            <button type="button" className="blog-toolbar-btn blog-upload-btn" onClick={() => coverFileRef.current?.click()} disabled={imgUploading}>
+              {imgUploading ? 'Uploading…' : '↑ Upload'}
+            </button>
+          </div>
+          <input ref={coverFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverFileChange} />
+          <input ref={inlineFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleInlineFileChange} />
+          {editDraft.cover_image && <img src={editDraft.cover_image} alt="" className="blog-editor-cover-preview" />}
         </div>
         <div className="blog-editor-row blog-editor-content-row">
           <div className="blog-editor-toolbar">
             <label className="blog-editor-label">Content</label>
             <div className="blog-editor-toolbar-btns">
-              <button type="button" className="blog-toolbar-btn" onClick={insertImage}>🖼 Insert Image</button>
+              <button type="button" className="blog-toolbar-btn" onClick={insertImage} disabled={imgUploading}>
+                {imgUploading ? 'Uploading…' : '🖼 Insert Image'}
+              </button>
               <button type="button" className={`blog-toolbar-btn${preview ? ' active' : ''}`} onClick={() => setPreview(p => !p)}>
                 {preview ? 'Edit' : 'Preview'}
               </button>

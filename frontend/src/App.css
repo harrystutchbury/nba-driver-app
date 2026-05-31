@@ -5408,6 +5408,11 @@ td.bs-pos {
 .blog-save-btn { padding: 8px 20px; background: var(--skill); color: #000; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; }
 .blog-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .blog-save-error { color: var(--neg); font-size: 12px; }
+.blog-editor-cover-row { display: flex; gap: 8px; align-items: center; }
+.blog-editor-cover-url { flex: 1; }
+.blog-upload-btn { white-space: nowrap; }
+.blog-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.blog-editor-cover-preview { margin-top: 6px; max-height: 120px; border-radius: 6px; border: 1px solid var(--border); object-fit: cover; }
 
 /* ── Adjustments page ─────────────────────────────────────────────────────── */
 
