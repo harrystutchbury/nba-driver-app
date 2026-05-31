@@ -7369,6 +7369,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
   const [error, setError]             = useState(null)
   const [dataRange, setDataRange]     = useState(null)
   const [gameLog, setGameLog]         = useState(null)
+  const [careerLogOpen, setCareerLogOpen] = useState(false)
   const [shotDiet, setShotDiet]       = useState(null)
   const [playerStats, setPlayerStats] = useState(null)
   const [projection, setProjection]   = useState(null)
@@ -8524,84 +8525,6 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                 </tbody>
               </table>
             </div>
-
-            {/* ── Career Log ────────────────────────────────────── */}
-            {playerStats?.seasons?.length > 0 && (() => {
-              const seasons = [...playerStats.seasons].reverse()
-              const career  = playerStats.career
-              const fmtPct = v => v != null ? (v * 100).toFixed(1) + '%' : '—'
-              const fmt1   = v => v != null ? v.toFixed(1) : '—'
-              const fmt0   = v => v != null ? Math.round(v) : '—'
-              return (
-                <div className="gamelog-section">
-                  <h2 className="panel-title">Career Log</h2>
-                  <div className="gamelog-wrap">
-                    <table className="gamelog-table career-log-table">
-                      <thead>
-                        <tr>
-                          <th>Season</th>
-                          <th>Team</th>
-                          <th className="num">G</th>
-                          <th className="num">Min</th>
-                          <th className="num">Pts</th>
-                          <th className="num">Reb</th>
-                          <th className="num">Ast</th>
-                          <th className="num">Stl</th>
-                          <th className="num">Blk</th>
-                          <th className="num">Tov</th>
-                          <th className="num">3PM</th>
-                          <th className="num">FGA</th>
-                          <th className="num">FG%</th>
-                          <th className="num">FTA</th>
-                          <th className="num">FT%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {seasons.map((s, i) => (
-                          <tr key={s.period} className={i % 2 === 0 ? 'row-even' : ''}>
-                            <td className="mono career-season-label">{s.period}</td>
-                            <td className="career-team-label">{s.team || '—'}</td>
-                            <td className="num mono">{fmt0(s.gp)}</td>
-                            <td className="num mono">{fmt1(s.min_pg)}</td>
-                            <td className="num mono">{fmt1(s.pts)}</td>
-                            <td className="num mono">{fmt1(s.reb)}</td>
-                            <td className="num mono">{fmt1(s.ast)}</td>
-                            <td className="num mono">{fmt1(s.stl)}</td>
-                            <td className="num mono">{fmt1(s.blk)}</td>
-                            <td className="num mono">{fmt1(s.tov)}</td>
-                            <td className="num mono">{fmt1(s.fg3m)}</td>
-                            <td className="num mono">{fmt1(s.fga_pg)}</td>
-                            <td className="num mono">{fmtPct(s.fg_pct)}</td>
-                            <td className="num mono">{fmt1(s.fta_pg)}</td>
-                            <td className="num mono">{fmtPct(s.ft_pct)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {career && (
-                        <tfoot>
-                          <tr className="career-log-footer">
-                            <td colSpan={2} className="career-footer-label">Career avg</td>
-                            <td className="num mono">{fmt0(career.gp)}</td>
-                            <td className="num mono">{fmt1(career.min_pg)}</td>
-                            <td className="num mono">{fmt1(career.pts)}</td>
-                            <td className="num mono">{fmt1(career.reb)}</td>
-                            <td className="num mono">{fmt1(career.ast)}</td>
-                            <td className="num mono">{fmt1(career.stl)}</td>
-                            <td className="num mono">{fmt1(career.blk)}</td>
-                            <td className="num mono">{fmt1(career.tov)}</td>
-                            <td className="num mono">{fmt1(career.fg3m)}</td>
-                            <td className="num mono">{fmt1(career.fga_pg)}</td>
-                            <td className="num mono">{fmtPct(career.fg_pct)}</td>
-                            <td className="num mono">{fmt1(career.fta_pg)}</td>
-                            <td className="num mono">{fmtPct(career.ft_pct)}</td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </div>
-              )
-            })()}
 
             {/* ── Comments ──────────────────────────────────────── */}
             <CommentsSection playerSlug={selectedPlayer?.slug} />
@@ -10212,6 +10135,89 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                 </div>
               </div>
             )}
+
+            {/* ── Career Log ────────────────────────────────────── */}
+            {playerStats?.seasons?.length > 0 && (() => {
+              const seasons = [...playerStats.seasons].reverse()
+              const career  = playerStats.career
+              const fmtPct = v => v != null ? v.toFixed(1) + '%' : '—'
+              const fmt1   = v => v != null ? v.toFixed(1) : '—'
+              const fmt0   = v => v != null ? Math.round(v) : '—'
+              return (
+                <div className="gamelog-section">
+                  <div className="projection-header" onClick={() => setCareerLogOpen(o => !o)} style={{cursor:'pointer'}}>
+                    <h2 className="panel-title">Career Log</h2>
+                    <span className="proj-toggle">{careerLogOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {careerLogOpen && (
+                    <div className="gamelog-wrap">
+                      <table className="gamelog-table career-log-table">
+                        <thead>
+                          <tr>
+                            <th>Season</th>
+                            <th>Team</th>
+                            <th className="num">G</th>
+                            <th className="num">Min</th>
+                            <th className="num">Pts</th>
+                            <th className="num">Reb</th>
+                            <th className="num">Ast</th>
+                            <th className="num">Stl</th>
+                            <th className="num">Blk</th>
+                            <th className="num">Tov</th>
+                            <th className="num">3PM</th>
+                            <th className="num">FGA</th>
+                            <th className="num">FG%</th>
+                            <th className="num">FTA</th>
+                            <th className="num">FT%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {seasons.map((s, i) => (
+                            <tr key={s.period} className={i % 2 === 0 ? 'row-even' : ''}>
+                              <td className="mono career-season-label">{s.period}</td>
+                              <td className="career-team-label">{teamAbbr(s.team) || '—'}</td>
+                              <td className="num mono">{fmt0(s.gp)}</td>
+                              <td className="num mono">{fmt1(s.min_pg)}</td>
+                              <td className="num mono">{fmt1(s.pts)}</td>
+                              <td className="num mono">{fmt1(s.reb)}</td>
+                              <td className="num mono">{fmt1(s.ast)}</td>
+                              <td className="num mono">{fmt1(s.stl)}</td>
+                              <td className="num mono">{fmt1(s.blk)}</td>
+                              <td className="num mono">{fmt1(s.tov)}</td>
+                              <td className="num mono">{fmt1(s.fg3m)}</td>
+                              <td className="num mono">{fmt1(s.fga_pg)}</td>
+                              <td className="num mono">{fmtPct(s.fg_pct)}</td>
+                              <td className="num mono">{fmt1(s.fta_pg)}</td>
+                              <td className="num mono">{fmtPct(s.ft_pct)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        {career && (
+                          <tfoot>
+                            <tr className="career-log-footer">
+                              <td colSpan={2} className="career-footer-label">Career avg</td>
+                              <td className="num mono">{fmt0(career.gp)}</td>
+                              <td className="num mono">{fmt1(career.min_pg)}</td>
+                              <td className="num mono">{fmt1(career.pts)}</td>
+                              <td className="num mono">{fmt1(career.reb)}</td>
+                              <td className="num mono">{fmt1(career.ast)}</td>
+                              <td className="num mono">{fmt1(career.stl)}</td>
+                              <td className="num mono">{fmt1(career.blk)}</td>
+                              <td className="num mono">{fmt1(career.tov)}</td>
+                              <td className="num mono">{fmt1(career.fg3m)}</td>
+                              <td className="num mono">{fmt1(career.fga_pg)}</td>
+                              <td className="num mono">{fmtPct(career.fg_pct)}</td>
+                              <td className="num mono">{fmt1(career.fta_pg)}</td>
+                              <td className="num mono">{fmtPct(career.ft_pct)}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
           </>
         )}
