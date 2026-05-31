@@ -2389,7 +2389,9 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 /* ── Game log ────────────────────────────────────────────── */
 .gamelog-section {
-  margin-top: 40px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 28px;
 }
 
 .gamelog-wrap {

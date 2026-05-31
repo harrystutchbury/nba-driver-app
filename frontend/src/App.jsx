@@ -9814,7 +9814,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
               return (
                 <div className="gamelog-section">
                   <div className="projection-header" onClick={() => setCareerLogOpen(o => !o)} style={{cursor:'pointer'}}>
-                    <h2 className="panel-title">Career Log</h2>
+                    <h2 className="panel-title">Season Log</h2>
                     <span className="proj-toggle">{careerLogOpen ? '▲' : '▼'}</span>
                   </div>
                   {careerLogOpen && (
