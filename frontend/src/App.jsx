@@ -4969,7 +4969,7 @@ function CTWBarChart({ data, freeAgents }) {
   function rankFill(rank, total) {
     if (rank <= Math.ceil(total/3))  return 'var(--skill)'
     if (rank > total-Math.ceil(total/3)) return '#ff6b6b'
-    return 'rgba(255,255,255,0.4)'
+    return 'muted'
   }
 
   // Dynamic bar width — fill the container
@@ -4982,20 +4982,20 @@ function CTWBarChart({ data, freeAgents }) {
     <div className="dash-card" style={{marginBottom:16}}>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
         <div className="ra-section-title" style={{margin:0}}>Category Landscape</div>
-        <div style={{display:'flex',borderRadius:4,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)'}}>
+        <div style={{display:'flex',borderRadius:4,overflow:'hidden',border:'1px solid var(--border)'}}>
           <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
-                          background:!replMode?'rgba(255,255,255,0.13)':'transparent',color:'#ccc'}}
+                          background:!replMode?'var(--surface)':'transparent',color:'var(--text)'}}
                   onClick={()=>setReplMode(false)}>No Replacement</button>
           <button style={{padding:'3px 10px',fontSize:11,border:'none',cursor:'pointer',
-                          background:replMode?'rgba(255,255,255,0.13)':'transparent',
-                          color:repl?'#ccc':'rgba(255,255,255,0.3)',
+                          background:replMode?'var(--surface)':'transparent',
+                          color:repl?'var(--text)':'var(--muted)',
                           cursor:repl?'pointer':'not-allowed'}}
                   title={repl?undefined:'Free agent data not available'}
                   onClick={()=>repl&&setReplMode(true)}>Replacement</button>
         </div>
         {toggledOut.size>0 && (
           <button style={{fontSize:11,padding:'2px 8px',background:'transparent',cursor:'pointer',
-                          border:'1px solid rgba(255,255,255,0.14)',borderRadius:3,color:'rgba(255,255,255,0.45)'}}
+                          border:'1px solid var(--border)',borderRadius:3,color:'var(--muted)'}}
                   onClick={()=>setToggledOut(new Set())}>Reset</button>
         )}
       </div>
@@ -5048,7 +5048,7 @@ function CTWBarChart({ data, freeAgents }) {
 
             return (
               <g key={cat}>
-                <rect x={x} y={topM} width={barW} height={chartH} fill="rgba(255,255,255,0.025)" rx={2}/>
+                <rect x={x} y={topM} width={barW} height={chartH} style={{fill:'var(--border)'}} fillOpacity={0.35} rx={2}/>
                 {segs}
                 {otherTeams.map((t,li) => {
                   const val=t.stats?.[key]||0
@@ -5057,11 +5057,13 @@ function CTWBarChart({ data, freeAgents }) {
                                stroke="rgba(210,210,210,0.22)" strokeWidth={1}/>
                 })}
                 <text x={x+barW/2} y={svgH-26} textAnchor="middle"
-                      fill="rgba(255,255,255,0.42)" fontSize={10} fontFamily="sans-serif">
+                      style={{fill:'var(--muted)'}} fontSize={10} fontFamily="sans-serif">
                   {cat}{isNeg?' ↓':''}
                 </text>
                 <text x={x+barW/2} y={svgH-10} textAnchor="middle"
-                      fill={rfill} fontSize={9} fontFamily="sans-serif" fontWeight="600">
+                      fill={rfill === 'muted' ? undefined : rfill}
+                      style={rfill === 'muted' ? {fill:'var(--muted)'} : undefined}
+                      fontSize={9} fontFamily="sans-serif" fontWeight="600">
                   {rankLabel}
                 </text>
               </g>
@@ -5091,14 +5093,14 @@ function CTWBarChart({ data, freeAgents }) {
             <div key={p.br_slug}
                  style={{display:'flex',alignItems:'center',gap:5,padding:'4px 9px',borderRadius:4,
                          cursor:'pointer',userSelect:'none',transition:'background 0.1s',
-                         background:isHov?'rgba(255,255,255,0.09)':isOut?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.05)',
-                         border:`1px solid ${isOut?'rgba(255,255,255,0.08)':col+'55'}`,
+                         background:isHov?'var(--surface)':isOut?'transparent':'var(--bg)',
+                         border:`1px solid ${isOut?'var(--border)':col+'88'}`,
                          opacity:isOut?0.4:1}}
                  onClick={()=>togglePlayer(p.br_slug)}
                  onMouseEnter={()=>setHoverSlug(p.br_slug)}
                  onMouseLeave={()=>setHoverSlug(null)}>
               <div style={{width:9,height:9,borderRadius:2,background:col,flexShrink:0}}/>
-              <span style={{fontSize:11,color:'rgba(255,255,255,0.8)',textDecoration:isOut?'line-through':'none'}}>
+              <span style={{fontSize:11,color:'var(--text)',textDecoration:isOut?'line-through':'none'}}>
                 {p.espn_name}
               </span>
             </div>
