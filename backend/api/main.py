@@ -310,7 +310,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="NBA Stat Driver API", lifespan=lifespan)
-router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
+router = APIRouter(prefix="/api")
 
 # Allow the React dev server to talk to this API
 app.add_middleware(
@@ -2481,7 +2481,7 @@ def get_schedule_projection(
 # -----------------------------------------------------------------------
 
 @router.post("/admin/refresh-schedule")
-def admin_refresh_schedule():
+def admin_refresh_schedule(current_user: str = Depends(get_current_user)):
     """Fetch upcoming schedule from basketball-reference and store in DB."""
     try:
         import refresh as refresh_mod
@@ -2498,7 +2498,7 @@ def admin_refresh_schedule():
 
 
 @router.get("/admin/debug-projections")
-def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15"):
+def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15", current_user: str = Depends(get_current_user)):
     """Temporary debug: check what schedule and player data exists in prod."""
     conn = get_conn()
     season_year = _current_season_end_year()
@@ -2524,7 +2524,7 @@ def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15"):
 
 
 @router.post("/admin/upload-schedule")
-def admin_upload_schedule(games: list = Body(...)):
+def admin_upload_schedule(games: list = Body(...), current_user: str = Depends(get_current_user)):
     """Accept schedule JSON pushed from local machine and store in DB."""
     try:
         from schema import init_db
@@ -2887,7 +2887,7 @@ def get_projections(
 
 
 @router.post("/admin/sync-injuries")
-def admin_sync_injuries():
+def admin_sync_injuries(current_user: str = Depends(get_current_user)):
     """Trigger an immediate injury sync from Tank01. Requires RAPIDAPI_KEY on server."""
     if not os.environ.get("RAPIDAPI_KEY"):
         raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
