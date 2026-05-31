@@ -5650,72 +5650,62 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
                            beforeTotals={simResult.orig_stats} beforeRanks={cat_ranks} />
             </div>
 
-            {/* Net Contribution to Winning */}
-            {(simResult.ctw_before || simResult.ctw_after) && (() => {
-              const ctwB = simResult.ctw_before || {}
-              const ctwA = simResult.ctw_after  || {}
-              const slugToName = {}
-              my_roster.forEach(p => { if (p.br_slug) slugToName[p.br_slug] = p.espn_name })
-              addedPlayers.forEach(p => { slugToName[p.slug] = p.name })
-              const allSlugs = new Set([...Object.keys(ctwB), ...Object.keys(ctwA)])
-              // net = Δ for stayers, after for added, -(before) for dropped (impact of losing them)
-              const rows = [...allSlugs].map(slug => {
-                const isAdded   = ctwB[slug] == null
-                const isDropped = ctwA[slug] == null
-                const bData = ctwB[slug]; const aData = ctwA[slug]
-                const net = isAdded   ? (aData?.total ?? null)
-                          : isDropped ? (bData?.total != null ? -bData.total : null)
-                          : (aData?.total != null && bData?.total != null ? aData.total - bData.total : null)
-                const catNet = cat => {
-                  const bv = bData?.by_category?.[cat]?.net ?? null
-                  const av = aData?.by_category?.[cat]?.net ?? null
-                  if (isAdded)   return av
-                  if (isDropped) return bv != null ? -bv : null
-                  return (av != null && bv != null) ? av - bv : null
-                }
-                return { slug, name: slugToName[slug] || slug, net, catNet, isAdded, isDropped }
-              }).sort((a, b) => Math.abs(b.net ?? 0) - Math.abs(a.net ?? 0))
-              const fmtNet = v => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1)
-              const fmtPct = v => v == null ? '—' : (v > 0 ? '+' : '') + Math.round(v * 100) + '%'
-              const netCls = v => v == null ? '' : v >= 0.3 ? 'ra-z-pos' : v <= -0.3 ? 'ra-z-neg' : ''
-              const pctCls = v => v == null ? '' : v >= 0.3 ? 'ra-z-pos' : v >= 0.08 ? 'ra-dw-pos-dim' : v > -0.08 ? '' : v > -0.3 ? 'ra-dw-neg-dim' : 'ra-z-neg'
+            {/* Category Win Rates */}
+            {(simResult.cat_beats_orig && simResult.cat_beats_new) && (() => {
+              const n = simResult.total_teams || 1
+              const catB = simResult.cat_beats_orig
+              const catA = simResult.cat_beats_new
+              const fmtPct = v => Math.round(v * 100) + '%'
+              const fmtDelta = v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%'
+              const totalB = cats.reduce((s, c) => s + (catB[c] != null ? catB[c] / n : 0), 0)
+              const totalA = cats.reduce((s, c) => s + (catA[c] != null ? catA[c] / n : 0), 0)
+              const deltaTotal = totalA - totalB
+              const posCls  = v => v >  0.05 ? 'ra-z-pos' : v < -0.05 ? 'ra-z-neg' : ''
               return (
                 <div style={{marginTop:24}}>
-                  <div className="ra-section-title">Net Contribution to Winning</div>
+                  <div className="ra-section-title">Category Win Rates</div>
                   <div className="dash-card" style={{overflowX:'auto'}}>
-                    <table className="dash-table ra-table">
+                    <table className="dash-table ra-table ctw-summary-table">
                       <thead>
                         <tr>
-                          <th>Player</th>
-                          <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Net CTW</th>
-                          {cats.map(c => <th key={c} style={{textAlign:'center'}}>{c}</th>)}
+                          <th></th>
+                          {cats.map(c => <th key={c} className="num">{c}</th>)}
+                          <th className="num">Total wins</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map(r => (
-                          <tr key={r.slug} className={r.isAdded ? 'ra-player-added' : r.isDropped ? 'ctw-row-out' : ''}>
-                            <td
-                              className={`ra-player-name${r.slug && onSelectPlayer ? ' rank-player-link' : ''}`}
-                              onClick={() => r.slug && onSelectPlayer && onSelectPlayer({ slug: r.slug, name: r.name })}
-                            >
-                              {r.name}
-                              {r.isAdded   && <span className="ctw-tag ctw-tag-in">IN</span>}
-                              {r.isDropped && <span className="ctw-tag ctw-tag-out">OUT</span>}
-                            </td>
-                            <td style={{textAlign:'center'}} className={netCls(r.net)}>
-                              <strong>{fmtNet(r.net)}</strong>
-                            </td>
-                            {cats.map(cat => {
-                              const v = r.catNet(cat)
-                              return (
-                                <td key={cat} style={{textAlign:'center',fontFamily:'var(--mono)',fontSize:12}}
-                                    className={pctCls(v)}>
-                                  {fmtPct(v)}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        ))}
+                        <tr>
+                          <td className="ctw-row-label">Before</td>
+                          {cats.map(c => {
+                            const v = catB[c] != null ? catB[c] / n : null
+                            return <td key={c} className="num mono">{v != null ? fmtPct(v) : '—'}</td>
+                          })}
+                          <td className="num mono ctw-total-cell">{totalB.toFixed(1)}</td>
+                        </tr>
+                        <tr>
+                          <td className="ctw-row-label">After</td>
+                          {cats.map(c => {
+                            const v = catA[c] != null ? catA[c] / n : null
+                            return <td key={c} className="num mono">{v != null ? fmtPct(v) : '—'}</td>
+                          })}
+                          <td className="num mono ctw-total-cell">{totalA.toFixed(1)}</td>
+                        </tr>
+                        <tr className="ctw-delta-row">
+                          <td className="ctw-row-label">Δ</td>
+                          {cats.map(c => {
+                            const b = catB[c] != null ? catB[c] / n : null
+                            const a = catA[c] != null ? catA[c] / n : null
+                            const d = (a != null && b != null) ? a - b : null
+                            return (
+                              <td key={c} className={`num mono ${posCls(d ?? 0)}`}>
+                                {d != null ? fmtDelta(d) : '—'}
+                              </td>
+                            )
+                          })}
+                          <td className={`num mono ctw-total-cell ${posCls(deltaTotal)}`}>
+                            {(deltaTotal > 0 ? '+' : '') + deltaTotal.toFixed(1)}
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>

@@ -4768,6 +4768,11 @@ td.bs-pos {
 .ctw-tag-in  { background: rgba(76,175,100,0.18); color: var(--skill); border: 1px solid rgba(76,175,100,0.35); }
 .ctw-tag-out { background: rgba(255,107,107,0.1);  color: #ff8080;     border: 1px solid rgba(255,107,107,0.25); }
 .ctw-row-out td { background: rgba(255,107,107,0.04); }
+.ctw-summary-table td, .ctw-summary-table th { padding: 8px 12px; font-size: 13px; }
+.ctw-row-label { font-weight: 600; white-space: nowrap; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.ctw-total-cell { font-weight: 700; border-left: 1px solid var(--border); }
+.ctw-delta-row td { border-top: 1px solid var(--border); font-weight: 700; }
+.ctw-delta-row .ctw-row-label { color: var(--text); }
 
 /* Row for a dropped player in the after-roster table */
 .ra-player-out td {
