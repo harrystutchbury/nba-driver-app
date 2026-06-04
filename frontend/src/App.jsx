@@ -3747,25 +3747,25 @@ function AdjustmentsPage() {
                           </div>
                         </td>
                         <td className="adj-td">
-                          <input type="number" step="1" min="1" max="82" className="adj-input" style={{width:'44px'}}
+                          <input type="number" step="1" min="1" max="82" className="adj-input" style={{width:'52px'}}
                             value={edits[p.slug]?.games ?? 82}
                             onChange={ev => setField(p.slug, 'games', ev.target.value)} />
                         </td>
-                        <td className="adj-td">{numInput(p.slug, 'min_pg',    '52px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg2a_pg',   '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg2_pct',   '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg3a_pg',   '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg3_pct',   '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'min_pg',    '58px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg2a_pg',   '54px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg2_pct',   '54px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3a_pg',   '54px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg3_pct',   '54px')}</td>
                         <td className="adj-td adj-td-calc">{((+e.fg2a_pg||0)+(+e.fg3a_pg||0)).toFixed(1)}</td>
                         <td className="adj-td adj-td-calc">{(() => { const f2a=+e.fg2a_pg||0,f3a=+e.fg3a_pg||0,fga=f2a+f3a; return fga>0?((f2a*(+e.fg2_pct||0)/100+f3a*(+e.fg3_pct||0)/100)/fga*100).toFixed(1):'—' })()}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fta_pg',    '44px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'ft_pct',    '48px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'oreb_rate', '44px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'dreb_rate', '44px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'ast_rate',  '44px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'stl_rate',  '40px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'blk_rate',  '40px')}</td>
-                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'tov_rate',  '40px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fta_pg',    '54px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'ft_pct',    '54px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'oreb_rate', '54px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'dreb_rate', '54px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'ast_rate',  '54px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'stl_rate',  '52px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'blk_rate',  '52px')}</td>
+                        <td className="adj-td adj-td-rate">{numInput(p.slug, 'tov_rate',  '52px')}</td>
                         <td className="adj-td adj-td-pts">{pts}</td>
                         <td className="adj-td adj-td-z">
                           <span className={zDelta > 0 ? 'adj-z-pos' : zDelta < 0 ? 'adj-z-neg' : ''}>{z ?? '—'}</span>
