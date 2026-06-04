@@ -2902,6 +2902,39 @@ def admin_sync_injuries(current_user: str = Depends(get_current_user)):
         raise HTTPException(500, str(e))
 
 
+@router.get("/admin/shots-status")
+def admin_shots_status(current_user: str = Depends(get_current_user)):
+    """Return shot_logs row count and seasons present."""
+    conn = get_conn()
+    total = conn.execute("SELECT COUNT(*) FROM shot_logs").fetchone()[0]
+    seasons = [r[0] for r in conn.execute("SELECT DISTINCT season FROM shot_logs ORDER BY season").fetchall()]
+    map_count = conn.execute("SELECT COUNT(*) FROM player_id_map").fetchone()[0]
+    conn.close()
+    return {"total_shots": total, "seasons": seasons, "player_id_map_rows": map_count}
+
+
+_shot_refresh_running = False
+
+@router.post("/admin/refresh-shots")
+def admin_refresh_shots(current_user: str = Depends(get_current_user)):
+    """Trigger shot data refresh in background. Takes 2-4 hours; safe to call once."""
+    global _shot_refresh_running
+    if _shot_refresh_running:
+        return {"status": "already_running", "message": "Shot refresh is already in progress"}
+    def _run():
+        global _shot_refresh_running
+        _shot_refresh_running = True
+        try:
+            import refresh_shots as rs
+            rs.run(rs.DEFAULT_SEASONS)
+        except Exception:
+            logger.exception("Shot refresh failed")
+        finally:
+            _shot_refresh_running = False
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "message": "Shot refresh running in background — check /admin/shots-status for progress"}
+
+
 @router.get("/injuries")
 def get_injuries():
     """
