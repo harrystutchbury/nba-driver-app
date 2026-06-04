@@ -2915,6 +2915,33 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
 
 _shot_refresh_running = False
 
+@router.post("/admin/init-shots")
+def admin_init_shots(current_user: str = Depends(get_current_user)):
+    """Run map_players then refresh_shots in background. Use when shot_logs is empty."""
+    global _shot_refresh_running
+    if _shot_refresh_running:
+        return {"status": "already_running", "message": "Shot init is already in progress"}
+    def _run():
+        global _shot_refresh_running
+        _shot_refresh_running = True
+        try:
+            import map_players as mp
+            import refresh_shots as rs
+            logger.info("Shot init: running map_players...")
+            conn = get_conn()
+            nba_players = mp.fetch_nba_players()
+            mp.build_map(conn, nba_players)
+            conn.close()
+            logger.info("Shot init: map_players done, starting refresh_shots...")
+            rs.run(rs.DEFAULT_SEASONS)
+            logger.info("Shot init: complete.")
+        except Exception:
+            logger.exception("Shot init failed")
+        finally:
+            _shot_refresh_running = False
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "message": "map_players + refresh_shots running in background (~2-4 hrs) — check /admin/shots-status for progress"}
+
 @router.post("/admin/refresh-shots")
 def admin_refresh_shots(current_user: str = Depends(get_current_user)):
     """Trigger shot data refresh in background. Takes 2-4 hours; safe to call once."""
