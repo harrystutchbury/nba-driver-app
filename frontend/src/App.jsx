@@ -3567,16 +3567,17 @@ function AdjustmentsPage() {
     for (const p of players) {
       const e   = edits[p.slug] || {}
       const min = +e.min_pg || 0
-      const thisFga  = +e.fga_pg  || 0; fga  += thisFga;  fgaWtPct  += thisFga  * (+e.fg_pct  || 0)
-      const thisFg3a = +e.fg3a_pg || 0; fg3a += thisFg3a; fg3aWtPct += thisFg3a * (+e.fg3_pct || 0)
-      const thisFta  = +e.fta_pg  || 0; fta  += thisFta;  ftaWtPct  += thisFta  * (+e.ft_pct  || 0)
-      oreb += (+e.oreb_rate || 0) * min / 36
-      dreb += (+e.dreb_rate || 0) * min / 36
-      ast  += (+e.ast_rate  || 0) * min / 36
-      stl  += (+e.stl_rate  || 0) * min / 36
-      blk  += (+e.blk_rate  || 0) * min / 36
-      tov  += (+e.tov_rate  || 0) * min / 36
-      pts  += parseFloat(computePts(e)) || 0
+      const wt  = (+e.games || 82) / 82
+      const thisFga  = (+e.fga_pg  || 0) * wt; fga  += thisFga;  fgaWtPct  += thisFga  * (+e.fg_pct  || 0)
+      const thisFg3a = (+e.fg3a_pg || 0) * wt; fg3a += thisFg3a; fg3aWtPct += thisFg3a * (+e.fg3_pct || 0)
+      const thisFta  = (+e.fta_pg  || 0) * wt; fta  += thisFta;  ftaWtPct  += thisFta  * (+e.ft_pct  || 0)
+      oreb += (+e.oreb_rate || 0) * min / 36 * wt
+      dreb += (+e.dreb_rate || 0) * min / 36 * wt
+      ast  += (+e.ast_rate  || 0) * min / 36 * wt
+      stl  += (+e.stl_rate  || 0) * min / 36 * wt
+      blk  += (+e.blk_rate  || 0) * min / 36 * wt
+      tov  += (+e.tov_rate  || 0) * min / 36 * wt
+      pts  += (parseFloat(computePts(e)) || 0) * wt
       z    += parseFloat(computeZ(e)) || 0
     }
     return {
