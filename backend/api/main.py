@@ -9928,6 +9928,77 @@ def adj_toggle(adj_id: int, current_user: str = Depends(get_current_user)):
         conn.close()
 
 
+@adjust_router.get("/league-benchmarks")
+def adj_league_benchmarks(team: str = Query(None), current_user: str = Depends(get_current_user)):
+    """Last-season team stats + league percentiles for Adjustments comparison rows."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+
+        season_year = _current_season_end_year()
+        last_season = f"{season_year - 2}-{str(season_year - 1)[2:]}"
+
+        team_rows = conn.execute("""
+            SELECT
+                team,
+                COUNT(DISTINCT game_date)                                AS gp,
+                ROUND(SUM(pts)  / COUNT(DISTINCT game_date), 1)          AS pts,
+                ROUND(SUM(fga)  / COUNT(DISTINCT game_date), 1)          AS fga,
+                ROUND(SUM(fgm)  * 100.0 / NULLIF(SUM(fga),  0), 1)      AS fg_pct,
+                ROUND(SUM(fg3a) / COUNT(DISTINCT game_date), 1)          AS fg3a,
+                ROUND(SUM(fg3m) * 100.0 / NULLIF(SUM(fg3a), 0), 1)      AS fg3_pct,
+                ROUND(SUM(fta)  / COUNT(DISTINCT game_date), 1)          AS fta,
+                ROUND(SUM(ftm)  * 100.0 / NULLIF(SUM(fta),  0), 1)      AS ft_pct,
+                ROUND(SUM(oreb) / COUNT(DISTINCT game_date), 1)          AS oreb,
+                ROUND(SUM(dreb) / COUNT(DISTINCT game_date), 1)          AS dreb,
+                ROUND(SUM(ast)  / COUNT(DISTINCT game_date), 1)          AS ast,
+                ROUND(SUM(stl)  / COUNT(DISTINCT game_date), 1)          AS stl,
+                ROUND(SUM(blk)  / COUNT(DISTINCT game_date), 1)          AS blk,
+                ROUND(SUM(tov)  / COUNT(DISTINCT game_date), 1)          AS tov
+            FROM game_logs
+            WHERE season = ?
+            GROUP BY team
+            HAVING COUNT(DISTINCT game_date) >= 60
+        """, [last_season]).fetchall()
+
+        if not team_rows:
+            return {"this_team": None, "percentiles": {}, "season": last_season}
+
+        stat_keys = ["fga", "fg_pct", "fg3a", "fg3_pct", "fta", "ft_pct",
+                     "oreb", "dreb", "ast", "stl", "blk", "tov", "pts"]
+        team_data = [dict(r) for r in team_rows]
+
+        def _pct(sorted_vals, p):
+            n = len(sorted_vals)
+            if not n:
+                return None
+            idx = p / 100.0 * (n - 1)
+            lo, hi = int(idx), min(int(idx) + 1, n - 1)
+            return round(sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (idx - lo), 1)
+
+        percentiles = {}
+        for key in stat_keys:
+            vals = sorted(r[key] for r in team_data if r[key] is not None)
+            percentiles[key] = {
+                "p1":   _pct(vals, 1),
+                "p25":  _pct(vals, 25),
+                "p50":  _pct(vals, 50),
+                "p75":  _pct(vals, 75),
+                "p100": _pct(vals, 100),
+            }
+
+        this_team = None
+        if team:
+            match = next((r for r in team_data if r["team"] == team.upper()), None)
+            if match:
+                this_team = {k: match[k] for k in stat_keys}
+
+        return {"this_team": this_team, "percentiles": percentiles, "season": last_season}
+    finally:
+        conn.close()
+
+
 app.include_router(adjust_router)
 
 

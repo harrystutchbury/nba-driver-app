@@ -5479,6 +5479,7 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .adj-z-delta { font-size: 10px; display: block; }
 
 .adj-tfoot td { border-top: 2px solid var(--border); padding: 5px 4px; font-size: 12px; }
+.adj-benchmark-row td { padding: 4px 4px; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--border); }
 
 .adj-act-btns { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .adj-save-btn  { padding: 3px 10px; background: var(--skill); color: #000; border: none; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; }

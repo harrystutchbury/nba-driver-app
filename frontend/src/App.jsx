@@ -3413,6 +3413,7 @@ function AdjustmentsPage() {
   // Team-level date range applied to all saves
   const [teamStart,     setTeamStart]     = useState('')
   const [teamEnd,       setTeamEnd]       = useState('')
+  const [benchmarks,    setBenchmarks]    = useState(null)
 
   useEffect(() => {
     apiFetch('/api/adjustments/is-admin')
@@ -3451,6 +3452,9 @@ function AdjustmentsPage() {
         }
       })
       .finally(() => setLoading(false))
+    apiFetch(`/api/adjustments/league-benchmarks?team=${encodeURIComponent(selectedTeam)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setBenchmarks(d) })
   }, [selectedTeam])
 
   function computePts(e) {
@@ -3747,6 +3751,43 @@ function AdjustmentsPage() {
                     <td className="adj-td adj-td-z"><strong>{teamTotals.z}</strong></td>
                     <td className="adj-td" />
                   </tr>
+                  {benchmarks && (() => {
+                    const p = benchmarks.percentiles
+                    const t = benchmarks.this_team
+                    const season = benchmarks.season
+                    const teamCode = selectedTeam ? selectedTeam.split(' ').map(w => w[0]).join('').slice(0,3).toUpperCase() : ''
+                    const bRows = [
+                      { label: season ? `Last season (${season})` : 'Last season', data: t },
+                      { label: 'League median',      data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p50])) : null },
+                      { label: 'League 25th %ile',   data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p25])) : null },
+                      { label: 'League 75th %ile',   data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p75])) : null },
+                      { label: 'League 1st %ile',    data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p1]))  : null },
+                      { label: 'League 100th %ile',  data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p100])): null },
+                    ]
+                    const cell = (v) => v != null ? v : '—'
+                    return bRows.map(({ label, data }) => (
+                      <tr key={label} className="adj-benchmark-row">
+                        <td className="adj-td adj-td-name" style={{color:'var(--muted)',fontStyle:'italic'}}>{label}</td>
+                        <td className="adj-td">—</td>
+                        <td className="adj-td">—</td>
+                        <td className="adj-td">{cell(data?.fga)}</td>
+                        <td className="adj-td">{cell(data?.fg_pct)}</td>
+                        <td className="adj-td">{cell(data?.fg3a)}</td>
+                        <td className="adj-td">{cell(data?.fg3_pct)}</td>
+                        <td className="adj-td">{cell(data?.fta)}</td>
+                        <td className="adj-td">{cell(data?.ft_pct)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.oreb)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.dreb)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.ast)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.stl)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.blk)}</td>
+                        <td className="adj-td adj-td-rate">{cell(data?.tov)}</td>
+                        <td className="adj-td adj-td-pts">{cell(data?.pts)}</td>
+                        <td className="adj-td adj-td-z">—</td>
+                        <td className="adj-td" />
+                      </tr>
+                    ))
+                  })()}
                 </tfoot>
               </table>
             </div>
