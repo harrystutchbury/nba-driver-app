@@ -7371,6 +7371,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
   const [gameLog, setGameLog]         = useState(null)
   const [careerLogOpen, setCareerLogOpen] = useState(false)
   const [shotDiet, setShotDiet]       = useState(null)
+  const [shotDietErr, setShotDietErr] = useState(null)
   const [playerStats, setPlayerStats] = useState(null)
   const [projection, setProjection]   = useState(null)
   const [projLoading, setProjLoading] = useState(false)
@@ -7557,6 +7558,7 @@ function AppMain({ onLogout, onOpenAccount, token }) {
     setZBreakdown(null)
     setGameLog(null)
     setShotDiet(null)
+    setShotDietErr(null)
     try {
       const params = new URLSearchParams({
         player: selectedPlayer.slug,
@@ -7604,9 +7606,14 @@ function AppMain({ onLogout, onOpenAccount, token }) {
         })
         if (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') {
           apiFetch(`/api/shot-diet?${shotParams}`)
-            .then(r => r.ok ? r.json() : null)
+            .then(async r => {
+              if (r.ok) return r.json()
+              const body = await r.json().catch(() => ({}))
+              setShotDietErr(`${r.status}: ${body.detail || 'no shot data'}`)
+              return null
+            })
             .then(d => { if (d) setShotDiet(d) })
-            .catch(() => {})
+            .catch(e => setShotDietErr(`fetch error: ${e.message}`))
         }
       }
     } catch (e) {
@@ -9118,6 +9125,9 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                       )
                     })()}
                   </div>
+                )}
+                {shotDietErr && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (
+                  <p style={{fontSize:12,color:'var(--muted)',marginTop:12}}>Shot diet unavailable: {shotDietErr}</p>
                 )}
                 </>
               )}
