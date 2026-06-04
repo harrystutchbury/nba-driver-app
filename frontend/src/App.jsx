@@ -3115,8 +3115,19 @@ function CommentsSection({ playerSlug }) {
 
 // ── Adjustments page (admin only) ────────────────────────────────────────────
 
-const ADJ_FIELDS = ['min_pg','fga_pg','fg_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct',
+const ADJ_FIELDS = ['min_pg','fg2a_pg','fg2_pct','fg3a_pg','fg3_pct','fta_pg','ft_pct',
                     'oreb_rate','dreb_rate','ast_rate','stl_rate','blk_rate','tov_rate']
+
+function deriveFg2(fga, fg3a, fgPct, fg3Pct) {
+  const fg2a = Math.max(0, (+fga || 0) - (+fg3a || 0))
+  const fgm  = (+fga || 0) * (+fgPct || 0) / 100
+  const fg3m = (+fg3a || 0) * (+fg3Pct || 0) / 100
+  const fg2m = Math.max(0, fgm - fg3m)
+  return {
+    fg2a_pg: +fg2a.toFixed(1),
+    fg2_pct: fg2a > 0 ? +(fg2m / fg2a * 100).toFixed(1) : 0,
+  }
+}
 
 // ── Trending Players ──────────────────────────────────────────────────────────
 
@@ -3438,7 +3449,9 @@ function AdjustmentsPage() {
         setPlayers(d.players)
         const newEdits = {}, newIds = {}
         for (const p of d.players) {
-          newEdits[p.slug] = { ...(p.adjustment || p.baseline), games: p.adjustment?.games ?? 82 }
+          const base = p.adjustment || p.baseline
+          const fg2 = deriveFg2(base.fga_pg, base.fg3a_pg, base.fg_pct, base.fg3_pct)
+          newEdits[p.slug] = { ...base, games: p.adjustment?.games ?? 82, ...fg2 }
           if (p.adjustment?.id) newIds[p.slug] = p.adjustment.id
         }
         setEdits(newEdits)
@@ -3458,10 +3471,10 @@ function AdjustmentsPage() {
   }, [selectedTeam])
 
   function computePts(e) {
-    const fga = +e.fga_pg || 0, fgPct = +e.fg_pct || 0
+    const fg2a = +e.fg2a_pg || 0, fg2Pct = +e.fg2_pct || 0
     const fg3a = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
-    const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
-    return (Math.max(fga - fg3a, 0) * fgPct / 100 * 2 + fg3a * fg3Pct / 100 * 3 + fta * ftPct / 100).toFixed(1)
+    const fta  = +e.fta_pg  || 0, ftPct  = +e.ft_pct  || 0
+    return (fg2a * fg2Pct / 100 * 2 + fg3a * fg3Pct / 100 * 3 + fta * ftPct / 100).toFixed(1)
   }
 
   function computePerGame(e) {
@@ -3477,12 +3490,14 @@ function AdjustmentsPage() {
 
   function computeZ(e) {
     if (!leagueParams) return null
-    const fga = +e.fga_pg || 0, fgPct = +e.fg_pct || 0
-    const fg3a = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
-    const fta = +e.fta_pg || 0, ftPct = +e.ft_pct || 0
-    const fg3m = fg3a * fg3Pct / 100
-    const pts  = Math.max(fga - fg3a, 0) * fgPct / 100 * 2 + fg3m * 3 + fta * ftPct / 100
-    const pg   = computePerGame(e)
+    const fg2a  = +e.fg2a_pg || 0, fg2Pct = +e.fg2_pct || 0
+    const fg3a  = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
+    const fga   = fg2a + fg3a
+    const fgPct = fga > 0 ? (fg2a * fg2Pct / 100 + fg3a * fg3Pct / 100) / fga * 100 : 0
+    const fta   = +e.fta_pg  || 0, ftPct  = +e.ft_pct  || 0
+    const fg3m  = fg3a * fg3Pct / 100
+    const pts   = fg2a * fg2Pct / 100 * 2 + fg3m * 3 + fta * ftPct / 100
+    const pg    = computePerGame(e)
     const statVals = { pts, fg3m, reb: pg.reb, ast: pg.ast, stl: pg.stl, blk: pg.blk, tov: pg.tov }
     const { fg_mean, ft_mean, stats } = leagueParams
     let total = 0, count = 0
@@ -3500,7 +3515,13 @@ function AdjustmentsPage() {
   function isEdited(slug) {
     const p = players.find(x => x.slug === slug)
     if (!p) return false
-    return ADJ_FIELDS.some(k => String(edits[slug]?.[k] ?? '') !== String(p.baseline[k] ?? ''))
+    const e = edits[slug] || {}
+    const rateFields = ['min_pg','fg3a_pg','fg3_pct','fta_pg','ft_pct',
+                        'oreb_rate','dreb_rate','ast_rate','stl_rate','blk_rate','tov_rate']
+    if (rateFields.some(k => String(e[k] ?? '') !== String(p.baseline[k] ?? ''))) return true
+    const bFg2 = deriveFg2(p.baseline.fga_pg, p.baseline.fg3a_pg, p.baseline.fg_pct, p.baseline.fg3_pct)
+    return Math.abs((+e.fg2a_pg || 0) - bFg2.fg2a_pg) > 0.05
+        || Math.abs((+e.fg2_pct || 0) - bFg2.fg2_pct) > 0.05
   }
 
   function setField(slug, field, val) {
@@ -3509,7 +3530,10 @@ function AdjustmentsPage() {
 
   function resetPlayer(slug) {
     const p = players.find(x => x.slug === slug)
-    if (p) setEdits(prev => ({ ...prev, [slug]: { ...p.baseline } }))
+    if (p) {
+      const fg2 = deriveFg2(p.baseline.fga_pg, p.baseline.fg3a_pg, p.baseline.fg_pct, p.baseline.fg3_pct)
+      setEdits(prev => ({ ...prev, [slug]: { ...p.baseline, games: 82, ...fg2 } }))
+    }
     setMsgs(prev => ({ ...prev, [slug]: null }))
   }
 
@@ -3517,10 +3541,17 @@ function AdjustmentsPage() {
     const e = edits[slug] || {}
     setSaving(prev => ({ ...prev, [slug]: true }))
     try {
+      const fg2a   = +e.fg2a_pg || 0, fg2Pct = +e.fg2_pct || 0
+      const fg3a   = +e.fg3a_pg || 0, fg3Pct = +e.fg3_pct || 0
+      const fga    = fg2a + fg3a
+      const fgMakes = fg2a * fg2Pct / 100 + fg3a * fg3Pct / 100
+      const fgPct  = fga > 0 ? fgMakes / fga * 100 : 0
       const body = { player_slug: slug }
       for (const f of ADJ_FIELDS) {
         const v = e[f]; body[f] = v !== '' && v != null ? parseFloat(v) : null
       }
+      body.fga_pg = +fga.toFixed(1)
+      body.fg_pct = +fgPct.toFixed(1)
       body.start_date = teamStart || null
       body.end_date   = teamEnd   || null
 
@@ -3566,15 +3597,15 @@ function AdjustmentsPage() {
   const minsOk = Math.abs(totalMins - 240) < 1
 
   const teamTotals = (() => {
-    let fga = 0, fgaWtPct = 0, fg3a = 0, fg3aWtPct = 0, fta = 0, ftaWtPct = 0
+    let fg2a = 0, fg2aMakes = 0, fg3a = 0, fg3aMakes = 0, fta = 0, ftaMakes = 0
     let oreb = 0, dreb = 0, ast = 0, stl = 0, blk = 0, tov = 0, pts = 0, z = 0
     for (const p of players) {
       const e   = edits[p.slug] || {}
       const min = +e.min_pg || 0
       const wt  = (+e.games || 82) / 82
-      const thisFga  = (+e.fga_pg  || 0) * wt; fga  += thisFga;  fgaWtPct  += thisFga  * (+e.fg_pct  || 0)
-      const thisFg3a = (+e.fg3a_pg || 0) * wt; fg3a += thisFg3a; fg3aWtPct += thisFg3a * (+e.fg3_pct || 0)
-      const thisFta  = (+e.fta_pg  || 0) * wt; fta  += thisFta;  ftaWtPct  += thisFta  * (+e.ft_pct  || 0)
+      const t2a = (+e.fg2a_pg || 0) * wt; fg2a += t2a; fg2aMakes += t2a * (+e.fg2_pct || 0) / 100
+      const t3a = (+e.fg3a_pg || 0) * wt; fg3a += t3a; fg3aMakes += t3a * (+e.fg3_pct || 0) / 100
+      const tFta = (+e.fta_pg || 0) * wt; fta  += tFta; ftaMakes  += tFta * (+e.ft_pct  || 0) / 100
       oreb += (+e.oreb_rate || 0) * min / 36 * wt
       dreb += (+e.dreb_rate || 0) * min / 36 * wt
       ast  += (+e.ast_rate  || 0) * min / 36 * wt
@@ -3584,13 +3615,16 @@ function AdjustmentsPage() {
       pts  += (parseFloat(computePts(e)) || 0) * wt
       z    += (parseFloat(computeZ(e)) || 0) * wt
     }
+    const fga = fg2a + fg3a
     return {
-      fga: fga.toFixed(1),
-      fg_pct: fga > 0 ? (fgaWtPct / fga).toFixed(1) : '—',
+      fg2a: fg2a.toFixed(1),
+      fg2_pct: fg2a > 0 ? (fg2aMakes / fg2a * 100).toFixed(1) : '—',
       fg3a: fg3a.toFixed(1),
-      fg3_pct: fg3a > 0 ? (fg3aWtPct / fg3a).toFixed(1) : '—',
+      fg3_pct: fg3a > 0 ? (fg3aMakes / fg3a * 100).toFixed(1) : '—',
+      fga: fga.toFixed(1),
+      fg_pct: fga > 0 ? ((fg2aMakes + fg3aMakes) / fga * 100).toFixed(1) : '—',
       fta: fta.toFixed(1),
-      ft_pct: fta > 0 ? (ftaWtPct / fta).toFixed(1) : '—',
+      ft_pct: fta > 0 ? (ftaMakes / fta * 100).toFixed(1) : '—',
       oreb: oreb.toFixed(1), dreb: dreb.toFixed(1),
       ast: ast.toFixed(1), stl: stl.toFixed(1),
       blk: blk.toFixed(1), tov: tov.toFixed(1),
@@ -3652,10 +3686,12 @@ function AdjustmentsPage() {
                     <th className="adj-th adj-th-name">Player</th>
                     <th className="adj-th">GP</th>
                     <th className="adj-th">MIN</th>
-                    <th className="adj-th">FGA</th>
-                    <th className="adj-th">FG%</th>
+                    <th className="adj-th">2PA</th>
+                    <th className="adj-th">2P%</th>
                     <th className="adj-th">3PA</th>
                     <th className="adj-th">3P%</th>
+                    <th className="adj-th adj-th-calc" title="Calculated from 2PA + 3PA">FGA*</th>
+                    <th className="adj-th adj-th-calc" title="Calculated from 2PA×2P% + 3PA×3P%">FG%*</th>
                     <th className="adj-th">FTA</th>
                     <th className="adj-th">FT%</th>
                     <th className="adj-th adj-th-rate">OREB<br/>/36</th>
@@ -3695,10 +3731,12 @@ function AdjustmentsPage() {
                             onChange={ev => setField(p.slug, 'games', ev.target.value)} />
                         </td>
                         <td className="adj-td">{numInput(p.slug, 'min_pg',    '52px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fga_pg',    '48px')}</td>
-                        <td className="adj-td">{numInput(p.slug, 'fg_pct',    '48px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg2a_pg',   '44px')}</td>
+                        <td className="adj-td">{numInput(p.slug, 'fg2_pct',   '44px')}</td>
                         <td className="adj-td">{numInput(p.slug, 'fg3a_pg',   '44px')}</td>
                         <td className="adj-td">{numInput(p.slug, 'fg3_pct',   '44px')}</td>
+                        <td className="adj-td adj-td-calc">{((+e.fg2a_pg||0)+(+e.fg3a_pg||0)).toFixed(1)}</td>
+                        <td className="adj-td adj-td-calc">{(() => { const f2a=+e.fg2a_pg||0,f3a=+e.fg3a_pg||0,fga=f2a+f3a; return fga>0?((f2a*(+e.fg2_pct||0)/100+f3a*(+e.fg3_pct||0)/100)/fga*100).toFixed(1):'—' })()}</td>
                         <td className="adj-td">{numInput(p.slug, 'fta_pg',    '44px')}</td>
                         <td className="adj-td">{numInput(p.slug, 'ft_pct',    '48px')}</td>
                         <td className="adj-td adj-td-rate">{numInput(p.slug, 'oreb_rate', '44px')}</td>
@@ -3735,10 +3773,12 @@ function AdjustmentsPage() {
                     <td className="adj-td adj-td-name"><strong>Team total</strong></td>
                     <td className="adj-td"></td>
                     <td className="adj-td"><strong className={minsOk ? 'adj-z-pos' : 'adj-z-neg'}>{totalMins.toFixed(1)}</strong></td>
-                    <td className="adj-td"><strong>{teamTotals.fga}</strong></td>
-                    <td className="adj-td"><strong>{teamTotals.fg_pct}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fg2a}</strong></td>
+                    <td className="adj-td"><strong>{teamTotals.fg2_pct}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.fg3a}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.fg3_pct}</strong></td>
+                    <td className="adj-td adj-td-calc"><strong>{teamTotals.fga}</strong></td>
+                    <td className="adj-td adj-td-calc"><strong>{teamTotals.fg_pct}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.fta}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.ft_pct}</strong></td>
                     <td className="adj-td adj-td-rate"><strong>{teamTotals.oreb}</strong></td>
@@ -3765,28 +3805,33 @@ function AdjustmentsPage() {
                       { label: 'League 100th %ile',  data: p ? Object.fromEntries(Object.entries(p).map(([k,v]) => [k, v.p100])): null },
                     ]
                     const cell = (v) => v != null ? v : '—'
-                    return bRows.map(({ label, data }) => (
-                      <tr key={label} className="adj-benchmark-row">
-                        <td className="adj-td adj-td-name" style={{color:'var(--muted)',fontStyle:'italic'}}>{label}</td>
-                        <td className="adj-td">—</td>
-                        <td className="adj-td">—</td>
-                        <td className="adj-td">{cell(data?.fga)}</td>
-                        <td className="adj-td">{cell(data?.fg_pct)}</td>
-                        <td className="adj-td">{cell(data?.fg3a)}</td>
-                        <td className="adj-td">{cell(data?.fg3_pct)}</td>
-                        <td className="adj-td">{cell(data?.fta)}</td>
-                        <td className="adj-td">{cell(data?.ft_pct)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.oreb)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.dreb)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.ast)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.stl)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.blk)}</td>
-                        <td className="adj-td adj-td-rate">{cell(data?.tov)}</td>
-                        <td className="adj-td adj-td-pts">{cell(data?.pts)}</td>
-                        <td className="adj-td adj-td-z">—</td>
-                        <td className="adj-td" />
-                      </tr>
-                    ))
+                    return bRows.map(({ label, data }) => {
+                      const bFg2 = data ? deriveFg2(data.fga, data.fg3a, data.fg_pct, data.fg3_pct) : {}
+                      return (
+                        <tr key={label} className="adj-benchmark-row">
+                          <td className="adj-td adj-td-name" style={{color:'var(--muted)',fontStyle:'italic'}}>{label}</td>
+                          <td className="adj-td">—</td>
+                          <td className="adj-td">—</td>
+                          <td className="adj-td">{cell(bFg2.fg2a_pg)}</td>
+                          <td className="adj-td">{cell(bFg2.fg2_pct)}</td>
+                          <td className="adj-td">{cell(data?.fg3a)}</td>
+                          <td className="adj-td">{cell(data?.fg3_pct)}</td>
+                          <td className="adj-td adj-td-calc">{cell(data?.fga)}</td>
+                          <td className="adj-td adj-td-calc">{cell(data?.fg_pct)}</td>
+                          <td className="adj-td">{cell(data?.fta)}</td>
+                          <td className="adj-td">{cell(data?.ft_pct)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.oreb)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.dreb)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.ast)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.stl)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.blk)}</td>
+                          <td className="adj-td adj-td-rate">{cell(data?.tov)}</td>
+                          <td className="adj-td adj-td-pts">{cell(data?.pts)}</td>
+                          <td className="adj-td adj-td-z">—</td>
+                          <td className="adj-td" />
+                        </tr>
+                      )
+                    })
                   })()}
                 </tfoot>
               </table>
