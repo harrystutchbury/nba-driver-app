@@ -347,14 +347,14 @@ function AccountModal({ onClose, onTokenRefresh, autoUpgrade = null }) {
 
 // ── Login page ────────────────────────────────────────────────────────────────
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin, onClose, initialMode }) {
   const resetToken = new URLSearchParams(window.location.search).get('reset_token')
   const [username,  setUsername]  = useState('')
   const [password,  setPassword]  = useState('')
   const [error,     setError]     = useState(null)
   const [info,      setInfo]      = useState(null)
   const [loading,   setLoading]   = useState(false)
-  const [mode,      setMode]      = useState(resetToken ? 'reset' : 'login')
+  const [mode,      setMode]      = useState(resetToken ? 'reset' : (initialMode || 'login'))
 
   function setModeClean(m) { setMode(m); setError(null); setInfo(null) }
 
@@ -403,9 +403,10 @@ function LoginPage({ onLogin }) {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <h1 className="login-title">NBA Driver</h1>
+    <div className="login-page" onClick={onClose || undefined}>
+      <div className="login-card" onClick={e => e.stopPropagation()}>
+        {onClose && <button className="modal-close" onClick={onClose} style={{position:'absolute',top:16,right:16}}>✕</button>}
+        <h1 className="login-title">Roto Intel</h1>
         <p className="login-subtitle">Fantasy basketball intelligence</p>
         <form onSubmit={handleSubmit} className="login-form">
           {mode === 'reset' ? <>
@@ -7316,7 +7317,7 @@ function ModerationPage() {
 }
 
 
-function AppMain({ onLogout, onOpenAccount, token }) {
+function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
   useEffect(() => {
@@ -8326,11 +8327,11 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                   {token
                     ? <>
                         <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Account</button>
-                        <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                        <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Log out</button>
                       </>
                     : <>
-                        <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Sign up free</button>
-                        <button className="nav-drop-item" onClick={() => { onOpenAccount(); setMobileMenuOpen(false) }}>Log in</button>
+                        <button className="nav-drop-item" onClick={() => { onOpenLogin('register'); setMobileMenuOpen(false) }}>Sign up for free</button>
+                        <button className="nav-drop-item" onClick={() => { onOpenLogin('login'); setMobileMenuOpen(false) }}>Log in</button>
                       </>
                   }
                 </div>
@@ -8376,11 +8377,11 @@ function AppMain({ onLogout, onOpenAccount, token }) {
                   ? <>
                       <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
                       {isAdmin && <button className="nav-drop-item" onClick={() => setPage('moderation')}>Moderation</button>}
-                      <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Sign out</button>
+                      <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Log out</button>
                     </>
                   : <>
-                      <button className="nav-drop-item" onClick={onOpenAccount}>Sign up free</button>
-                      <button className="nav-drop-item" onClick={onOpenAccount}>Log in</button>
+                      <button className="nav-drop-item" onClick={() => onOpenLogin('register')}>Sign up for free</button>
+                      <button className="nav-drop-item" onClick={() => onOpenLogin('login')}>Log in</button>
                     </>
                 }
               </div>
@@ -10242,19 +10243,26 @@ export default function App() {
   const [token,            setToken]            = useState(() => localStorage.getItem('nba_token'))
   const [showAccount,      setShowAccount]      = useState(() => _qs.get('upgraded') === '1' || !!_upgradeParam)
   const [autoUpgradeTier,  setAutoUpgradeTier]  = useState(() => _upgradeParam)
+  const [showLogin,        setShowLogin]        = useState(false)
+  const [loginMode,        setLoginMode]        = useState('login')
 
   function handleLogin(t) {
     localStorage.setItem('nba_token', t)
     setToken(t)
+    setShowLogin(false)
     if (_upgradeParam) { setShowAccount(true); setAutoUpgradeTier(_upgradeParam) }
   }
   function handleLogout()        { localStorage.removeItem('nba_token'); setToken(null) }
   function handleTokenRefresh(t) { localStorage.setItem('nba_token', t); setToken(t) }
   function closeAccount()        { setShowAccount(false); setAutoUpgradeTier(null); window.history.replaceState({}, '', '/') }
+  function openLogin(mode)       { setLoginMode(mode || 'login'); setShowLogin(true) }
 
   return <>
-    <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} token={token} />
-    {showAccount && (
+    <AppMain onLogout={handleLogout} onOpenAccount={() => setShowAccount(true)} onOpenLogin={openLogin} token={token} />
+    {showLogin && !token && (
+      <LoginPage onLogin={handleLogin} onClose={() => setShowLogin(false)} initialMode={loginMode} />
+    )}
+    {showAccount && token && (
       <AccountModal
         onClose={closeAccount}
         onTokenRefresh={t => { handleTokenRefresh(t); closeAccount() }}

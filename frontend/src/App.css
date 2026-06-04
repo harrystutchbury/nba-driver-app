@@ -785,14 +785,17 @@
 /* ── Login page ──────────────────────────────────────────── */
 
 .login-page {
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
 }
 
 .login-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
