@@ -3613,7 +3613,7 @@ function AdjustmentsPage() {
           <label className="adj-label">Team</label>
           <select className="adj-team-select" value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}>
             <option value="">— select team —</option>
-            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            {teams.map(t => <option key={t} value={t}>{t.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}</option>)}
           </select>
         </div>
       </div>
