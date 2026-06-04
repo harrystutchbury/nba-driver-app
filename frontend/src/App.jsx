@@ -3578,7 +3578,7 @@ function AdjustmentsPage() {
       blk  += (+e.blk_rate  || 0) * min / 36 * wt
       tov  += (+e.tov_rate  || 0) * min / 36 * wt
       pts  += (parseFloat(computePts(e)) || 0) * wt
-      z    += parseFloat(computeZ(e)) || 0
+      z    += (parseFloat(computeZ(e)) || 0) * wt
     }
     return {
       fga: fga.toFixed(1),
