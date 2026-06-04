@@ -3437,7 +3437,7 @@ function AdjustmentsPage() {
         setPlayers(d.players)
         const newEdits = {}, newIds = {}
         for (const p of d.players) {
-          newEdits[p.slug] = { ...(p.adjustment || p.baseline) }
+          newEdits[p.slug] = { ...(p.adjustment || p.baseline), games: p.adjustment?.games ?? 82 }
           if (p.adjustment?.id) newIds[p.slug] = p.adjustment.id
         }
         setEdits(newEdits)
@@ -3554,8 +3554,12 @@ function AdjustmentsPage() {
     setMsgs(prev => ({ ...prev, [slug]: null }))
   }
 
-  const totalMins = players.reduce((s, p) => s + (+edits[p.slug]?.min_pg || 0), 0)
-  const minsOk    = Math.abs(totalMins - 240) < 1
+  const totalMins = players.reduce((s, p) => {
+    const min = +edits[p.slug]?.min_pg || 0
+    const gp  = +edits[p.slug]?.games  || 82
+    return s + (min * gp / 82)
+  }, 0)
+  const minsOk = Math.abs(totalMins - 240) < 1
 
   const teamTotals = (() => {
     let fga = 0, fgaWtPct = 0, fg3a = 0, fg3aWtPct = 0, fta = 0, ftaWtPct = 0
@@ -3619,8 +3623,8 @@ function AdjustmentsPage() {
           <div className="adj-team-controls">
             <div className="adj-val-bar-wrap">
               <div className={`adj-val-bar ${minsOk ? 'adj-val-ok' : 'adj-val-bad'}`}>
-                <span>Team minutes: <strong>{totalMins.toFixed(1)}</strong> / 240</span>
-                {!minsOk && <span className="adj-val-hint">Adjust totals to sum to 240</span>}
+                <span>Weighted mins (MIN × GP / 82): <strong>{totalMins.toFixed(1)}</strong> / 240</span>
+                {!minsOk && <span className="adj-val-hint">Adjust to reach 240</span>}
                 {minsOk  && <span className="adj-val-hint">✓ Minutes balanced</span>}
               </div>
             </div>
@@ -3641,6 +3645,7 @@ function AdjustmentsPage() {
                 <thead>
                   <tr>
                     <th className="adj-th adj-th-name">Player</th>
+                    <th className="adj-th">GP</th>
                     <th className="adj-th">MIN</th>
                     <th className="adj-th">FGA</th>
                     <th className="adj-th">FG%</th>
@@ -3678,6 +3683,11 @@ function AdjustmentsPage() {
                             <span className="adj-ppos">{posAbbr(p.position)}</span>
                             {hasAdj && <span className="adj-live-dot" title="Active adjustment" />}
                           </div>
+                        </td>
+                        <td className="adj-td">
+                          <input type="number" step="1" min="1" max="82" className="adj-input" style={{width:'44px'}}
+                            value={edits[p.slug]?.games ?? 82}
+                            onChange={ev => setField(p.slug, 'games', ev.target.value)} />
                         </td>
                         <td className="adj-td">{numInput(p.slug, 'min_pg',    '52px')}</td>
                         <td className="adj-td">{numInput(p.slug, 'fga_pg',    '48px')}</td>
@@ -3718,6 +3728,7 @@ function AdjustmentsPage() {
                 <tfoot>
                   <tr className="adj-tfoot">
                     <td className="adj-td adj-td-name"><strong>Team total</strong></td>
+                    <td className="adj-td"></td>
                     <td className="adj-td"><strong className={minsOk ? 'adj-z-pos' : 'adj-z-neg'}>{totalMins.toFixed(1)}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.fga}</strong></td>
                     <td className="adj-td"><strong>{teamTotals.fg_pct}</strong></td>
