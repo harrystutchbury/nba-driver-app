@@ -5481,6 +5481,8 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .adj-tfoot td { border-top: 2px solid var(--border); padding: 5px 4px; font-size: 12px; }
 .adj-th-calc { color: var(--muted); font-style: italic; }
 .adj-td-calc { color: var(--muted); font-size: 11px; }
+.adj-th-rank { min-width: 52px; }
+.adj-td-rank { font-size: 12px; white-space: nowrap; }
 .adj-benchmark-row td { padding: 4px 4px; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--border); }
 
 .adj-act-btns { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

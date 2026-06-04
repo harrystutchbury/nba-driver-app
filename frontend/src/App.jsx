@@ -3425,6 +3425,7 @@ function AdjustmentsPage() {
   const [teamStart,     setTeamStart]     = useState('')
   const [teamEnd,       setTeamEnd]       = useState('')
   const [benchmarks,    setBenchmarks]    = useState(null)
+  const [leagueRanks,   setLeagueRanks]   = useState(null)
 
   useEffect(() => {
     apiFetch('/api/adjustments/is-admin')
@@ -3468,6 +3469,9 @@ function AdjustmentsPage() {
     apiFetch(`/api/adjustments/league-benchmarks?team=${encodeURIComponent(selectedTeam)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setBenchmarks(d) })
+    apiFetch('/api/adjustments/league-ranks')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLeagueRanks(d.ranks) })
   }, [selectedTeam])
 
   function computePts(e) {
@@ -3632,6 +3636,21 @@ function AdjustmentsPage() {
     }
   })()
 
+  // League rank (baseline) and adjusted rank per player
+  const rankData = (() => {
+    if (!leagueRanks) return {}
+    const baseRank = Object.fromEntries(leagueRanks.map(r => [r.slug, r.rank]))
+    // Build full Z list, replacing this team's players with their adjusted Z
+    const adjList = leagueRanks.map(r => {
+      const p = players.find(x => x.slug === r.slug)
+      const adjZ = p ? (parseFloat(computeZ(edits[p.slug] || p.baseline)) ?? r.z) : r.z
+      return { slug: r.slug, z: adjZ }
+    })
+    adjList.sort((a, b) => b.z - a.z)
+    const adjRank = Object.fromEntries(adjList.map((r, i) => [r.slug, i + 1]))
+    return { baseRank, adjRank }
+  })()
+
   function numInput(slug, field, w = '52px') {
     return (
       <input type="number" step="0.1" min="0" className="adj-input" style={{ width: w }}
@@ -3702,6 +3721,8 @@ function AdjustmentsPage() {
                     <th className="adj-th adj-th-rate">TOV<br/>/36</th>
                     <th className="adj-th adj-th-pts">PTS*</th>
                     <th className="adj-th adj-th-z">Z (Δ)</th>
+                    <th className="adj-th adj-th-rank">Rank</th>
+                    <th className="adj-th adj-th-rank">Adj Rank</th>
                     <th className="adj-th adj-th-act"></th>
                   </tr>
                 </thead>
@@ -3754,6 +3775,23 @@ function AdjustmentsPage() {
                             </span>
                           )}
                         </td>
+                        <td className="adj-td adj-td-rank">{rankData.baseRank?.[p.slug] ?? '—'}</td>
+                        <td className="adj-td adj-td-rank">{(() => {
+                          const base = rankData.baseRank?.[p.slug]
+                          const adj  = rankData.adjRank?.[p.slug]
+                          if (!adj) return '—'
+                          const delta = base != null ? base - adj : null
+                          return (
+                            <span>
+                              {adj}
+                              {delta != null && delta !== 0 && (
+                                <span className={`adj-z-delta ${delta > 0 ? 'adj-z-pos' : 'adj-z-neg'}`}>
+                                  {delta > 0 ? `+${delta}` : delta}
+                                </span>
+                              )}
+                            </span>
+                          )
+                        })()}</td>
                         <td className="adj-td adj-td-act">
                           <div className="adj-act-btns">
                             <button className="adj-save-btn" onClick={() => savePlayer(p.slug)} disabled={saving[p.slug]}>
@@ -3789,6 +3827,8 @@ function AdjustmentsPage() {
                     <td className="adj-td adj-td-rate"><strong>{teamTotals.tov}</strong></td>
                     <td className="adj-td adj-td-pts"><strong>{teamTotals.pts}</strong></td>
                     <td className="adj-td adj-td-z"><strong>{teamTotals.z}</strong></td>
+                    <td className="adj-td" />
+                    <td className="adj-td" />
                     <td className="adj-td" />
                   </tr>
                   {benchmarks && (() => {
@@ -3828,6 +3868,8 @@ function AdjustmentsPage() {
                           <td className="adj-td adj-td-rate">{cell(data?.tov)}</td>
                           <td className="adj-td adj-td-pts">{cell(data?.pts)}</td>
                           <td className="adj-td adj-td-z">—</td>
+                          <td className="adj-td" />
+                          <td className="adj-td" />
                           <td className="adj-td" />
                         </tr>
                       )

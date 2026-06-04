@@ -9928,6 +9928,31 @@ def adj_toggle(adj_id: int, current_user: str = Depends(get_current_user)):
         conn.close()
 
 
+@adjust_router.get("/league-ranks")
+def adj_league_ranks(current_user: str = Depends(get_current_user)):
+    """Return all current-season players with their composite Z score and league rank."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+        league, player_rows = _league_data(conn, season=season, min_games=10, min_mpg=20)
+        if not league or not player_rows:
+            return {"ranks": []}
+        ranked = []
+        for r in player_rows:
+            z = _composite_z(r, league)
+            if z is not None:
+                ranked.append({"slug": r["player_slug"], "z": round(z, 2)})
+        ranked.sort(key=lambda x: -x["z"])
+        for i, p in enumerate(ranked):
+            p["rank"] = i + 1
+        return {"ranks": ranked}
+    finally:
+        conn.close()
+
+
 @adjust_router.get("/league-benchmarks")
 def adj_league_benchmarks(team: str = Query(None), current_user: str = Depends(get_current_user)):
     """Last-season team stats + league percentiles for Adjustments comparison rows."""
