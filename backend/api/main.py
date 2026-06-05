@@ -2921,16 +2921,18 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
         ORDER BY g.season
     """).fetchall()
 
-    # Diagnostic: Alex Sarr (sarral01) shot counts per season + map entry
-    sarr_map = conn.execute(
-        "SELECT nba_id, match_tier FROM player_id_map WHERE br_slug = 'sarral01'"
-    ).fetchone()
-    sarr_shots = conn.execute(
-        "SELECT season, COUNT(*) FROM shot_logs WHERE player_slug = 'sarral01' GROUP BY season ORDER BY season"
-    ).fetchall()
-    sarr_in_game_logs = conn.execute(
-        "SELECT season, COUNT(*) FROM game_logs WHERE player_slug = 'sarral01' GROUP BY season ORDER BY season"
-    ).fetchall()
+    # Players who have 2024-25 game logs + a map entry but no 2024-25 shot data
+    missing_shots = conn.execute("""
+        SELECT m.br_slug, m.nba_id
+        FROM player_id_map m
+        WHERE EXISTS (
+            SELECT 1 FROM game_logs g WHERE g.player_slug = m.br_slug AND g.season = '2024-25'
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM shot_logs s WHERE s.player_slug = m.br_slug AND s.season = '2024-25'
+        )
+        ORDER BY m.br_slug
+    """).fetchall()
 
     conn.close()
     return {
@@ -2941,12 +2943,37 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
             {"season": r[0], "count": r[1], "slugs": r[2].split(",") if r[2] else []}
             for r in unmatched
         ],
-        "sarral01_debug": {
-            "map_entry": {"nba_id": sarr_map[0], "tier": sarr_map[1]} if sarr_map else None,
-            "shot_seasons": {r[0]: r[1] for r in sarr_shots},
-            "game_log_seasons": {r[0]: r[1] for r in sarr_in_game_logs},
-        },
+        "missing_2024_25_shots": [
+            {"slug": r[0], "nba_id": r[1]} for r in missing_shots
+        ],
     }
+
+
+@router.post("/admin/import-shots")
+def admin_import_shots(payload: dict, current_user: str = Depends(get_current_user)):
+    """Accept shot rows fetched locally and upsert into shot_logs. Admin only."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        shots = payload.get("shots", [])
+        rows = [
+            (s["nba_id"], s["player_slug"], s["game_id"], s["game_date"],
+             s["season"], s["zone"], s["made"], s["distance"], s["loc_x"], s["loc_y"])
+            for s in shots
+        ]
+        conn.executemany("""
+            INSERT INTO shot_logs
+                (nba_id, player_slug, game_id, game_date, season, zone, made, distance, loc_x, loc_y)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(nba_id, game_id, loc_x, loc_y) DO UPDATE SET
+                made=excluded.made, zone=excluded.zone, distance=excluded.distance
+        """, rows)
+        conn.commit()
+        total = conn.execute("SELECT COUNT(*) FROM shot_logs").fetchone()[0]
+        return {"inserted": len(rows), "total_shots": total}
+    finally:
+        conn.close()
 
 
 _shot_refresh_running = False
