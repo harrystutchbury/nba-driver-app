@@ -108,11 +108,13 @@ def refresh_season(conn, season_end_year):
     label = season_str(season_end_year)
     log.info(f"[{label}] Starting shot log refresh...")
 
-    # Players with a mapping
+    # Players with a mapping who appear in game_logs for this season
     mapped = conn.execute("""
         SELECT m.br_slug, m.nba_id, m.nba_name
         FROM player_id_map m
-        INNER JOIN players p ON p.slug = m.br_slug AND p.season = ?
+        WHERE EXISTS (
+            SELECT 1 FROM game_logs g WHERE g.player_slug = m.br_slug AND g.season = ?
+        )
     """, (label,)).fetchall()
 
     if not mapped:
