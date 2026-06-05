@@ -9216,8 +9216,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       }
                       const zoneChartOpts = (yTitle) => ({
                         responsive: true, maintainAspectRatio: false,
+                        layout: { padding: { top: 28 } },
                         plugins: {
-                          legend: { display: true, labels: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10 } },
+                          legend: { display: true, labels: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 16 } },
                           tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
                           datalabels: { anchor: 'end', align: 'end', formatter: v => v > 0 ? `${v}%` : null, color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
                         },
