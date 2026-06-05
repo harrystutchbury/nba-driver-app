@@ -2904,13 +2904,32 @@ def admin_sync_injuries(current_user: str = Depends(get_current_user)):
 
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
-    """Return shot_logs row count and seasons present."""
+    """Return shot_logs row count, seasons present, and unmatched players per season."""
     conn = get_conn()
     total = conn.execute("SELECT COUNT(*) FROM shot_logs").fetchone()[0]
     seasons = [r[0] for r in conn.execute("SELECT DISTINCT season FROM shot_logs ORDER BY season").fetchall()]
     map_count = conn.execute("SELECT COUNT(*) FROM player_id_map").fetchone()[0]
+
+    # Players in game_logs with meaningful minutes but no player_id_map entry, per season
+    unmatched = conn.execute("""
+        SELECT g.season, COUNT(DISTINCT g.player_slug) AS n,
+               GROUP_CONCAT(DISTINCT g.player_slug ORDER BY g.player_slug) AS slugs
+        FROM game_logs g
+        WHERE g.season IN ('2024-25','2025-26')
+          AND NOT EXISTS (SELECT 1 FROM player_id_map m WHERE m.br_slug = g.player_slug)
+        GROUP BY g.season
+        ORDER BY g.season
+    """).fetchall()
     conn.close()
-    return {"total_shots": total, "seasons": seasons, "player_id_map_rows": map_count}
+    return {
+        "total_shots": total,
+        "seasons": seasons,
+        "player_id_map_rows": map_count,
+        "unmatched_by_season": [
+            {"season": r[0], "count": r[1], "slugs": r[2].split(",") if r[2] else []}
+            for r in unmatched
+        ],
+    }
 
 
 _shot_refresh_running = False
