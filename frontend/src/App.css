@@ -5449,7 +5449,7 @@ td.bs-pos {
 .adj-no-access { color: var(--muted); padding: 24px; }
 
 .adj-table-wrap { overflow-x: auto; }
-.adj-table { border-collapse: collapse; width: 100%; min-width: 1500px; }
+.adj-table { border-collapse: collapse; width: 100%; min-width: 1700px; }
 .adj-th { padding: 6px 8px; text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .adj-th-name { text-align: left; min-width: 160px; }
 .adj-th-pts, .adj-th-z { background: rgba(124,140,255,0.05); }
