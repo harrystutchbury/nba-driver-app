@@ -9268,7 +9268,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   </div>
                 )}
                 {shotDietErr && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (
-                  <p style={{fontSize:12,color:'var(--muted)',marginTop:12}}>Shot diet unavailable: {shotDietErr}</p>
+                  <p style={{fontSize:12,color:'var(--muted)',marginTop:12}}>Shot chart not available for this player.</p>
                 )}
                 </>
               )}
