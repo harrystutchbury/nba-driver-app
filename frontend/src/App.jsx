@@ -3529,7 +3529,35 @@ function AdjustmentsPage() {
   }
 
   function setField(slug, field, val) {
-    setEdits(prev => ({ ...prev, [slug]: { ...(prev[slug] || {}), [field]: val } }))
+    setEdits(prev => {
+      const updated = { ...prev, [slug]: { ...(prev[slug] || {}), [field]: val } }
+      if (field === 'min_pg') {
+        const p      = players.find(x => x.slug === slug)
+        const baseMpg = +p?.baseline?.min_pg || 0
+        const newMin  = +val || 0
+        if (p && baseMpg > 0 && newMin > 0) {
+          const minScale   = newMin / baseMpg
+          // Shooting volume scales linearly with minutes
+          const shotScale  = minScale
+          // Defensive per-36 rates: per-game grows as min^0.75 → per-36 adjusts by min^-0.25
+          // (more minutes = tired = slightly lower per-36; fewer = fresher = slightly higher per-36)
+          const defRateAdj = Math.pow(minScale, -0.25)
+          const bFg2 = deriveFg2(p.baseline.fga_pg, p.baseline.fg3a_pg, p.baseline.fg_pct, p.baseline.fg3_pct)
+          updated[slug] = {
+            ...updated[slug],
+            fg2a_pg:   +((bFg2.fg2a_pg         || 0) * shotScale).toFixed(1),
+            fg3a_pg:   +((+p.baseline.fg3a_pg   || 0) * shotScale).toFixed(1),
+            fta_pg:    +((+p.baseline.fta_pg    || 0) * shotScale).toFixed(1),
+            oreb_rate: +((+p.baseline.oreb_rate || 0) * defRateAdj).toFixed(2),
+            dreb_rate: +((+p.baseline.dreb_rate || 0) * defRateAdj).toFixed(2),
+            stl_rate:  +((+p.baseline.stl_rate  || 0) * defRateAdj).toFixed(2),
+            blk_rate:  +((+p.baseline.blk_rate  || 0) * defRateAdj).toFixed(2),
+            // fg2_pct, fg3_pct, ft_pct, ast_rate, tov_rate: unchanged
+          }
+        }
+      }
+      return updated
+    })
   }
 
   function resetPlayer(slug) {
