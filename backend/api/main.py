@@ -2920,6 +2920,18 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
         GROUP BY g.season
         ORDER BY g.season
     """).fetchall()
+
+    # Diagnostic: Alex Sarr (sarral01) shot counts per season + map entry
+    sarr_map = conn.execute(
+        "SELECT nba_id, match_tier FROM player_id_map WHERE br_slug = 'sarral01'"
+    ).fetchone()
+    sarr_shots = conn.execute(
+        "SELECT season, COUNT(*) FROM shot_logs WHERE player_slug = 'sarral01' GROUP BY season ORDER BY season"
+    ).fetchall()
+    sarr_in_game_logs = conn.execute(
+        "SELECT season, COUNT(*) FROM game_logs WHERE player_slug = 'sarral01' GROUP BY season ORDER BY season"
+    ).fetchall()
+
     conn.close()
     return {
         "total_shots": total,
@@ -2929,6 +2941,11 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
             {"season": r[0], "count": r[1], "slugs": r[2].split(",") if r[2] else []}
             for r in unmatched
         ],
+        "sarral01_debug": {
+            "map_entry": {"nba_id": sarr_map[0], "tier": sarr_map[1]} if sarr_map else None,
+            "shot_seasons": {r[0]: r[1] for r in sarr_shots},
+            "game_log_seasons": {r[0]: r[1] for r in sarr_in_game_logs},
+        },
     }
 
 
