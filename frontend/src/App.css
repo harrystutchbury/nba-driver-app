@@ -1486,7 +1486,8 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 }
 
 .mpg-slider {
-  flex: 0 0 220px;
+  flex: 1;
+  min-width: 80px;
   accent-color: var(--skill);
   cursor: pointer;
 }
@@ -1544,7 +1545,9 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-size: 14px;
   font-weight: 600;
   color: var(--skill);
-  min-width: 36px;
+  width: 52px;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .trend-controls {
@@ -1673,6 +1676,8 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   text-transform: uppercase;
   letter-spacing: 1.2px;
   color: var(--muted);
+  min-width: 68px;
+  flex-shrink: 0;
 }
 
 /* ── Usage Projector ── */

@@ -9629,15 +9629,15 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   { key: 'fta_pm',   label: 'FTA/min',  eff: effFtaPm,  base: baseFtaPm, min: 0,    max: 0.4,  step: 0.005, fmt: pm3 },
                   { key: 'ft_pct',   label: 'FT%',      eff: effFtPct,  base: baseFtPct, min: 40,   max: 100,  step: 0.5,   fmt: pct },
                 ]},
-                { label: 'Playmaking & defense', fields: [
+                { label: 'Playmaking', fields: [
                   { key: 'ast_pm',   label: 'AST/min',  eff: effAstPm,  base: baseAstPm, min: 0,    max: 0.35, step: 0.005, fmt: pm3 },
                   { key: 'tov_pm',   label: 'TOV/min',  eff: effTovPm,  base: baseTovPm, min: 0,    max: 0.15, step: 0.002, fmt: pm3 },
-                  { key: 'stl_pm',   label: 'STL/min',  eff: effStlPm,  base: baseStlPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
-                  { key: 'blk_pm',   label: 'BLK/min',  eff: effBlkPm,  base: baseBlkPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
                 ]},
-                { label: 'Rebounding', fields: [
+                { label: 'Rebounding & defense', fields: [
                   { key: 'oreb_pm',  label: 'OREB/min', eff: effOrebPm, base: baseOrebPm,min: 0,    max: 0.15, step: 0.002, fmt: pm3 },
                   { key: 'dreb_pm',  label: 'DREB/min', eff: effDrebPm, base: baseDrebPm,min: 0,    max: 0.35, step: 0.002, fmt: pm3 },
+                  { key: 'stl_pm',   label: 'STL/min',  eff: effStlPm,  base: baseStlPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
+                  { key: 'blk_pm',   label: 'BLK/min',  eff: effBlkPm,  base: baseBlkPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
                 ]},
               ]
 
