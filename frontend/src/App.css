@@ -1690,6 +1690,52 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   flex: 1;
 }
 
+.proj-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.usage-reset-all-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.usage-reset-all-btn:hover { color: var(--text); border-color: var(--text); }
+
+.proj-sliders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px 24px;
+  margin-bottom: 16px;
+}
+
+.proj-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proj-slider-group-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mpg-slider-row.pinned .ctrl-label { color: var(--accent); }
+.mpg-slider-row.pinned .mpg-value  { color: var(--accent); }
+
 .usage-rank-pill {
   display: flex;
   flex-direction: column;

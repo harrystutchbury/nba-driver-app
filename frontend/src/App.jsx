@@ -7551,8 +7551,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [projExpanded, setProjExpanded] = useState(false)
   const [projScenario, setProjScenario] = useState('baseline')
   const [usageExpanded, setUsageExpanded] = useState(false)
-  const [usageUsg, setUsageUsg]           = useState(null)   // target USG% (null = use base)
-  const [usageMinutes, setUsageMinutes]   = useState(null)   // target min/g (null = use base)
+  const [projOverrides, setProjOverrides] = useState({})     // field → overridden value (empty = all auto)
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
@@ -7675,8 +7674,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setSchedProj(null)
     setProjYear(1)
     setProjScenario('baseline')
-    setUsageUsg(null)
-    setUsageMinutes(null)
+    setProjOverrides({})
     apiFetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setPlayerStats(d) })
@@ -9508,56 +9506,68 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               </div>
             )}
 
-            {/* ── Usage / Minutes Projector ─────────────────── */}
+            {/* ── Stat Line Projector ─────────────────────────── */}
             {playerStats?.seasons?.[0] && (() => {
-              const base    = playerStats.seasons[0]
-              const baseMpg = base.min_pg  ?? 30
-              const baseUsg = base.usg_pct ?? 20
-              const effMin  = usageMinutes ?? baseMpg
-              const effUsg  = usageUsg    ?? baseUsg
+              const base     = playerStats.seasons[0]
+              const baseMpg  = base.min_pg ?? 30
+              const baseFg2  = deriveFg2(base.fga_pg, base.fg3a_pg, base.fg_pct, base.fg3_pct)
+              const baseFg2a   = baseFg2.fg2a_pg  ?? 0
+              const baseFg2Pct = baseFg2.fg2_pct  ?? 0
+              const baseFg3a   = base.fg3a_pg      ?? 0
+              const baseFg3Pct = base.fg3_pct      ?? 0
+              const baseFta    = base.fta_pg        ?? 0
+              const baseFtPct  = base.ft_pct        ?? 0
+              const baseAst    = base.ast            ?? 0
+              const baseTov    = base.tov            ?? 0
+              const baseOrebR  = base.oreb_rate      ?? 0
+              const baseDrebR  = base.dreb_rate      ?? 0
+              const baseStlR   = base.stl_rate       ?? 0
+              const baseBlkR   = base.blk_rate       ?? 0
 
-              const minScale = effMin / baseMpg
-              const deltaUsg = effUsg - baseUsg
-              const usgScale = effUsg / baseUsg
+              const setOvr   = (key, val) => setProjOverrides(p => ({ ...p, [key]: val }))
+              const resetOvr = (key)      => setProjOverrides(p => { const n = { ...p }; delete n[key]; return n })
+              const resetAll = ()         => setProjOverrides({})
+              const pinned   = key => key in projOverrides
 
-              // PTS/3PM: usage volume scale + small efficiency decay on FG%
-              // Empirical: -0.045% FG% per +1% USG (Part 1 YoY analysis, n=1430)
-              // Decay only when usage increases; no boost for lower usage
-              const fgDecay  = deltaUsg > 0 ? Math.max(0.90, 1 - deltaUsg * 0.00045) : 1.0
+              // Effective values — override wins; otherwise auto-scale from min
+              const effMin     = projOverrides.min_pg    ?? baseMpg
+              const minScale   = effMin / baseMpg
+              const defRateAdj = Math.pow(minScale, -0.25)
 
-              // Defensive stats: sub-linear with minutes (α=0.75, Parts 2 confirmed)
-              // Usage → defense: no penalty — YoY data shows no negative relationship
-              const defScale = Math.pow(minScale, 0.75)
+              const effFg3a    = projOverrides.fg3a_pg   ?? +(baseFg3a   * minScale).toFixed(1)
+              const effFg3Pct  = projOverrides.fg3_pct   ?? baseFg3Pct
+              const effFg2a    = projOverrides.fg2a_pg   ?? +(baseFg2a   * minScale).toFixed(1)
+              const effFg2Pct  = projOverrides.fg2_pct   ?? baseFg2Pct
+              const effFta     = projOverrides.fta_pg    ?? +(baseFta    * minScale).toFixed(1)
+              const effFtPct   = projOverrides.ft_pct    ?? baseFtPct
+              const effAst     = projOverrides.ast       ?? +(baseAst    * minScale).toFixed(1)
+              const effTov     = projOverrides.tov       ?? +(baseTov    * minScale).toFixed(1)
+              const effOrebR   = projOverrides.oreb_rate ?? +(baseOrebR  * defRateAdj).toFixed(2)
+              const effDrebR   = projOverrides.dreb_rate ?? +(baseDrebR  * defRateAdj).toFixed(2)
+              const effStlR    = projOverrides.stl_rate  ?? +(baseStlR   * defRateAdj).toFixed(2)
+              const effBlkR    = projOverrides.blk_rate  ?? +(baseBlkR   * defRateAdj).toFixed(2)
 
-              // FG%/FT%: apply usage decay to FG% only; FT% has no meaningful causal signal
-              // Minutes → shooting: positive in data but selection effect, not applied causally
-              const projFgPct = base.fg_pct != null
-                ? +(base.fg_pct + deltaUsg * (-0.045)).toFixed(1)
-                : null
-              const projFtPct = base.ft_pct != null
-                ? +base.ft_pct.toFixed(1)   // unchanged — no causal relationship found
-                : null
-
+              // Projected stat line from first principles
+              const projFga    = effFg2a + effFg3a
+              const projFgm    = effFg2a * effFg2Pct / 100 + effFg3a * effFg3Pct / 100
+              const projFgPct  = projFga > 0 ? +(projFgm / projFga * 100).toFixed(1) : 0
               const proj = {
-                pts:    +(base.pts  * minScale * usgScale * fgDecay).toFixed(1),
-                ast:    +(base.ast  * minScale * usgScale).toFixed(1),
-                tov:    +(base.tov  * minScale * usgScale * 1.08).toFixed(1),
-                fg3m:   +(base.fg3m * minScale * usgScale * fgDecay).toFixed(1),
-                reb:    +(base.reb  * defScale).toFixed(1),
-                stl:    +(base.stl  * defScale).toFixed(1),
-                blk:    +(base.blk  * defScale).toFixed(1),
+                pts:    +(effFg2a * effFg2Pct/100 * 2 + effFg3a * effFg3Pct/100 * 3 + effFta * effFtPct/100).toFixed(1),
+                fg3m:   +(effFg3a * effFg3Pct / 100).toFixed(1),
                 fg_pct: projFgPct,
-                ft_pct: projFtPct,
+                ft_pct: +effFtPct.toFixed(1),
+                reb:    +((effOrebR + effDrebR) * effMin / 36).toFixed(1),
+                ast:    +effAst.toFixed(1),
+                stl:    +(effStlR * effMin / 36).toFixed(1),
+                blk:    +(effBlkR * effMin / 36).toFixed(1),
+                tov:    +effTov.toFixed(1),
               }
 
-              const changed = effMin !== baseMpg || effUsg !== baseUsg
+              const changed = Object.keys(projOverrides).length > 0
 
-              // ── Projected Z-total + rank ──────────────────────────────────
+              // Z + rank
               const zp   = playerStats.z_params
               const dist = playerStats.z_total_distribution || []
-              const projFgaPg = (base.fga_pg || 0) * minScale * usgScale * fgDecay
-              const projFtaPg = (base.fta_pg || 0) * minScale * usgScale * fgDecay
-
               const zScoreFor = (key, val, fgaPg, ftaPg) => {
                 const p = zp?.[key]
                 if (!p || !p.std) return 0
@@ -9565,80 +9575,74 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 if (key === 'ft_pct') return ((val - p.league_avg) * ftaPg - p.mean) / p.std
                 return (val - p.mean) / p.std
               }
-
               const baseZTotal = (base.z_pts ?? 0) + (base.z_reb ?? 0) + (base.z_ast ?? 0) +
                                  (base.z_stl ?? 0) + (base.z_blk ?? 0) - (base.z_tov ?? 0) +
                                  (base.z_fg3m ?? 0) + (base.z_fg_pct ?? 0) + (base.z_ft_pct ?? 0)
-
               const projZTotal = zp ? (
-                zScoreFor('pts',    proj.pts,    projFgaPg, projFtaPg) +
-                zScoreFor('reb',    proj.reb,    projFgaPg, projFtaPg) +
-                zScoreFor('ast',    proj.ast,    projFgaPg, projFtaPg) +
-                zScoreFor('stl',    proj.stl,    projFgaPg, projFtaPg) +
-                zScoreFor('blk',    proj.blk,    projFgaPg, projFtaPg) -
-                zScoreFor('tov',    proj.tov,    projFgaPg, projFtaPg) +
-                zScoreFor('fg3m',   proj.fg3m,   projFgaPg, projFtaPg) +
-                zScoreFor('fg_pct', proj.fg_pct, projFgaPg, projFtaPg) +
-                zScoreFor('ft_pct', proj.ft_pct, projFgaPg, projFtaPg)
+                zScoreFor('pts',    proj.pts,    projFga, effFta) +
+                zScoreFor('reb',    proj.reb,    projFga, effFta) +
+                zScoreFor('ast',    proj.ast,    projFga, effFta) +
+                zScoreFor('stl',    proj.stl,    projFga, effFta) +
+                zScoreFor('blk',    proj.blk,    projFga, effFta) -
+                zScoreFor('tov',    proj.tov,    projFga, effFta) +
+                zScoreFor('fg3m',   proj.fg3m,   projFga, effFta) +
+                zScoreFor('fg_pct', proj.fg_pct, projFga, effFta) +
+                zScoreFor('ft_pct', proj.ft_pct, projFga, effFta)
               ) : baseZTotal
-
-              // When sliders are at default, trust the backend z-scores to avoid rounding drift
               const effectiveZTotal = changed ? projZTotal : baseZTotal
-              const deltaZTotal = effectiveZTotal - baseZTotal
+              const deltaZTotal     = effectiveZTotal - baseZTotal
               const baseRank  = base.rank ?? null
               const projRank  = changed && dist.length > 0
                 ? dist.filter(z => z > effectiveZTotal).length + 1
                 : baseRank
 
-              const USAGE_ROWS = [
-                { key: 'pts',    label: 'PTS',  tag: 'USG', pct: false },
-                { key: 'ast',    label: 'AST',  tag: 'USG', pct: false },
-                { key: 'tov',    label: 'TOV',  tag: 'USG', pct: false },
-                { key: 'fg3m',   label: '3PM',  tag: 'USG', pct: false },
-                { key: 'fg_pct', label: 'FG%',  tag: 'USG', pct: true  },
-                { key: 'ft_pct', label: 'FT%',  tag: '—',   pct: true  },
-                { key: 'reb',    label: 'REB',  tag: 'MIN', pct: false },
-                { key: 'stl',    label: 'STL',  tag: 'MIN', pct: false },
-                { key: 'blk',    label: 'BLK',  tag: 'MIN', pct: false },
+              const SLIDER_GROUPS = [
+                { label: 'Playing time', fields: [
+                  { key: 'min_pg',    label: 'Min/g',   eff: effMin,    base: baseMpg,   min: 10,  max: 42,  step: 0.5, fmt: v => v.toFixed(1) },
+                ]},
+                { label: 'Shooting', fields: [
+                  { key: 'fg3a_pg',  label: '3PA/g',   eff: effFg3a,   base: baseFg3a,  min: 0,   max: 14,  step: 0.5, fmt: v => v.toFixed(1) },
+                  { key: 'fg3_pct', label: '3P%',      eff: effFg3Pct, base: baseFg3Pct,min: 20,  max: 55,  step: 0.5, fmt: v => v.toFixed(1) + '%' },
+                  { key: 'fg2a_pg',  label: '2PA/g',   eff: effFg2a,   base: baseFg2a,  min: 0,   max: 20,  step: 0.5, fmt: v => v.toFixed(1) },
+                  { key: 'fg2_pct', label: '2P%',      eff: effFg2Pct, base: baseFg2Pct,min: 30,  max: 75,  step: 0.5, fmt: v => v.toFixed(1) + '%' },
+                  { key: 'fta_pg',   label: 'FTA/g',   eff: effFta,    base: baseFta,   min: 0,   max: 14,  step: 0.5, fmt: v => v.toFixed(1) },
+                  { key: 'ft_pct',  label: 'FT%',      eff: effFtPct,  base: baseFtPct, min: 40,  max: 100, step: 0.5, fmt: v => v.toFixed(1) + '%' },
+                ]},
+                { label: 'Playmaking', fields: [
+                  { key: 'ast',      label: 'AST/g',   eff: effAst,    base: baseAst,   min: 0,   max: 15,  step: 0.1, fmt: v => v.toFixed(1) },
+                  { key: 'tov',      label: 'TOV/g',   eff: effTov,    base: baseTov,   min: 0,   max: 8,   step: 0.1, fmt: v => v.toFixed(1) },
+                ]},
+                { label: 'Rebounding (per 36)', fields: [
+                  { key: 'oreb_rate',label: 'OREB/36', eff: effOrebR,  base: baseOrebR, min: 0,   max: 8,   step: 0.1, fmt: v => v.toFixed(1) },
+                  { key: 'dreb_rate',label: 'DREB/36', eff: effDrebR,  base: baseDrebR, min: 0,   max: 14,  step: 0.1, fmt: v => v.toFixed(1) },
+                ]},
+                { label: 'Defense (per 36)', fields: [
+                  { key: 'stl_rate', label: 'STL/36',  eff: effStlR,   base: baseStlR,  min: 0,   max: 4,   step: 0.1, fmt: v => v.toFixed(1) },
+                  { key: 'blk_rate', label: 'BLK/36',  eff: effBlkR,   base: baseBlkR,  min: 0,   max: 4,   step: 0.1, fmt: v => v.toFixed(1) },
+                ]},
+              ]
+
+              const STAT_ROWS = [
+                { key: 'pts',    label: 'PTS',  pct: false },
+                { key: 'fg3m',   label: '3PM',  pct: false },
+                { key: 'fg_pct', label: 'FG%',  pct: true  },
+                { key: 'ft_pct', label: 'FT%',  pct: true  },
+                { key: 'reb',    label: 'REB',  pct: false },
+                { key: 'ast',    label: 'AST',  pct: false },
+                { key: 'stl',    label: 'STL',  pct: false },
+                { key: 'blk',    label: 'BLK',  pct: false },
+                { key: 'tov',    label: 'TOV',  pct: false },
               ]
 
               return (
                 <div className="projection-section">
                   <div className="projection-header" onClick={() => setUsageExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                    <h3 className="panel-title">Usage Projector {!isPro && <span className="pro-badge">PRO</span>}</h3>
+                    <h3 className="panel-title">Stat Line Projector {!isPro && <span className="pro-badge">PRO</span>}</h3>
                     <span className="proj-toggle">{usageExpanded ? '▲' : '▼'}</span>
                   </div>
                   {usageExpanded && (isPro ? (
                     <>
-                    <div className="usage-sliders-row">
-                      <div className="usage-sliders">
-                        <div className="mpg-slider-row">
-                          <span className="ctrl-label">Minutes/game</span>
-                          <input
-                            type="range" min={10} max={42} step={0.5}
-                            value={effMin}
-                            onChange={e => setUsageMinutes(+e.target.value)}
-                            className="mpg-slider"
-                          />
-                          <span className="mpg-value">{effMin.toFixed(1)}</span>
-                          {usageMinutes !== null && (
-                            <button className="usage-reset-btn" onClick={() => setUsageMinutes(null)}>reset</button>
-                          )}
-                        </div>
-                        <div className="mpg-slider-row">
-                          <span className="ctrl-label">Usage%</span>
-                          <input
-                            type="range" min={5} max={45} step={0.5}
-                            value={effUsg}
-                            onChange={e => setUsageUsg(+e.target.value)}
-                            className="mpg-slider"
-                          />
-                          <span className="mpg-value">{effUsg.toFixed(1)}%</span>
-                          {usageUsg !== null && (
-                            <button className="usage-reset-btn" onClick={() => setUsageUsg(null)}>reset</button>
-                          )}
-                        </div>
-                      </div>
+                    <div className="proj-controls-header">
                       {baseRank && projRank && (
                         <div className="usage-rank-pill">
                           <span className="usage-rank-label">9-cat rank</span>
@@ -9656,14 +9660,33 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           </span>
                         </div>
                       )}
+                      {changed && (
+                        <button className="usage-reset-all-btn" onClick={resetAll}>Reset all</button>
+                      )}
                     </div>
 
-                    {changed && defScale !== minScale && (
-                      <p className="usage-decay-note">
-                        REB/STL/BLK scaled at min^0.75 (sub-linear — empirically confirmed).
-                        {deltaUsg > 5 ? ` FG% adjusted ${(deltaUsg * -0.045).toFixed(2)}% for USG increase.` : ''}
-                      </p>
-                    )}
+                    <div className="proj-sliders-grid">
+                      {SLIDER_GROUPS.map(({ label: gLabel, fields }) => (
+                        <div key={gLabel} className="proj-slider-group">
+                          <div className="proj-slider-group-label">{gLabel}</div>
+                          {fields.map(({ key, label, eff, base: bv, min, max, step, fmt }) => (
+                            <div key={key} className={`mpg-slider-row${pinned(key) ? ' pinned' : ''}`}>
+                              <span className="ctrl-label">{label}</span>
+                              <input
+                                type="range" min={min} max={max} step={step}
+                                value={eff}
+                                onChange={e => setOvr(key, +e.target.value)}
+                                className="mpg-slider"
+                              />
+                              <span className="mpg-value">{fmt(eff)}</span>
+                              {pinned(key) && (
+                                <button className="usage-reset-btn" onClick={() => resetOvr(key)}>↩</button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
 
                     <table className="usage-table">
                       <thead>
@@ -9672,28 +9695,22 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           <th className="usage-th-num">Base</th>
                           <th className="usage-th-num">Projected</th>
                           <th className="usage-th-num">Δ</th>
-                          <th className="usage-th-tag"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {USAGE_ROWS.map(({ key, label, tag, pct }) => {
-                          const bv  = base[key] ?? null
-                          const pv  = proj[key] ?? null
+                        {STAT_ROWS.map(({ key, label, pct }) => {
+                          const bv = base[key] ?? null
+                          const pv = proj[key] ?? null
                           if (bv === null || pv === null) return null
                           const delta = pv - bv
-                          const fmt = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
+                          const fmt  = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
                           const fmtD = d => `${d >= 0 ? '+' : ''}${pct ? d.toFixed(1) + '%' : d.toFixed(1)}`
                           return (
                             <tr key={key}>
                               <td className="usage-td-stat">{label}</td>
                               <td className="usage-td-num muted">{fmt(bv)}</td>
                               <td className="usage-td-num">{fmt(pv)}</td>
-                              <td className="usage-td-num usage-delta">
-                                {changed ? fmtD(delta) : '—'}
-                              </td>
-                              <td className="usage-td-tag">
-                                <span className={`usage-tag${tag === 'MIN' ? ' usage-tag-min' : tag === '—' ? ' usage-tag-min' : ''}`}>{tag}</span>
-                              </td>
+                              <td className="usage-td-num usage-delta">{changed ? fmtD(delta) : '—'}</td>
                             </tr>
                           )
                         })}
@@ -9703,19 +9720,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <td className="usage-td-num muted">{baseZTotal.toFixed(2)}</td>
                             <td className="usage-td-num">{effectiveZTotal.toFixed(2)}</td>
                             <td className="usage-td-num usage-delta">
-                              {changed
-                                ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}`
-                                : '—'}
+                              {changed ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}` : '—'}
                             </td>
-                            <td className="usage-td-tag"></td>
                           </tr>
                         )}
                       </tbody>
                     </table>
-                    <p className="usage-note">
-                      Base: {base.period} avg · {baseMpg.toFixed(1)} min/g · {baseUsg.toFixed(1)}% USG
-                      {changed && effUsg !== baseUsg && ` → ${effUsg.toFixed(1)}% USG`}
-                    </p>
+                    <p className="usage-note">Base: {base.period} avg · {baseMpg.toFixed(1)} min/g · REB/STL/BLK rates scale sub-linearly with minutes (α=0.75)</p>
                     </>
                   ) : <SectionLock onUpgrade={onOpenAccount} />)}
                 </div>
