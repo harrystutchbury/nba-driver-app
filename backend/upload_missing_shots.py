@@ -24,7 +24,7 @@ def get_missing_players(prod_url, token):
     resp = requests.get(
         f"{prod_url}/api/admin/shots-status",
         headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
+        timeout=120,
     )
     resp.raise_for_status()
     return resp.json().get("missing_2024_25_shots", [])

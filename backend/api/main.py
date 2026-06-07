@@ -2922,17 +2922,15 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
     """).fetchall()
 
     # Players who have 2024-25 game logs + a map entry but no 2024-25 shot data
-    missing_shots = conn.execute("""
-        SELECT m.br_slug, m.nba_id
-        FROM player_id_map m
-        WHERE EXISTS (
-            SELECT 1 FROM game_logs g WHERE g.player_slug = m.br_slug AND g.season = '2024-25'
-        )
-        AND NOT EXISTS (
-            SELECT 1 FROM shot_logs s WHERE s.player_slug = m.br_slug AND s.season = '2024-25'
-        )
-        ORDER BY m.br_slug
-    """).fetchall()
+    have_shots = {r[0] for r in conn.execute(
+        "SELECT DISTINCT player_slug FROM shot_logs WHERE season='2024-25'"
+    ).fetchall()}
+    have_logs = {r[0]: r[1] for r in conn.execute(
+        "SELECT m.br_slug, m.nba_id FROM player_id_map m "
+        "WHERE EXISTS (SELECT 1 FROM game_logs g WHERE g.player_slug=m.br_slug AND g.season='2024-25')"
+    ).fetchall()}
+    missing_shots = [{"slug": s, "nba_id": have_logs[s]} for s in have_logs if s not in have_shots]
+    missing_shots.sort(key=lambda x: x["slug"])
 
     conn.close()
     return {
@@ -2943,9 +2941,7 @@ def admin_shots_status(current_user: str = Depends(get_current_user)):
             {"season": r[0], "count": r[1], "slugs": r[2].split(",") if r[2] else []}
             for r in unmatched
         ],
-        "missing_2024_25_shots": [
-            {"slug": r[0], "nba_id": r[1]} for r in missing_shots
-        ],
+        "missing_2024_25_shots": missing_shots,
     }
 
 
