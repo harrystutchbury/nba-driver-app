@@ -9576,6 +9576,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
               const changed = Object.keys(projOverrides).length > 0
 
+              // When nothing is overridden use actual season averages to avoid first-principles drift
+              const projDisplay = changed ? proj : {
+                pts: base.pts, fg3m: base.fg3m, fg_pct: base.fg_pct, ft_pct: base.ft_pct,
+                reb: base.reb, ast: base.ast, stl: base.stl, blk: base.blk, tov: base.tov,
+              }
+
               // Z + rank
               const zp   = playerStats.z_params
               const dist = playerStats.z_total_distribution || []
@@ -9713,7 +9719,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       <tbody>
                         {STAT_ROWS.map(({ key, label, pct }) => {
                           const bv = base[key] ?? null
-                          const pv = proj[key] ?? null
+                          const pv = projDisplay[key] ?? null
                           if (bv === null || pv === null) return null
                           const delta = pv - bv
                           const fmt  = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
