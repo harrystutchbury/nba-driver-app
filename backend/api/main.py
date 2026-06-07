@@ -433,6 +433,13 @@ def _avg_row(rows, team_game_map=None):
     fta_pg    = sum(r["fta"]  for r in rows) / gp
     total_fga = sum(r["fga"]  for r in rows)
     total_fta = sum(r["fta"]  for r in rows)
+    total_fg3a = sum(r.get("fg3a") or 0 for r in rows)
+    total_fg3m = sum(r["fg3m"] for r in rows)
+    total_min  = sum(r["min"]  for r in rows)
+    total_oreb = sum(r.get("oreb") or 0 for r in rows)
+    total_dreb = sum(r.get("dreb") or 0 for r in rows)
+    total_stl  = sum(r["stl"]  for r in rows)
+    total_blk  = sum(r["blk"]  for r in rows)
     fg_pct    = sum(r["fgm"]  for r in rows) / total_fga if total_fga else None
     ft_pct    = sum(r["ftm"]  for r in rows) / total_fta if total_fta else None
 
@@ -460,20 +467,26 @@ def _avg_row(rows, team_game_map=None):
             usg_pct = round((fga_pg + 0.44 * fta_pg + tov) * 48 / min_pg, 1)
 
     return {
-        "gp":      gp,
-        "min_pg":  round(min_pg, 1),
-        "pts":     round(pts,  1),
-        "reb":     round(reb,  1),
-        "ast":     round(ast,  1),
-        "stl":     round(stl,  1),
-        "blk":     round(blk,  1),
-        "tov":     round(tov,  1),
-        "fg3m":    round(fg3m, 1),
-        "fg_pct":  round(fg_pct * 100, 1) if fg_pct is not None else None,
-        "ft_pct":  round(ft_pct * 100, 1) if ft_pct is not None else None,
-        "fga_pg":  round(fga_pg, 1),
-        "fta_pg":  round(fta_pg, 1),
-        "usg_pct": usg_pct,
+        "gp":        gp,
+        "min_pg":    round(min_pg, 1),
+        "pts":       round(pts,  1),
+        "reb":       round(reb,  1),
+        "ast":       round(ast,  1),
+        "stl":       round(stl,  1),
+        "blk":       round(blk,  1),
+        "tov":       round(tov,  1),
+        "fg3m":      round(fg3m, 1),
+        "fg_pct":    round(fg_pct * 100, 1) if fg_pct is not None else None,
+        "ft_pct":    round(ft_pct * 100, 1) if ft_pct is not None else None,
+        "fga_pg":    round(fga_pg, 1),
+        "fta_pg":    round(fta_pg, 1),
+        "fg3a_pg":   round(total_fg3a / gp, 2) if gp else 0,
+        "fg3_pct":   round(total_fg3m / total_fg3a * 100, 1) if total_fg3a else 0,
+        "oreb_rate": round(total_oreb / total_min * 36, 2) if total_min else 0,
+        "dreb_rate": round(total_dreb / total_min * 36, 2) if total_min else 0,
+        "stl_rate":  round(total_stl  / total_min * 36, 2) if total_min else 0,
+        "blk_rate":  round(total_blk  / total_min * 36, 2) if total_min else 0,
+        "usg_pct":   usg_pct,
     }
 
 
@@ -727,7 +740,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
     }
 
     rows = conn.execute("""
-        SELECT season, min, pts, reb, ast, stl, blk, tov, fgm, fga, fg3m, ftm, fta, game_date, team
+        SELECT season, min, pts, reb, oreb, dreb, ast, stl, blk, tov, fgm, fga, fg3m, fg3a, ftm, fta, game_date, team
         FROM game_logs
         WHERE player_slug = ? AND min > 0
         ORDER BY game_date DESC
