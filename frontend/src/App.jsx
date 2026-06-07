@@ -9516,16 +9516,16 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               const baseFg3Pct = base.fg3_pct    ?? 0
               const baseFtPct  = base.ft_pct     ?? 0
 
-              // Base per-minute rates
-              const baseFg3aPm = (base.fg3a_pg    ?? 0) / baseMpg
-              const baseFg2aPm = (baseFg2.fg2a_pg ?? 0) / baseMpg
-              const baseFtaPm  = (base.fta_pg     ?? 0) / baseMpg
-              const baseAstPm  = (base.ast        ?? 0) / baseMpg
-              const baseTovPm  = (base.tov        ?? 0) / baseMpg
-              const baseOrebPm = (base.oreb_rate  ?? 0) / 36
-              const baseDrebPm = (base.dreb_rate  ?? 0) / 36
-              const baseStlPm  = (base.stl_rate   ?? 0) / 36
-              const baseBlkPm  = (base.blk_rate   ?? 0) / 36
+              // Base per-30-minute rates
+              const baseFg3aP30 = (base.fg3a_pg    ?? 0) / baseMpg * 30
+              const baseFg2aP30 = (baseFg2.fg2a_pg ?? 0) / baseMpg * 30
+              const baseFtaP30  = (base.fta_pg     ?? 0) / baseMpg * 30
+              const baseAstP30  = (base.ast        ?? 0) / baseMpg * 30
+              const baseTovP30  = (base.tov        ?? 0) / baseMpg * 30
+              const baseOrebP30 = (base.oreb_rate  ?? 0) / 36 * 30
+              const baseDrebP30 = (base.dreb_rate  ?? 0) / 36 * 30
+              const baseStlP30  = (base.stl_rate   ?? 0) / 36 * 30
+              const baseBlkP30  = (base.blk_rate   ?? 0) / 36 * 30
 
               const setOvr   = (key, val) => setProjOverrides(p => ({ ...p, [key]: val }))
               const resetOvr = (key)      => setProjOverrides(p => { const n = { ...p }; delete n[key]; return n })
@@ -9538,26 +9538,26 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               const usgScale   = effUsg / baseUsg
               const defRateAdj = Math.pow(minScale, -0.25)
 
-              // Offensive per-min rates scale with usage; defensive scale sub-linearly with min
-              const effFg3aPm  = projOverrides.fg3a_pm ?? +(baseFg3aPm * usgScale).toFixed(4)
-              const effFg3Pct  = projOverrides.fg3_pct ?? baseFg3Pct
-              const effFg2aPm  = projOverrides.fg2a_pm ?? +(baseFg2aPm * usgScale).toFixed(4)
-              const effFg2Pct  = projOverrides.fg2_pct ?? baseFg2Pct
-              const effFtaPm   = projOverrides.fta_pm  ?? +(baseFtaPm  * usgScale).toFixed(4)
-              const effFtPct   = projOverrides.ft_pct  ?? baseFtPct
-              const effAstPm   = projOverrides.ast_pm  ?? baseAstPm
-              const effTovPm   = projOverrides.tov_pm  ?? +(baseTovPm  * usgScale).toFixed(4)
-              const effOrebPm  = projOverrides.oreb_pm ?? +(baseOrebPm * defRateAdj).toFixed(4)
-              const effDrebPm  = projOverrides.dreb_pm ?? +(baseDrebPm * defRateAdj).toFixed(4)
-              const effStlPm   = projOverrides.stl_pm  ?? +(baseStlPm  * defRateAdj).toFixed(4)
-              const effBlkPm   = projOverrides.blk_pm  ?? +(baseBlkPm  * defRateAdj).toFixed(4)
+              // Offensive per-30 rates scale with usage; defensive scale sub-linearly with min
+              const effFg3aP30  = projOverrides.fg3a_p30 ?? +(baseFg3aP30 * usgScale).toFixed(2)
+              const effFg3Pct   = projOverrides.fg3_pct  ?? baseFg3Pct
+              const effFg2aP30  = projOverrides.fg2a_p30 ?? +(baseFg2aP30 * usgScale).toFixed(2)
+              const effFg2Pct   = projOverrides.fg2_pct  ?? baseFg2Pct
+              const effFtaP30   = projOverrides.fta_p30  ?? +(baseFtaP30  * usgScale).toFixed(2)
+              const effFtPct    = projOverrides.ft_pct   ?? baseFtPct
+              const effAstP30   = projOverrides.ast_p30  ?? +(baseAstP30).toFixed(2)
+              const effTovP30   = projOverrides.tov_p30  ?? +(baseTovP30  * usgScale).toFixed(2)
+              const effOrebP30  = projOverrides.oreb_p30 ?? +(baseOrebP30 * defRateAdj).toFixed(2)
+              const effDrebP30  = projOverrides.dreb_p30 ?? +(baseDrebP30 * defRateAdj).toFixed(2)
+              const effStlP30   = projOverrides.stl_p30  ?? +(baseStlP30  * defRateAdj).toFixed(2)
+              const effBlkP30   = projOverrides.blk_p30  ?? +(baseBlkP30  * defRateAdj).toFixed(2)
 
-              // Per-game outputs
-              const effFg3a  = effFg3aPm * effMin
-              const effFg2a  = effFg2aPm * effMin
-              const effFta   = effFtaPm  * effMin
-              const effAst   = effAstPm  * effMin
-              const effTov   = effTovPm  * effMin
+              // Per-game outputs (rate/30 × minutes)
+              const effFg3a  = effFg3aP30 / 30 * effMin
+              const effFg2a  = effFg2aP30 / 30 * effMin
+              const effFta   = effFtaP30  / 30 * effMin
+              const effAst   = effAstP30  / 30 * effMin
+              const effTov   = effTovP30  / 30 * effMin
 
               const projFga   = effFg2a + effFg3a
               const projFgm   = effFg2a * effFg2Pct / 100 + effFg3a * effFg3Pct / 100
@@ -9567,10 +9567,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 fg3m:   +(effFg3a * effFg3Pct / 100).toFixed(1),
                 fg_pct: projFgPct,
                 ft_pct: +effFtPct.toFixed(1),
-                reb:    +((effOrebPm + effDrebPm) * effMin).toFixed(1),
+                reb:    +((effOrebP30 + effDrebP30) / 30 * effMin).toFixed(1),
                 ast:    +effAst.toFixed(1),
-                stl:    +(effStlPm * effMin).toFixed(1),
-                blk:    +(effBlkPm * effMin).toFixed(1),
+                stl:    +(effStlP30 / 30 * effMin).toFixed(1),
+                blk:    +(effBlkP30 / 30 * effMin).toFixed(1),
                 tov:    +effTov.toFixed(1),
               }
 
@@ -9613,31 +9613,30 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 ? dist.filter(z => z > effectiveZTotal).length + 1
                 : baseRank
 
-              const pm3 = v => v.toFixed(3)
-              const pm2 = v => v.toFixed(3)
+              const p30 = v => v.toFixed(1)
               const pct = v => v.toFixed(1) + '%'
               const SLIDER_GROUPS = [
                 { label: 'Playing time & usage', fields: [
-                  { key: 'min_pg',   label: 'Min/g',    eff: effMin,    base: baseMpg,   min: 10,   max: 42,   step: 0.5,   fmt: v => v.toFixed(1) },
-                  { key: 'usg_pct',  label: 'Usage%',   eff: effUsg,    base: baseUsg,   min: 5,    max: 45,   step: 0.5,   fmt: pct },
+                  { key: 'min_pg',    label: 'Min/g',   eff: effMin,     base: baseMpg,    min: 10,  max: 42,  step: 0.5,  fmt: v => v.toFixed(1) },
+                  { key: 'usg_pct',   label: 'Usage%',  eff: effUsg,     base: baseUsg,    min: 5,   max: 45,  step: 0.5,  fmt: pct },
                 ]},
                 { label: 'Shooting', fields: [
-                  { key: 'fg3a_pm',  label: '3PA/min',  eff: effFg3aPm, base: baseFg3aPm,min: 0,    max: 0.5,  step: 0.005, fmt: pm3 },
-                  { key: 'fg3_pct',  label: '3P%',      eff: effFg3Pct, base: baseFg3Pct,min: 20,   max: 55,   step: 0.5,   fmt: pct },
-                  { key: 'fg2a_pm',  label: '2PA/min',  eff: effFg2aPm, base: baseFg2aPm,min: 0,    max: 0.7,  step: 0.005, fmt: pm3 },
-                  { key: 'fg2_pct',  label: '2P%',      eff: effFg2Pct, base: baseFg2Pct,min: 30,   max: 75,   step: 0.5,   fmt: pct },
-                  { key: 'fta_pm',   label: 'FTA/min',  eff: effFtaPm,  base: baseFtaPm, min: 0,    max: 0.4,  step: 0.005, fmt: pm3 },
-                  { key: 'ft_pct',   label: 'FT%',      eff: effFtPct,  base: baseFtPct, min: 40,   max: 100,  step: 0.5,   fmt: pct },
+                  { key: 'fg3a_p30',  label: '3PA/30',  eff: effFg3aP30, base: baseFg3aP30,min: 0,   max: 15,  step: 0.1,  fmt: p30 },
+                  { key: 'fg3_pct',   label: '3P%',     eff: effFg3Pct,  base: baseFg3Pct, min: 20,  max: 55,  step: 0.5,  fmt: pct },
+                  { key: 'fg2a_p30',  label: '2PA/30',  eff: effFg2aP30, base: baseFg2aP30,min: 0,   max: 21,  step: 0.1,  fmt: p30 },
+                  { key: 'fg2_pct',   label: '2P%',     eff: effFg2Pct,  base: baseFg2Pct, min: 30,  max: 75,  step: 0.5,  fmt: pct },
+                  { key: 'fta_p30',   label: 'FTA/30',  eff: effFtaP30,  base: baseFtaP30, min: 0,   max: 12,  step: 0.1,  fmt: p30 },
+                  { key: 'ft_pct',    label: 'FT%',     eff: effFtPct,   base: baseFtPct,  min: 40,  max: 100, step: 0.5,  fmt: pct },
                 ]},
                 { label: 'Playmaking', fields: [
-                  { key: 'ast_pm',   label: 'AST/min',  eff: effAstPm,  base: baseAstPm, min: 0,    max: 0.35, step: 0.005, fmt: pm3 },
-                  { key: 'tov_pm',   label: 'TOV/min',  eff: effTovPm,  base: baseTovPm, min: 0,    max: 0.15, step: 0.002, fmt: pm3 },
+                  { key: 'ast_p30',   label: 'AST/30',  eff: effAstP30,  base: baseAstP30, min: 0,   max: 12,  step: 0.1,  fmt: p30 },
+                  { key: 'tov_p30',   label: 'TOV/30',  eff: effTovP30,  base: baseTovP30, min: 0,   max: 5,   step: 0.05, fmt: p30 },
                 ]},
                 { label: 'Rebounding & defense', fields: [
-                  { key: 'oreb_pm',  label: 'OREB/min', eff: effOrebPm, base: baseOrebPm,min: 0,    max: 0.15, step: 0.002, fmt: pm3 },
-                  { key: 'dreb_pm',  label: 'DREB/min', eff: effDrebPm, base: baseDrebPm,min: 0,    max: 0.35, step: 0.002, fmt: pm3 },
-                  { key: 'stl_pm',   label: 'STL/min',  eff: effStlPm,  base: baseStlPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
-                  { key: 'blk_pm',   label: 'BLK/min',  eff: effBlkPm,  base: baseBlkPm, min: 0,    max: 0.1,  step: 0.001, fmt: pm3 },
+                  { key: 'oreb_p30',  label: 'OREB/30', eff: effOrebP30, base: baseOrebP30,min: 0,   max: 5,   step: 0.05, fmt: p30 },
+                  { key: 'dreb_p30',  label: 'DREB/30', eff: effDrebP30, base: baseDrebP30,min: 0,   max: 10,  step: 0.1,  fmt: p30 },
+                  { key: 'stl_p30',   label: 'STL/30',  eff: effStlP30,  base: baseStlP30, min: 0,   max: 3,   step: 0.05, fmt: p30 },
+                  { key: 'blk_p30',   label: 'BLK/30',  eff: effBlkP30,  base: baseBlkP30, min: 0,   max: 3,   step: 0.05, fmt: p30 },
                 ]},
               ]
 
