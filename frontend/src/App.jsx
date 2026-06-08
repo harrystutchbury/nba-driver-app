@@ -8324,6 +8324,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const STAT_COLS = [
     { key: 'min_pg', label: 'MIN', noZ: true },
     { key: 'pts',    label: 'PTS' },
+    { key: 'fg3m',   label: '3PM' },
     { key: 'reb',    label: 'REB' },
     { key: 'ast',    label: 'AST' },
     { key: 'stl',    label: 'STL' },
@@ -8331,7 +8332,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     { key: 'tov',    label: 'TOV' },
     { key: 'fg_pct', label: 'FG%' },
     { key: 'ft_pct', label: 'FT%' },
-    { key: 'fg3m',   label: '3PM' },
   ]
 
   function zColor(z, key) {
