@@ -1689,12 +1689,12 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .ctrl-label {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--muted);
-  min-width: 68px;
+  letter-spacing: 1px;
+  color: var(--label);
+  min-width: 72px;
   flex-shrink: 0;
 }
 
@@ -1747,10 +1747,10 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .proj-slider-group-label {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--label);
   margin-bottom: 4px;
   padding-bottom: 3px;
   border-bottom: 1px solid var(--border);
@@ -1829,10 +1829,10 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .usage-th-stat,
 .usage-th-num,
 .usage-th-tag {
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--label);
   padding: 4px 8px 8px;
   font-weight: 500;
 }
