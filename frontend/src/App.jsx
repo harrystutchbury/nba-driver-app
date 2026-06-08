@@ -7646,14 +7646,14 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
   // With/Without — fetch data when other player is selected
   useEffect(() => {
-    if (!selected?.slug || !wwOther?.slug) return
+    if (!selectedPlayer?.slug || !wwOther?.slug) return
     setWwData(null); setWwLoading(true)
-    apiFetch(`/api/player/with-without?player=${encodeURIComponent(selected.slug)}&other=${encodeURIComponent(wwOther.slug)}`)
+    apiFetch(`/api/player/with-without?player=${encodeURIComponent(selectedPlayer.slug)}&other=${encodeURIComponent(wwOther.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setWwData(d))
       .catch(() => {})
       .finally(() => setWwLoading(false))
-  }, [selected?.slug, wwOther?.slug])
+  }, [selectedPlayer?.slug, wwOther?.slug])
 
   // Apply breakdown table alignment after zBreakdown renders the table
   useEffect(() => {
@@ -9860,7 +9860,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           </div>
                         )}
                       </div>
-                      <p className="ww-hint">See how {playerStats.name || selected?.name} performs in games {wwOther ? `with/without ${wwOther.name}` : 'with or without a teammate'}</p>
+                      <p className="ww-hint">See how {playerStats.name || selectedPlayer?.name} performs in games {wwOther ? `with/without ${wwOther.name}` : 'with or without a teammate'}</p>
                     </div>
 
                     {wwLoading && <div className="ww-loading">Loading…</div>}
