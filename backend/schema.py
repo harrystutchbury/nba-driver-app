@@ -427,6 +427,15 @@ def init_db():
         )
     """)
 
+    # One-time cleanup: remove playoff game rows.
+    # Regular season always ends by April 14; anything after April 15 of the
+    # season-end year is playoffs.  The DELETE is idempotent — after the first
+    # run it matches zero rows and costs nothing.
+    conn.execute("""
+        DELETE FROM game_logs
+        WHERE game_date > ('20' || substr(season, 6, 2) || '-04-15')
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

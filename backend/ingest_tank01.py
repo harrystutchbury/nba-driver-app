@@ -126,13 +126,11 @@ def fetch_player_list() -> list[dict]:
 
 
 def fetch_player_games(tank01_id: str, season_end_year: int) -> dict:
-    """Return game log dict keyed by gameID for a single player + season (regular + playoffs)."""
+    """Return game log dict keyed by gameID for a single player + season (regular season only)."""
     params = {"playerID": tank01_id, "season": str(season_end_year)}
     regular = _get("getNBAGamesForPlayer", params).get("body", {})
     time.sleep(REQUEST_DELAY)
-    playoff = _get("getNBAGamesForPlayer", {**params, "seasonType": "Playoffs"}).get("body", {})
-    time.sleep(REQUEST_DELAY)
-    return {**regular, **playoff}
+    return regular
 
 
 # ---------------------------------------------------------------------------
