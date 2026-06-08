@@ -9608,6 +9608,25 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               ) : baseZTotal
               const effectiveZTotal = changed ? projZTotal : baseZTotal
               const deltaZTotal     = effectiveZTotal - baseZTotal
+
+              const baseZ = {
+                pts: base.z_pts ?? null, fg3m: base.z_fg3m ?? null,
+                fg_pct: base.z_fg_pct ?? null, ft_pct: base.z_ft_pct ?? null,
+                reb: base.z_reb ?? null, ast: base.z_ast ?? null,
+                stl: base.z_stl ?? null, blk: base.z_blk ?? null, tov: base.z_tov ?? null,
+              }
+              const projZ = zp ? {
+                pts:    zScoreFor('pts',    proj.pts,    projFga, effFta),
+                fg3m:   zScoreFor('fg3m',   proj.fg3m,   projFga, effFta),
+                fg_pct: zScoreFor('fg_pct', proj.fg_pct, projFga, effFta),
+                ft_pct: zScoreFor('ft_pct', proj.ft_pct, projFga, effFta),
+                reb:    zScoreFor('reb',    proj.reb,    projFga, effFta),
+                ast:    zScoreFor('ast',    proj.ast,    projFga, effFta),
+                stl:    zScoreFor('stl',    proj.stl,    projFga, effFta),
+                blk:    zScoreFor('blk',    proj.blk,    projFga, effFta),
+                tov:    zScoreFor('tov',    proj.tov,    projFga, effFta),
+              } : null
+
               const baseRank  = base.rank ?? null
               const projRank  = changed && dist.length > 0
                 ? dist.filter(z => z > effectiveZTotal).length + 1
@@ -9641,15 +9660,15 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               ]
 
               const STAT_ROWS = [
-                { key: 'pts',    label: 'PTS',  pct: false },
-                { key: 'fg3m',   label: '3PM',  pct: false },
-                { key: 'fg_pct', label: 'FG%',  pct: true  },
-                { key: 'ft_pct', label: 'FT%',  pct: true  },
-                { key: 'reb',    label: 'REB',  pct: false },
-                { key: 'ast',    label: 'AST',  pct: false },
-                { key: 'stl',    label: 'STL',  pct: false },
-                { key: 'blk',    label: 'BLK',  pct: false },
-                { key: 'tov',    label: 'TOV',  pct: false },
+                { key: 'pts',    label: 'PTS',  pct: false, zKey: 'pts',    negZ: false },
+                { key: 'fg3m',   label: '3PM',  pct: false, zKey: 'fg3m',   negZ: false },
+                { key: 'fg_pct', label: 'FG%',  pct: true,  zKey: 'fg_pct', negZ: false },
+                { key: 'ft_pct', label: 'FT%',  pct: true,  zKey: 'ft_pct', negZ: false },
+                { key: 'reb',    label: 'REB',  pct: false, zKey: 'reb',    negZ: false },
+                { key: 'ast',    label: 'AST',  pct: false, zKey: 'ast',    negZ: false },
+                { key: 'stl',    label: 'STL',  pct: false, zKey: 'stl',    negZ: false },
+                { key: 'blk',    label: 'BLK',  pct: false, zKey: 'blk',    negZ: false },
+                { key: 'tov',    label: 'TOV',  pct: false, zKey: 'tov',    negZ: true  },
               ]
 
               return (
@@ -9687,21 +9706,33 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       {SLIDER_GROUPS.map(({ label: gLabel, fields }) => (
                         <div key={gLabel} className="proj-slider-group">
                           <div className="proj-slider-group-label">{gLabel}</div>
-                          {fields.map(({ key, label, eff, base: bv, min, max, step, fmt }) => (
+                          {fields.map(({ key, label, eff, base: bv, min, max, step, fmt }) => {
+                            const snapped = Math.round(eff / step) * step
+                            const basePct = Math.min(1, Math.max(0, (bv - min) / (max - min)))
+                            return (
                             <div key={key} className={`mpg-slider-row${pinned(key) ? ' pinned' : ''}`}>
                               <span className="ctrl-label">{label}</span>
-                              <input
-                                type="range" min={min} max={max} step={step}
-                                value={eff}
-                                onChange={e => setOvr(key, +e.target.value)}
-                                className="mpg-slider"
-                              />
-                              <span className="mpg-value">{fmt(eff)}</span>
+                              <div className="mpg-slider-wrap">
+                                <input
+                                  type="range" min={min} max={max} step={step}
+                                  value={snapped}
+                                  onChange={e => setOvr(key, +e.target.value)}
+                                  className="mpg-slider"
+                                />
+                                {pinned(key) && (
+                                  <div
+                                    className="mpg-baseline-tick"
+                                    style={{ left: `calc(7px + ${basePct.toFixed(4)} * (100% - 14px))` }}
+                                  />
+                                )}
+                              </div>
+                              <span className="mpg-value">{fmt(snapped)}</span>
                               {pinned(key) && (
                                 <button className="usage-reset-btn" onClick={() => resetOvr(key)}>↩</button>
                               )}
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       ))}
                     </div>
@@ -9711,23 +9742,31 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         <tr>
                           <th className="usage-th-stat"></th>
                           <th className="usage-th-num">Base</th>
+                          <th className="usage-th-num usage-th-z">Z</th>
                           <th className="usage-th-num">Projected</th>
+                          <th className="usage-th-num usage-th-z">Z</th>
                           <th className="usage-th-num">Δ</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {STAT_ROWS.map(({ key, label, pct }) => {
+                        {STAT_ROWS.map(({ key, label, pct, zKey, negZ }) => {
                           const bv = base[key] ?? null
                           const pv = projDisplay[key] ?? null
                           if (bv === null || pv === null) return null
                           const delta = pv - bv
                           const fmt  = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
                           const fmtD = d => `${d >= 0 ? '+' : ''}${pct ? d.toFixed(1) + '%' : d.toFixed(1)}`
+                          const bz = baseZ[zKey] != null ? (negZ ? -baseZ[zKey] : baseZ[zKey]) : null
+                          const pz = projZ && projZ[zKey] != null ? (negZ ? -projZ[zKey] : projZ[zKey]) : null
+                          const fmtZ = z => z == null ? '—' : `${z >= 0 ? '+' : ''}${z.toFixed(2)}`
+                          const zCls = z => z == null ? '' : z >= 0.1 ? ' z-pos' : z <= -0.1 ? ' z-neg' : ''
                           return (
                             <tr key={key}>
                               <td className="usage-td-stat">{label}</td>
                               <td className="usage-td-num muted">{fmt(bv)}</td>
+                              <td className={`usage-td-num usage-td-z${zCls(bz)}`}>{fmtZ(bz)}</td>
                               <td className="usage-td-num">{fmt(pv)}</td>
+                              <td className={`usage-td-num usage-td-z${zCls(pz)}`}>{changed ? fmtZ(pz) : '—'}</td>
                               <td className="usage-td-num usage-delta">{changed ? fmtD(delta) : '—'}</td>
                             </tr>
                           )
@@ -9736,7 +9775,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           <tr className="usage-tr-total">
                             <td className="usage-td-stat">Z-Total</td>
                             <td className="usage-td-num muted">{baseZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num usage-td-z"></td>
                             <td className="usage-td-num">{effectiveZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num usage-td-z"></td>
                             <td className="usage-td-num usage-delta">
                               {changed ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}` : '—'}
                             </td>
