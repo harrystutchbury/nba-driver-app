@@ -7552,12 +7552,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [projScenario, setProjScenario] = useState('baseline')
   const [usageExpanded, setUsageExpanded] = useState(false)
   const [projOverrides, setProjOverrides] = useState({})     // field → overridden value (empty = all auto)
-  const [wwExpanded, setWwExpanded]       = useState(false)
-  const [wwSearch, setWwSearch]           = useState('')
-  const [wwSuggestions, setWwSuggestions] = useState([])
-  const [wwOther, setWwOther]             = useState(null)   // { slug, name, team }
-  const [wwData, setWwData]               = useState(null)
-  const [wwLoading, setWwLoading]         = useState(false)
+
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
@@ -7632,28 +7627,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   // Reset compare players when main player changes
   useEffect(() => { setCmpPlayers([]) }, [selectedPlayer])
 
-  // With/Without — debounced player search
-  useEffect(() => {
-    if (!wwSearch.trim() || wwOther) { setWwSuggestions([]); return }
-    const t = setTimeout(() => {
-      apiFetch(`/api/players?q=${encodeURIComponent(wwSearch)}`)
-        .then(r => r.ok ? r.json() : [])
-        .then(d => setWwSuggestions(d.slice(0, 8)))
-        .catch(() => {})
-    }, 250)
-    return () => clearTimeout(t)
-  }, [wwSearch, wwOther])
-
-  // With/Without — fetch data when other player is selected
-  useEffect(() => {
-    if (!selectedPlayer?.slug || !wwOther?.slug) return
-    setWwData(null); setWwLoading(true)
-    apiFetch(`/api/player/with-without?player=${encodeURIComponent(selectedPlayer.slug)}&other=${encodeURIComponent(wwOther.slug)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setWwData(d))
-      .catch(() => {})
-      .finally(() => setWwLoading(false))
-  }, [selectedPlayer?.slug, wwOther?.slug])
 
   // Apply breakdown table alignment after zBreakdown renders the table
   useEffect(() => {
@@ -7704,7 +7677,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setProjYear(1)
     setProjScenario('baseline')
     setProjOverrides({})
-    setWwOther(null); setWwSearch(''); setWwData(null); setWwSuggestions([])
+
     apiFetch(`/api/player-stats?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setPlayerStats(d) })
@@ -9826,103 +9799,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               )
             })()}
 
-            {/* ── With / Without ──────────────────────────── */}
-            {playerStats && (
-              <div className="projection-section">
-                <div className="projection-header" onClick={() => setWwExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">With / Without</h3>
-                  <span className="proj-toggle">{wwExpanded ? '▲' : '▼'}</span>
-                </div>
-                {wwExpanded && (
-                  <div className="ww-section">
-                    <div className="ww-search-row">
-                      <div className="ww-search-wrap">
-                        <input
-                          className="ww-search-input"
-                          placeholder="Search for a player…"
-                          value={wwSearch}
-                          onChange={e => { setWwSearch(e.target.value); if (wwOther) { setWwOther(null); setWwData(null) } }}
-                          autoComplete="off"
-                        />
-                        {wwOther && (
-                          <button className="ww-clear-btn" onClick={() => { setWwOther(null); setWwSearch(''); setWwData(null) }}>✕</button>
-                        )}
-                        {wwSuggestions.length > 0 && (
-                          <div className="ww-dropdown">
-                            {wwSuggestions.map(s => (
-                              <div key={s.slug} className="ww-suggestion" onClick={() => {
-                                setWwOther(s); setWwSearch(s.name); setWwSuggestions([])
-                              }}>
-                                <span className="ww-sug-name">{s.name}</span>
-                                <span className="ww-sug-team">{s.team}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <p className="ww-hint">See how {playerStats.name || selectedPlayer?.name} performs in games {wwOther ? `with/without ${wwOther.name}` : 'with or without a teammate'}</p>
-                    </div>
 
-                    {wwLoading && <div className="ww-loading">Loading…</div>}
-
-                    {wwData && !wwLoading && (() => {
-                      const w  = wwData.with
-                      const wo = wwData.without
-                      if (!w && !wo) return <p className="usage-note">No shared games found — these players may not have been teammates.</p>
-
-                      const WW_STATS = [
-                        { key: 'min_pg', label: 'MIN',  pct: false },
-                        { key: 'pts',    label: 'PTS',  pct: false },
-                        { key: 'fg3m',   label: '3PM',  pct: false },
-                        { key: 'fg_pct', label: 'FG%',  pct: true  },
-                        { key: 'ft_pct', label: 'FT%',  pct: true  },
-                        { key: 'reb',    label: 'REB',  pct: false },
-                        { key: 'ast',    label: 'AST',  pct: false },
-                        { key: 'stl',    label: 'STL',  pct: false },
-                        { key: 'blk',    label: 'BLK',  pct: false },
-                        { key: 'tov',    label: 'TOV',  pct: false },
-                      ]
-                      const fmt  = (v, pct) => v == null ? '—' : pct ? `${v.toFixed(1)}%` : v.toFixed(1)
-                      const fmtD = (d, pct, isTov) => {
-                        const better = isTov ? d < 0 : d > 0
-                        const cls = Math.abs(d) < 0.05 ? '' : better ? 'pos' : 'neg'
-                        const str = `${d >= 0 ? '+' : ''}${pct ? d.toFixed(1) + '%' : d.toFixed(1)}`
-                        return <span className={cls}>{str}</span>
-                      }
-                      return (
-                        <table className="usage-table">
-                          <thead>
-                            <tr>
-                              <th className="usage-th-stat"></th>
-                              <th className="usage-th-num">With {wwData.other_name} {w ? `(${w.gp}g)` : ''}</th>
-                              <th className="usage-th-num">Without {w || wo ? `(${wo?.gp ?? 0}g)` : ''}</th>
-                              <th className="usage-th-num">Diff</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {WW_STATS.map(({ key, label, pct }) => {
-                              const wv  = w?.[key]  ?? null
-                              const wov = wo?.[key] ?? null
-                              const diff = wv != null && wov != null ? wv - wov : null
-                              return (
-                                <tr key={key}>
-                                  <td className="usage-td-stat">{label}</td>
-                                  <td className="usage-td-num">{fmt(wv, pct)}</td>
-                                  <td className="usage-td-num muted">{fmt(wov, pct)}</td>
-                                  <td className="usage-td-num usage-delta">
-                                    {diff != null ? fmtD(diff, pct, key === 'tov') : '—'}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      )
-                    })()}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ── Projection controls + trend chart ────────── */}
             {(projection || projLoading) && (
