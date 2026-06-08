@@ -3034,6 +3034,55 @@ def admin_refresh_shots(current_user: str = Depends(get_current_user)):
     return {"status": "started", "message": "Shot refresh running in background — check /admin/shots-status for progress"}
 
 
+# -----------------------------------------------------------------------
+# GET /player/with-without
+# -----------------------------------------------------------------------
+@router.get("/player/with-without")
+def player_with_without(
+    player: str = Query(..., description="Main player slug"),
+    other:  str = Query(..., description="Comparison player slug"),
+    season: Optional[str] = Query(None, description="e.g. 2024-25"),
+):
+    conn = get_conn()
+    try:
+        name_row = conn.execute(
+            "SELECT full_name FROM players WHERE slug = ? ORDER BY season DESC LIMIT 1",
+            (other,)
+        ).fetchone()
+        other_name = name_row["full_name"] if name_row else other
+
+        season_clause = "AND g.season = ?" if season else ""
+        params = [other, player] + ([season] if season else [])
+
+        rows = conn.execute(f"""
+            SELECT
+                CASE WHEN COALESCE(b.min, 0) > 0 THEN 'with' ELSE 'without' END AS scenario,
+                g.min, g.pts, g.reb, g.oreb, g.dreb, g.ast, g.stl, g.blk, g.tov,
+                g.fgm, g.fga, g.fg3m, g.fg3a, g.ftm, g.fta, g.game_date
+            FROM game_logs g
+            JOIN game_logs b
+                ON b.game_date = g.game_date
+                AND b.team     = g.team
+                AND b.player_slug = ?
+            WHERE g.player_slug = ?
+              AND g.min > 0
+              {season_clause}
+        """, params).fetchall()
+
+        groups = {"with": [], "without": []}
+        for r in rows:
+            groups[r["scenario"]].append(r)
+
+        return {
+            "other_name": other_name,
+            "other_slug": other,
+            "with":    _avg_row(groups["with"]),
+            "without": _avg_row(groups["without"]),
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/injuries")
 def get_injuries():
     """
