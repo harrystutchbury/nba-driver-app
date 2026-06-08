@@ -9632,30 +9632,32 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 ? dist.filter(z => z > effectiveZTotal).length + 1
                 : baseRank
 
-              const p30 = v => v.toFixed(1)
-              const pct = v => v.toFixed(1) + '%'
+              const p30  = v => v.toFixed(1)
+              const pct  = v => v.toFixed(1) + '%'
+              // Ensure the slider max always has 20% headroom above the player's actual base value
+              const eMax = (hard, bv) => Math.max(hard, +(bv * 1.2).toFixed(1))
               const SLIDER_GROUPS = [
                 { label: 'Playing time & usage', fields: [
-                  { key: 'min_pg',    label: 'Min/g',   eff: effMin,     base: baseMpg,    min: 10,  max: 42,  step: 0.5,  fmt: v => v.toFixed(1) },
-                  { key: 'usg_pct',   label: 'Usage%',  eff: effUsg,     base: baseUsg,    min: 5,   max: 45,  step: 0.5,  fmt: pct },
+                  { key: 'min_pg',    label: 'Min/g',   eff: effMin,     base: baseMpg,    min: 10,  max: eMax(42,  baseMpg),    step: 0.5,  fmt: v => v.toFixed(1) },
+                  { key: 'usg_pct',   label: 'Usage%',  eff: effUsg,     base: baseUsg,    min: 5,   max: 45,                    step: 0.5,  fmt: pct },
                 ]},
                 { label: 'Shooting', fields: [
-                  { key: 'fg3a_p30',  label: '3PA/30',  eff: effFg3aP30, base: baseFg3aP30,min: 0,   max: 15,  step: 0.1,  fmt: p30 },
-                  { key: 'fg3_pct',   label: '3P%',     eff: effFg3Pct,  base: baseFg3Pct, min: 20,  max: 55,  step: 0.5,  fmt: pct },
-                  { key: 'fg2a_p30',  label: '2PA/30',  eff: effFg2aP30, base: baseFg2aP30,min: 0,   max: 21,  step: 0.1,  fmt: p30 },
-                  { key: 'fg2_pct',   label: '2P%',     eff: effFg2Pct,  base: baseFg2Pct, min: 30,  max: 75,  step: 0.5,  fmt: pct },
-                  { key: 'fta_p30',   label: 'FTA/30',  eff: effFtaP30,  base: baseFtaP30, min: 0,   max: 12,  step: 0.1,  fmt: p30 },
-                  { key: 'ft_pct',    label: 'FT%',     eff: effFtPct,   base: baseFtPct,  min: 40,  max: 100, step: 0.5,  fmt: pct },
+                  { key: 'fg3a_p30',  label: '3PA/30',  eff: effFg3aP30, base: baseFg3aP30,min: 0,   max: eMax(15,  baseFg3aP30),step: 0.1,  fmt: p30 },
+                  { key: 'fg3_pct',   label: '3P%',     eff: effFg3Pct,  base: baseFg3Pct, min: 20,  max: 55,                    step: 0.5,  fmt: pct },
+                  { key: 'fg2a_p30',  label: '2PA/30',  eff: effFg2aP30, base: baseFg2aP30,min: 0,   max: eMax(21,  baseFg2aP30),step: 0.1,  fmt: p30 },
+                  { key: 'fg2_pct',   label: '2P%',     eff: effFg2Pct,  base: baseFg2Pct, min: 30,  max: 75,                    step: 0.5,  fmt: pct },
+                  { key: 'fta_p30',   label: 'FTA/30',  eff: effFtaP30,  base: baseFtaP30, min: 0,   max: eMax(12,  baseFtaP30), step: 0.1,  fmt: p30 },
+                  { key: 'ft_pct',    label: 'FT%',     eff: effFtPct,   base: baseFtPct,  min: 40,  max: 100,                   step: 0.5,  fmt: pct },
                 ]},
                 { label: 'Playmaking', fields: [
-                  { key: 'ast_p30',   label: 'AST/30',  eff: effAstP30,  base: baseAstP30, min: 0,   max: 12,  step: 0.1,  fmt: p30 },
-                  { key: 'tov_p30',   label: 'TOV/30',  eff: effTovP30,  base: baseTovP30, min: 0,   max: 5,   step: 0.05, fmt: p30 },
+                  { key: 'ast_p30',   label: 'AST/30',  eff: effAstP30,  base: baseAstP30, min: 0,   max: eMax(12,  baseAstP30), step: 0.1,  fmt: p30 },
+                  { key: 'tov_p30',   label: 'TOV/30',  eff: effTovP30,  base: baseTovP30, min: 0,   max: eMax(5,   baseTovP30), step: 0.05, fmt: p30 },
                 ]},
                 { label: 'Rebounding & defense', fields: [
-                  { key: 'oreb_p30',  label: 'OREB/30', eff: effOrebP30, base: baseOrebP30,min: 0,   max: 5,   step: 0.05, fmt: p30 },
-                  { key: 'dreb_p30',  label: 'DREB/30', eff: effDrebP30, base: baseDrebP30,min: 0,   max: 10,  step: 0.1,  fmt: p30 },
-                  { key: 'stl_p30',   label: 'STL/30',  eff: effStlP30,  base: baseStlP30, min: 0,   max: 3,   step: 0.05, fmt: p30 },
-                  { key: 'blk_p30',   label: 'BLK/30',  eff: effBlkP30,  base: baseBlkP30, min: 0,   max: 3,   step: 0.05, fmt: p30 },
+                  { key: 'oreb_p30',  label: 'OREB/30', eff: effOrebP30, base: baseOrebP30,min: 0,   max: eMax(5,   baseOrebP30),step: 0.05, fmt: p30 },
+                  { key: 'dreb_p30',  label: 'DREB/30', eff: effDrebP30, base: baseDrebP30,min: 0,   max: eMax(10,  baseDrebP30),step: 0.1,  fmt: p30 },
+                  { key: 'stl_p30',   label: 'STL/30',  eff: effStlP30,  base: baseStlP30, min: 0,   max: eMax(3,   baseStlP30), step: 0.05, fmt: p30 },
+                  { key: 'blk_p30',   label: 'BLK/30',  eff: effBlkP30,  base: baseBlkP30, min: 0,   max: eMax(3,   baseBlkP30), step: 0.05, fmt: p30 },
                 ]},
               ]
 
@@ -9727,9 +9729,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                                 )}
                               </div>
                               <span className="mpg-value">{fmt(snapped)}</span>
-                              {pinned(key) && (
-                                <button className="usage-reset-btn" onClick={() => resetOvr(key)}>↩</button>
-                              )}
+                              <button
+                                className="usage-reset-btn"
+                                style={{ visibility: pinned(key) ? 'visible' : 'hidden' }}
+                                onClick={() => resetOvr(key)}
+                              >↩</button>
                             </div>
                             )
                           })}
