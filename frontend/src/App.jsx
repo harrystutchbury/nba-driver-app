@@ -9964,10 +9964,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         {zp && (
                           <tr className="usage-tr-total">
                             <td className="usage-td-stat">Z-Total</td>
-                            <td className="usage-td-num muted">{baseZTotal.toFixed(2)}</td>
-                            <td className="usage-td-num usage-td-z"></td>
-                            <td className="usage-td-num">{effectiveZTotal.toFixed(2)}</td>
-                            <td className="usage-td-num usage-td-z"></td>
+                            <td className="usage-td-num"></td>
+                            <td className="usage-td-num usage-td-z muted">{baseZTotal.toFixed(2)}</td>
+                            <td className="usage-td-num"></td>
+                            <td className={`usage-td-num usage-td-z${effectiveZTotal >= 0.1 ? ' z-pos' : effectiveZTotal <= -0.1 ? ' z-neg' : ''}`}>
+                              {effectiveZTotal.toFixed(2)}
+                            </td>
                             <td className="usage-td-num usage-delta">
                               {changed ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}` : '—'}
                             </td>
