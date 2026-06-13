@@ -291,6 +291,14 @@ def init_db():
     """)
 
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_post_players (
+            post_id     INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+            player_slug TEXT NOT NULL,
+            PRIMARY KEY (post_id, player_slug)
+        )
+    """)
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS player_adjustments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             player_slug TEXT NOT NULL,

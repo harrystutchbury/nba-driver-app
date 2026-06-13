@@ -9490,6 +9490,27 @@ def _post_row(row) -> dict:
     }
 
 
+def _post_players(conn, post_id: int) -> list:
+    rows = conn.execute("""
+        SELECT bpp.player_slug,
+               (SELECT full_name FROM players WHERE slug = bpp.player_slug LIMIT 1) AS full_name
+        FROM blog_post_players bpp
+        WHERE bpp.post_id = ?
+    """, [post_id]).fetchall()
+    return [{"slug": r["player_slug"], "name": r["full_name"] or r["player_slug"]} for r in rows]
+
+
+def _sync_post_players(conn, post_id: int, slugs: list):
+    conn.execute("DELETE FROM blog_post_players WHERE post_id = ?", [post_id])
+    for slug in (slugs or []):
+        slug = slug.strip()
+        if slug:
+            conn.execute(
+                "INSERT OR IGNORE INTO blog_post_players (post_id, player_slug) VALUES (?, ?)",
+                [post_id, slug]
+            )
+
+
 def _comment_row(row, username: str = None) -> dict:
     return {
         "id":          row["id"],
@@ -9534,9 +9555,14 @@ def list_blog_posts(
     cats = conn.execute(
         "SELECT DISTINCT category FROM blog_posts WHERE category IS NOT NULL AND is_published=1 ORDER BY category"
     ).fetchall()
+    posts = []
+    for r in rows:
+        p = dict(**_post_row(r), comment_count=r["comment_count"])
+        p["tagged_players"] = _post_players(conn, r["id"])
+        posts.append(p)
     conn.close()
     return {
-        "posts": [dict(**_post_row(r), comment_count=r["comment_count"]) for r in rows],
+        "posts": posts,
         "categories": [r["category"] for r in cats],
         "is_admin": is_admin,
     }
@@ -9568,8 +9594,9 @@ def get_blog_post(slug: str, current_user: Optional[str] = Depends(get_optional_
         GROUP BY bc.id
         ORDER BY bc.created_at DESC
     """, [current_user or "", row["id"]]).fetchall()
+    tagged_players = _post_players(conn, row["id"])
     conn.close()
-    return {**post, "comments": [_comment_row(c, current_user) for c in comments], "is_admin": is_admin}
+    return {**post, "tagged_players": tagged_players, "comments": [_comment_row(c, current_user) for c in comments], "is_admin": is_admin}
 
 
 @blog_router.post("/posts")
@@ -9596,9 +9623,11 @@ def create_blog_post(body: dict = Body(...), current_user: str = Depends(get_cur
         1 if body.get("is_published") else 0,
     ])
     row = conn.execute("SELECT * FROM blog_posts WHERE slug=?", [slug]).fetchone()
+    _sync_post_players(conn, row["id"], body.get("player_slugs") or [])
+    tagged_players = _post_players(conn, row["id"])
     conn.commit()
     conn.close()
-    return _post_row(row)
+    return dict(**_post_row(row), tagged_players=tagged_players)
 
 
 @blog_router.put("/posts/{post_id}")
@@ -9627,9 +9656,11 @@ def update_blog_post(post_id: int, body: dict = Body(...), current_user: str = D
         post_id,
     ])
     row = conn.execute("SELECT * FROM blog_posts WHERE id=?", [post_id]).fetchone()
+    _sync_post_players(conn, post_id, body.get("player_slugs") or [])
+    tagged_players = _post_players(conn, post_id)
     conn.commit()
     conn.close()
-    return _post_row(row)
+    return dict(**_post_row(row), tagged_players=tagged_players)
 
 
 @blog_router.delete("/posts/{post_id}")
@@ -9642,6 +9673,21 @@ def delete_blog_post(post_id: int, current_user: str = Depends(get_current_user)
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@blog_router.get("/by-player/{player_slug}")
+def blog_posts_by_player(player_slug: str):
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT bp.*
+        FROM blog_posts bp
+        JOIN blog_post_players bpp ON bpp.post_id = bp.id
+        WHERE bpp.player_slug = ? AND bp.is_published = 1
+        ORDER BY bp.created_at DESC
+        LIMIT 5
+    """, [player_slug]).fetchall()
+    conn.close()
+    return [_post_row(r) for r in rows]
 
 
 @blog_router.post("/posts/{post_id}/comments")

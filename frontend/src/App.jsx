@@ -3937,9 +3937,12 @@ function BlogPage({ setPage, initSlug, onMount }) {
   const [commentDraft, setCommentDraft] = useState('')
   const [posting, setPosting]       = useState(false)
   const [imgUploading, setImgUploading] = useState(false)
+  const [tagQuery, setTagQuery]     = useState('')
+  const [tagResults, setTagResults] = useState([])
   const textareaRef                 = useRef(null)
   const coverFileRef                = useRef(null)
   const inlineFileRef               = useRef(null)
+  const tagTimerRef                 = useRef(null)
 
   useEffect(() => {
     if (initSlug) { onMount?.(); openPost(initSlug) }
@@ -3970,9 +3973,11 @@ function BlogPage({ setPage, initSlug, onMount }) {
 
   function startEdit(post = null) {
     setEditDraft(post
-      ? { id: post.id, title: post.title, content: post.content, cover_image: post.cover_image || '', category: post.category || '', is_published: post.is_published }
-      : { title: '', content: '', cover_image: '', category: '', is_published: false }
+      ? { id: post.id, title: post.title, content: post.content, cover_image: post.cover_image || '', category: post.category || '', is_published: post.is_published, tagged_players: post.tagged_players || [] }
+      : { title: '', content: '', cover_image: '', category: '', is_published: false, tagged_players: [] }
     )
+    setTagQuery('')
+    setTagResults([])
     setPreview(false)
     setSaveError('')
     setView('edit')
@@ -3981,10 +3986,14 @@ function BlogPage({ setPage, initSlug, onMount }) {
   async function savePost() {
     setSaving(true); setSaveError('')
     const isNew = !editDraft.id
+    const payload = {
+      ...editDraft,
+      player_slugs: (editDraft.tagged_players || []).map(p => p.slug),
+    }
     const res = await apiFetch(isNew ? '/api/blog/posts' : `/api/blog/posts/${editDraft.id}`, {
       method: isNew ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editDraft),
+      body: JSON.stringify(payload),
     }).catch(() => null)
     if (res?.ok) {
       const saved = await res.json()
@@ -4241,6 +4250,59 @@ function BlogPage({ setPage, initSlug, onMount }) {
           <label className="blog-editor-label">Category</label>
           <input className="blog-editor-input blog-editor-half" value={editDraft.category}
             onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))} placeholder="e.g. Analysis" />
+        </div>
+        <div className="blog-editor-row">
+          <label className="blog-editor-label">Tag Players</label>
+          <div className="blog-tag-section">
+            {(editDraft.tagged_players || []).length > 0 && (
+              <div className="blog-tag-chips">
+                {(editDraft.tagged_players || []).map(p => (
+                  <span key={p.slug} className="blog-tag-chip">
+                    {p.name}
+                    <button type="button" className="blog-tag-chip-remove"
+                      onClick={() => setEditDraft(d => ({ ...d, tagged_players: d.tagged_players.filter(x => x.slug !== p.slug) }))}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="blog-tag-input-wrap">
+              <input className="blog-editor-input blog-editor-half" value={tagQuery}
+                placeholder="Search player to tag…"
+                onChange={e => {
+                  const q = e.target.value
+                  setTagQuery(q)
+                  clearTimeout(tagTimerRef.current)
+                  if (q.length < 2) { setTagResults([]); return }
+                  tagTimerRef.current = setTimeout(() => {
+                    apiFetch(`/api/players?q=${encodeURIComponent(q)}`)
+                      .then(r => r.ok ? r.json() : [])
+                      .then(d => setTagResults(Array.isArray(d) ? d.slice(0, 8) : []))
+                      .catch(() => {})
+                  }, 250)
+                }}
+                onBlur={() => setTimeout(() => setTagResults([]), 150)}
+              />
+              {tagResults.length > 0 && (
+                <div className="blog-tag-dropdown">
+                  {tagResults
+                    .filter(p => !(editDraft.tagged_players || []).some(t => t.slug === p.slug))
+                    .map(p => (
+                      <div key={p.slug} className="blog-tag-option"
+                        onMouseDown={() => {
+                          setEditDraft(d => ({ ...d, tagged_players: [...(d.tagged_players || []), { slug: p.slug, name: p.full_name }] }))
+                          setTagQuery('')
+                          setTagResults([])
+                        }}>
+                        {p.full_name}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="blog-editor-row">
           <label className="blog-editor-label">Cover Image</label>
@@ -7665,6 +7727,15 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   // Reset compare players when main player changes
   useEffect(() => { setCmpPlayers([]) }, [selectedPlayer])
 
+  const [playerBlogPosts, setPlayerBlogPosts] = useState([])
+  useEffect(() => {
+    if (!selectedPlayer) { setPlayerBlogPosts([]); return }
+    apiFetch(`/api/blog/by-player/${selectedPlayer}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setPlayerBlogPosts(Array.isArray(d) ? d : []))
+      .catch(() => setPlayerBlogPosts([]))
+  }, [selectedPlayer])
+
 
   // Apply breakdown table alignment after zBreakdown renders the table
   useEffect(() => {
@@ -8670,6 +8741,19 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <InjuryBadge injury={playerStats.player.injury} compact={false} />
               )}
             </div>
+
+            {playerBlogPosts.length > 0 && (
+              <div className="player-blog-posts">
+                {playerBlogPosts.map(post => (
+                  <div key={post.id} className="player-blog-card"
+                    onClick={() => { setBlogInitSlug(post.slug); setPage('blog') }}>
+                    <span className="player-blog-label">Blog</span>
+                    <span className="player-blog-title">{post.title}</span>
+                    <span className="player-blog-date">{post.created_at?.slice(0, 10)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {playerStats.player.news?.length > 0 && (
               <div className="player-news">
