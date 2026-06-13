@@ -4013,6 +4013,21 @@ function BlogPage({ setPage, initSlug, onMount }) {
     return data.secure_url
   }
 
+  function wrapSelection(marker) {
+    const el = textareaRef.current
+    if (!el) return
+    const s = el.selectionStart, end = el.selectionEnd
+    const sel = editDraft.content.slice(s, end)
+    const wrapped = sel ? `${marker}${sel}${marker}` : `${marker}${marker}`
+    const next = editDraft.content.slice(0, s) + wrapped + editDraft.content.slice(end)
+    setEditDraft(d => ({ ...d, content: next }))
+    setTimeout(() => {
+      el.focus()
+      el.selectionStart = sel ? s : s + marker.length
+      el.selectionEnd   = sel ? s + wrapped.length : s + marker.length
+    }, 0)
+  }
+
   async function insertImage() {
     inlineFileRef.current?.click()
   }
@@ -4056,23 +4071,38 @@ function BlogPage({ setPage, initSlug, onMount }) {
     }
   }
 
-  // Render markdown-lite: paragraphs separated by blank lines, images via ![alt](url)
+  // Render markdown-lite: paragraphs, images, **bold**, *italic*, __underline__
   function renderContent(text) {
     if (!text) return null
     const IMG = /!\[([^\]]*)\]\(([^)]+)\)/g
+
+    function inlineFmt(str, kp) {
+      const re = /\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__/gs
+      const out = []; let last = 0; let m
+      while ((m = re.exec(str)) !== null) {
+        if (m.index > last) out.push(str.slice(last, m.index))
+        if (m[1] != null) out.push(<strong key={`${kp}-${m.index}`}>{m[1]}</strong>)
+        else if (m[2] != null) out.push(<em key={`${kp}-${m.index}`}>{m[2]}</em>)
+        else if (m[3] != null) out.push(<u key={`${kp}-${m.index}`}>{m[3]}</u>)
+        last = m.index + m[0].length
+      }
+      if (last < str.length) out.push(str.slice(last))
+      return out
+    }
+
     return text.split(/\n\n+/).map((para, pi) => {
       const trimmed = para.trim()
       // Standalone image
       const solo = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
       if (solo) return <img key={pi} src={solo[2]} alt={solo[1]} className="blog-content-img" />
-      // Mixed inline
+      // Mixed inline content (images + formatting)
       const parts = []; let last = 0; let m; IMG.lastIndex = 0
       while ((m = IMG.exec(para)) !== null) {
-        if (m.index > last) parts.push(para.slice(last, m.index))
+        if (m.index > last) parts.push(...inlineFmt(para.slice(last, m.index), `${pi}-${last}`))
         parts.push(<img key={m.index} src={m[2]} alt={m[1]} className="blog-inline-img" />)
         last = m.index + m[0].length
       }
-      if (last < para.length) parts.push(para.slice(last))
+      if (last < para.length) parts.push(...inlineFmt(para.slice(last), `${pi}-${last}`))
       return <p key={pi} className="blog-para">{parts}</p>
     })
   }
@@ -4131,7 +4161,7 @@ function BlogPage({ setPage, initSlug, onMount }) {
                     </div>
                     <h2 className="blog-card-title">{p.title}</h2>
                     <p className="blog-card-excerpt">
-                      {p.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '').replace(/\n+/g, ' ').trim().slice(0, 180)}
+                      {p.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '').replace(/\*\*?|__/g, '').replace(/\n+/g, ' ').trim().slice(0, 180)}
                       {p.content.length > 180 ? '…' : ''}
                     </p>
                     <span className="blog-card-comments">{p.comment_count} comment{p.comment_count !== 1 ? 's' : ''}</span>
@@ -4229,6 +4259,9 @@ function BlogPage({ setPage, initSlug, onMount }) {
           <div className="blog-editor-toolbar">
             <label className="blog-editor-label">Content</label>
             <div className="blog-editor-toolbar-btns">
+              <button type="button" className="blog-toolbar-btn blog-fmt-btn" onClick={() => wrapSelection('**')}><b>B</b></button>
+              <button type="button" className="blog-toolbar-btn blog-fmt-btn" onClick={() => wrapSelection('*')}><i>I</i></button>
+              <button type="button" className="blog-toolbar-btn blog-fmt-btn" onClick={() => wrapSelection('__')}><u>U</u></button>
               <button type="button" className="blog-toolbar-btn" onClick={insertImage} disabled={imgUploading}>
                 {imgUploading ? 'Uploading…' : '🖼 Insert Image'}
               </button>
@@ -4242,6 +4275,11 @@ function BlogPage({ setPage, initSlug, onMount }) {
             : <textarea ref={textareaRef} className="blog-editor-textarea"
                 value={editDraft.content}
                 onChange={e => setEditDraft(d => ({ ...d, content: e.target.value }))}
+                onKeyDown={e => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'b') { e.preventDefault(); wrapSelection('**') }
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'i') { e.preventDefault(); wrapSelection('*') }
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'u') { e.preventDefault(); wrapSelection('__') }
+                }}
                 placeholder="Write your post here…&#10;&#10;Separate paragraphs with a blank line.&#10;Insert images with the toolbar button." />
           }
         </div>
