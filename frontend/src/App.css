@@ -2807,6 +2807,13 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 }
 .rank-pill:hover { color: var(--text); border-color: #555; }
 .rank-pill.active { color: var(--skill); border-color: var(--skill); }
+.rank-team-select {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 12px; font-family: var(--mono);
+  padding: 3px 8px; cursor: pointer; height: 26px;
+}
+.rank-team-select:focus { outline: none; border-color: var(--skill); }
+[data-theme="light"] .rank-team-select { background: var(--surface); }
 .rank-pill-punt { font-size: 11px; padding: 3px 10px; }
 .rank-pill-punt.punted { color: #444; border-color: #333; text-decoration: line-through; }
 .rank-pill-punt.punted:hover { color: #666; border-color: #444; }

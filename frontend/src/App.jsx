@@ -824,6 +824,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [showCTW, setShowCTW]   = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
+  const [team, setTeam] = useState('all')
 
   const activePeriod = RANK_PERIODS.find(p => {
     const s = typeof p.start === 'function' ? p.start() : p.start
@@ -918,8 +919,12 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   }
 
   const hasOwnership = Object.keys(ownership).length > 0
+  const teamOptions = players
+    ? [...new Set(players.map(p => p.team).filter(Boolean))]
+        .sort((a, b) => teamAbbr(a) < teamAbbr(b) ? -1 : 1)
+    : []
   const sorted = players ? [...players]
-    .filter(p => !faOnly || !ownership[p.slug])
+    .filter(p => (!faOnly || !ownership[p.slug]) && (team === 'all' || p.team === team))
     .sort((a, b) => {
       const av = getSortVal(a, sortKey)
       const bv = getSortVal(b, sortKey)
@@ -957,6 +962,13 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                 onClick={() => setPosition(p === 'All' ? 'all' : p)}>{p}</button>
             ))}
           </div>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Team</span>
+          <select className="rank-team-select" value={team} onChange={e => setTeam(e.target.value)}>
+            <option value="all">All</option>
+            {teamOptions.map(t => <option key={t} value={t}>{teamAbbr(t)}</option>)}
+          </select>
         </div>
         <div className="rank-filter-group">
           <span className="ctrl-label">View</span>
@@ -1740,6 +1752,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [showCTW, setShowCTW]       = useState(false)
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
+  const [team, setTeam] = useState('all')
 
   useEffect(() => {
     if (!start || !end || start > end) return
@@ -1769,10 +1782,15 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   })?.label
 
   const hasOwnership = Object.keys(ownership).length > 0
+  const teamOptions = players
+    ? [...new Set(players.map(p => p.team).filter(Boolean))]
+        .sort((a, b) => teamAbbr(a) < teamAbbr(b) ? -1 : 1)
+    : []
   const filtered = players
     ? players.filter(p =>
         (position === 'all' || p.position === position) &&
-        (!faOnly || !ownership[p.slug])
+        (!faOnly || !ownership[p.slug]) &&
+        (team === 'all' || p.team === team)
       )
     : []
 
@@ -1865,6 +1883,13 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
               >{p}</button>
             ))}
           </div>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Team</span>
+          <select className="rank-team-select" value={team} onChange={e => setTeam(e.target.value)}>
+            <option value="all">All</option>
+            {teamOptions.map(t => <option key={t} value={t}>{teamAbbr(t)}</option>)}
+          </select>
         </div>
         <div className="rank-filter-group">
           <span className="ctrl-label">View</span>
