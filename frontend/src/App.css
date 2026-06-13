@@ -1096,7 +1096,11 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .player-profile {
   margin-bottom: 32px;
   padding-top: 20px;
+  --muted: var(--text);
+  --label: var(--text);
 }
+.player-profile .z-header { color: var(--text) !important; }
+.player-profile .usage-th-z { opacity: 1; }
 
 .player-profile-header {
   display: flex;
