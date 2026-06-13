@@ -4292,11 +4292,11 @@ function BlogPage({ setPage, initSlug, onMount, onNavigate }) {
                     .map(p => (
                       <div key={p.slug} className="blog-tag-option"
                         onMouseDown={() => {
-                          setEditDraft(d => ({ ...d, tagged_players: [...(d.tagged_players || []), { slug: p.slug, name: p.full_name }] }))
+                          setEditDraft(d => ({ ...d, tagged_players: [...(d.tagged_players || []), { slug: p.slug, name: p.name }] }))
                           setTagQuery('')
                           setTagResults([])
                         }}>
-                        {p.full_name}
+                        {p.name}
                       </div>
                     ))
                   }
