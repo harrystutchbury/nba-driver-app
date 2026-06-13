@@ -614,7 +614,7 @@ const CATEGORY_COLORS = {
   team:     '#ff7cf5',
 }
 
-const TOTAL_COLOR    = '#555555'
+const TOTAL_COLOR    = '#888888'
 function isDark() { return document.documentElement.getAttribute('data-theme') !== 'light' }
 
 function getBarColor(category) {
@@ -8157,13 +8157,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       x: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 },
                   callback: (_, i, ticks) => { const v = trendLabels[i]; return v ? v.slice(2) : '' } },
       },
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
   }
@@ -8271,7 +8271,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
-        ticks:  { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
   }
@@ -8332,7 +8332,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
-        ticks:  { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
       },
     },
   }
@@ -8402,9 +8402,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         }
 
         ctx.fillStyle = isEndBar
-          ? (dark ? 'rgba(220,220,220,0.8)' : 'rgba(30,30,30,0.8)')
+          ? (dark ? '#ffffff' : '#1a1d2e')
           : isInside
-          ? (dark ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,20,0.9)')
+          ? (dark ? '#ffffff' : '#1a1d2e')
           : activeWf.colors[i]
 
         ctx.textBaseline = baseline
@@ -8484,7 +8484,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         grid: { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.04)', drawTicks: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.1)' },
         ticks: {
-          color: '#bbb',
+          color: isDark() ? '#ffffff' : '#1a1d2e',
           font: { family: "'DM Mono', monospace", size: 11 },
           maxRotation: 0,
           minRotation: 0,
@@ -9455,12 +9455,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         responsive: true, maintainAspectRatio: false,
                         layout: { padding: { top: 20 } },
                         plugins: {
-                          legend: { display: true, position: 'bottom', labels: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
+                          legend: { display: true, position: 'bottom', labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
                           tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
-                          datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
+                          datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
                         },
                         scales: {
-                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
+                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
                           y: { display: false },
                         },
                       })
@@ -9606,8 +9606,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       },
                     },
                     scales: {
-                      x: { ticks: { color: '#bbb', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' } },
-                      y: { ticks: { color: '#bbb', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
+                      x: { ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' } },
+                      y: { ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { size: 11 } }, grid: { color: isDark() ? '#1e2740' : 'rgba(0,0,0,0.07)' }, beginAtZero: true },
                     },
                   }
 
@@ -10516,12 +10516,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 responsive: true, maintainAspectRatio: false,
                 layout: { padding: { top: 60 } },
                 plugins: {
-                  legend: { display: true, labels: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
+                  legend: { display: true, labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
                   tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
-                  datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 } },
+                  datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
                 },
                 scales: {
-                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: '#bbb', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
+                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
                   y: { display: false },
                 },
               })
