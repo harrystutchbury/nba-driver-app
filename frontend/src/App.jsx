@@ -3921,7 +3921,7 @@ function AdjustmentsPage() {
 
 // ── Blog page ─────────────────────────────────────────────────────────────────
 
-function BlogPage({ setPage, initSlug, onMount }) {
+function BlogPage({ setPage, initSlug, onMount, onNavigate }) {
   const [view, setView]             = useState('list')
   const [posts, setPosts]           = useState([])
   const [categories, setCategories] = useState([])
@@ -3968,6 +3968,7 @@ function BlogPage({ setPage, initSlug, onMount }) {
         setBlogComments(d.comments || [])
         setCommentDraft('')
         setView('post')
+        onNavigate?.(slug)
       })
   }
 
@@ -4186,7 +4187,7 @@ function BlogPage({ setPage, initSlug, onMount }) {
   if (view === 'post' && currentPost) return (
     <div className="blog-page">
       <div className="blog-post-nav">
-        <button className="blog-back-btn" onClick={() => { setView('list'); loadList() }}>← Back to Blog</button>
+        <button className="blog-back-btn" onClick={() => { setView('list'); loadList(); onNavigate?.(null) }}>← Back to Blog</button>
         {currentPost.is_admin && (
           <div className="blog-admin-actions">
             <button className="blog-edit-btn" onClick={() => startEdit(currentPost)}>Edit</button>
@@ -4235,7 +4236,7 @@ function BlogPage({ setPage, initSlug, onMount }) {
   if (view === 'edit' && editDraft !== null) return (
     <div className="blog-page">
       <div className="blog-post-nav">
-        <button className="blog-back-btn" onClick={() => editDraft.id ? openPost(currentPost?.slug) : (setView('list'), loadList())}>
+        <button className="blog-back-btn" onClick={() => editDraft.id ? openPost(currentPost?.slug) : (setView('list'), loadList(), onNavigate?.(null))}>
           ← {editDraft.id ? 'Back to Post' : 'Back to Blog'}
         </button>
         <span className="blog-edit-heading">{editDraft.id ? 'Edit Post' : 'New Post'}</span>
@@ -7592,8 +7593,19 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
     localStorage.setItem('theme', dark ? 'dark' : 'light')
   }, [dark])
-  const [page, setPage]               = useState(yahooConnected ? 'fantasy' : 'dashboard')
-  const [fantasyTab, setFantasyTab]   = useState('dashboard')
+  const [page, setPage]               = useState(() => {
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    const p0 = parts[0]
+    const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy'])
+    if (VALID.has(p0)) return p0
+    return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
+  })
+  const [fantasyTab, setFantasyTab]   = useState(() => {
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    const TABS = new Set(['dashboard','standings','roster','trade','matchup'])
+    return parts[0] === 'fantasy' && TABS.has(parts[1]) ? parts[1] : 'dashboard'
+  })
   const [boxScoreDate, setBoxScoreDate] = useState(null)
 
   const PAGE_TITLES = {
@@ -7620,7 +7632,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const pageTitle = page === 'fantasy'
     ? (FANTASY_TAB_TITLES[fantasyTab] ?? 'Fantasy')
     : PAGE_TITLES[page]
-  const [blogInitSlug, setBlogInitSlug] = useState(null)
+  const [blogInitSlug, setBlogInitSlug] = useState(() => {
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    return parts[0] === 'blog' && parts[1] ? parts[1] : null
+  })
   const [isAdmin, setIsAdmin]           = useState(false)
   const [tier,    setTier]              = useState('free')
   const [query, setQuery]             = useState('')
@@ -7816,6 +7831,47 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       .then(d => { if (d && !d.error) setSchedProj(d) })
       .catch(() => {})
   }
+
+  function navigate(newPage, { blogSlug, playerObj, tab } = {}) {
+    let url = newPage === 'dashboard' ? '/' : `/${newPage}`
+    if (newPage === 'blog' && blogSlug) url = `/blog/${blogSlug}`
+    if (newPage === 'blog' && blogSlug === null) url = '/blog'
+    if (newPage === 'player' && playerObj) url = `/player/${playerObj.slug}`
+    if (newPage === 'fantasy' && tab && tab !== 'dashboard') url = `/fantasy/${tab}`
+    window.history.pushState({ page: newPage, blogSlug, playerSlug: playerObj?.slug, tab }, '', url)
+    setPage(newPage)
+    if (blogSlug !== undefined) setBlogInitSlug(blogSlug)
+    if (playerObj) selectPlayer(playerObj)
+    if (tab) setFantasyTab(tab)
+    setMobileMenuOpen(false)
+  }
+
+  // Ref pattern so popstate always has a fresh closure
+  const _popStateHandlerRef = useRef(null)
+  _popStateHandlerRef.current = () => {
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    const p0 = parts[0] || ''
+    const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy'])
+    const newPage = VALID.has(p0) ? p0 : 'dashboard'
+    setPage(newPage)
+    if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
+    if (p0 === 'player' && parts[1]) selectPlayer({ slug: parts[1], name: '' })
+    if (p0 === 'fantasy') {
+      const TABS = new Set(['dashboard','standings','roster','trade','matchup'])
+      if (parts[1] && TABS.has(parts[1])) setFantasyTab(parts[1])
+    }
+  }
+
+  useEffect(() => {
+    // Stamp the initial history entry so popstate can restore it
+    window.history.replaceState({ page, blogSlug: blogInitSlug }, '', window.location.pathname)
+    const parts = window.location.pathname.split('/').filter(Boolean)
+    if (parts[0] === 'player' && parts[1]) selectPlayer({ slug: parts[1], name: '' })
+    const handler = () => _popStateHandlerRef.current()
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [])
 
   function fetchSchedProj(slug, period, startDate) {
     const sd = startDate ?? schedStartDate
@@ -8537,7 +8593,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="site-header">
         <div className="site-header-inner">
-          <div className="site-logo" onClick={() => setPage('dashboard')} style={{ cursor: 'pointer' }}>
+          <div className="site-logo" onClick={() => navigate('dashboard')} style={{ cursor: 'pointer' }}>
             <span className="site-logo-icon">🏀</span>
             <h1 className="site-brand">Roto <span className="site-brand-intel">Intel</span></h1>
           </div>
@@ -8548,7 +8604,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           </button>
           <nav className={`site-nav${mobileMenuOpen ? ' mobile-open' : ''}`}>
             {(() => {
-              const go = (p) => { setPage(p); setMobileMenuOpen(false) }
+              const go = (p) => navigate(p)
               return (<>
                 <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
@@ -8581,11 +8637,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     Fantasy <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('dashboard');  go('fantasy') }}>Dashboard</button>
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('standings');  go('fantasy') }}>Projected Standings</button>
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('roster');     go('fantasy') }}>Roster Analysis</button>
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('trade');      go('fantasy') }}>Trade Analysis</button>
-                    <button className="nav-drop-item" onClick={() => { setFantasyTab('matchup');    go('fantasy') }}>Matchup Analysis</button>
+                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'dashboard' })}>Dashboard</button>
+                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'standings' })}>Projected Standings</button>
+                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'roster' })}>Roster Analysis</button>
+                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'trade' })}>Trade Analysis</button>
+                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'matchup' })}>Matchup Analysis</button>
                     <button className="nav-drop-item" onClick={() => go('draft')}>Draft</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
                   </div>
@@ -8629,7 +8685,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             {showSugg && suggestions.length > 0 && (
               <ul className="header-suggestions suggestions">
                 {suggestions.map(p => (
-                  <li key={p.slug} onMouseDown={() => { selectPlayer(p); setPage('player') }}>
+                  <li key={p.slug} onMouseDown={() => navigate('player', { playerObj: p })}>
                     <span className="sugg-name">{p.name}</span>
                     <span className="sugg-team">{p.team}</span>
                     {p.injury && <InjuryBadge injury={p.injury} compact />}
@@ -8654,7 +8710,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 {token
                   ? <>
                       <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
-                      {isAdmin && <button className="nav-drop-item" onClick={() => setPage('moderation')}>Moderation</button>}
+                      {isAdmin && <button className="nav-drop-item" onClick={() => navigate('moderation')}>Moderation</button>}
                       <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Log out</button>
                     </>
                   : <>
@@ -8677,31 +8733,36 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       )}
 
       {page === 'dashboard' && <DashboardPage
-        onSelectPlayer={p => { selectPlayer(p); setPage('player') }}
-        onSelectBlogPost={slug => { setBlogInitSlug(slug); setPage('blog') }}
+        onSelectPlayer={p => navigate('player', { playerObj: p })}
+        onSelectBlogPost={slug => navigate('blog', { blogSlug: slug })}
       />}
 
-      {page === 'rankings' && <RankingsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
+      {page === 'rankings' && <RankingsPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />}
 
-      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} initialDate={boxScoreDate} />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} initialDate={boxScoreDate} />}
 
       {page === 'projections' && (
-        <ProjectionsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />
+        <ProjectionsPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />
       )}
 
-      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
+      {page === 'injuries' && <InjuriesPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />}
 
-      {page === 'depth' && <DepthChartsPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} />}
+      {page === 'depth' && <DepthChartsPage onSelectPlayer={p => navigate('player', { playerObj: p })} />}
 
       {page === 'fantasy' && (
         token
-          ? <FantasyPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} initialTab={fantasyTab} />
+          ? <FantasyPage onSelectPlayer={p => navigate('player', { playerObj: p })} initialTab={fantasyTab} />
           : <FantasySignupPrompt onSignup={onOpenAccount} />
       )}
 
-      {page === 'trending' && <TrendingPage onSelectPlayer={p => { selectPlayer(p); setPage('player') }} ownership={ownership} />}
+      {page === 'trending' && <TrendingPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />}
 
-      {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)} />}
+      {page === 'blog' && <BlogPage setPage={setPage} initSlug={blogInitSlug} onMount={() => setBlogInitSlug(null)}
+        onNavigate={slug => {
+          const url = slug ? `/blog/${slug}` : '/blog'
+          window.history.pushState({ page: 'blog', blogSlug: slug }, '', url)
+        }}
+      />}
 
       {page === 'forum' && <ForumPage />}
 
@@ -8746,7 +8807,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               <div className="player-blog-posts">
                 {playerBlogPosts.map(post => (
                   <div key={post.id} className="player-blog-card"
-                    onClick={() => { setBlogInitSlug(post.slug); setPage('blog') }}>
+                    onClick={() => navigate('blog', { blogSlug: post.slug })}>
                     <span className="player-blog-label">Blog</span>
                     <span className="player-blog-title">{post.title}</span>
                     <span className="player-blog-date">{post.created_at?.slice(0, 10)}</span>
@@ -10136,7 +10197,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             const inj = g.injured
                             return (
                             <tr key={i} className={`${i % 2 === 0 ? 'row-even' : ''}${inj ? ' gl-injured' : ''}`}>
-                              <td className="mono gl-date-link" onClick={() => { if (!g.injured) { setBoxScoreDate(g.game_date); setPage('boxscores') } }}>{g.game_date}</td>
+                              <td className="mono gl-date-link" onClick={() => { if (!g.injured) { setBoxScoreDate(g.game_date); navigate('boxscores') } }}>{g.game_date}</td>
                               <td>
                                 <span className="opp-cell">
                                   <span className="ha-badge">{g.home_away?.[0] === 'H' ? 'H' : 'A'}</span>
