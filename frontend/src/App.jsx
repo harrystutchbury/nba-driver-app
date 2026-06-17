@@ -7611,6 +7611,232 @@ function ModerationPage() {
 }
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Driver Breakdown / Transformation Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BREAKDOWN_PRESETS = [
+  { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-04-13' }, b: { start: '2025-10-22', end: '2026-04-06' } },
+  { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-06' } },
+  { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+  { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+  { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-04-06' } },
+]
+
+function formatDriverValue(key, value) {
+  if (value === null || value === undefined) return '—'
+  if (key === 'min') return value.toFixed(1) + ' min'
+  if (key === 'fg_pct_pct' || key === 'ft_pct_pct') return value.toFixed(1) + '%'
+  if (key.endsWith('_pct') && value <= 1.01) return (value * 100).toFixed(1) + '%'
+  if (key.endsWith('_share')) return (value * 100).toFixed(1) + '%'
+  return value.toFixed(3)
+}
+
+function fmtZ(v) {
+  if (v === null || v === undefined) return '—'
+  return (v >= 0 ? '+' : '') + v.toFixed(2)
+}
+
+function fmtRaw(key, v) {
+  if (v === null || v === undefined) return '—'
+  if (key === 'fg_pct' || key === 'ft_pct') return v.toFixed(1) + '%'
+  return v.toFixed(1)
+}
+
+function TransformationPage() {
+  const [query, setQuery]         = useState('')
+  const [suggs, setSuggs]         = useState([])
+  const [showSugg, setShowSugg]   = useState(false)
+  const [player, setPlayer]       = useState(null)
+  const [periodA, setPeriodA]     = useState({ start: '2025-10-22', end: '2026-02-13' })
+  const [periodB, setPeriodB]     = useState({ start: '2026-02-21', end: '2026-04-06' })
+  const [result, setResult]       = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const searchRef = useRef(null)
+  const debRef    = useRef(null)
+
+  useEffect(() => {
+    clearTimeout(debRef.current)
+    if (!query.trim()) { setSuggs([]); return }
+    debRef.current = setTimeout(() => {
+      apiFetch(`/api/players?q=${encodeURIComponent(query)}`)
+        .then(r => r.json()).then(d => setSuggs(Array.isArray(d) ? d : [])).catch(() => {})
+    }, 250)
+  }, [query])
+
+  useEffect(() => {
+    const onDown = (e) => { if (searchRef.current && !searchRef.current.contains(e.target)) setShowSugg(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const selectPlayer = (p) => {
+    setPlayer(p)
+    setQuery(p.name)
+    setSuggs([])
+    setShowSugg(false)
+    setResult(null)
+  }
+
+  const analyse = async () => {
+    if (!player || !periodA.start || !periodA.end || !periodB.start || !periodB.end) {
+      setError('Select a player and fill in both date ranges.')
+      return
+    }
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const params = new URLSearchParams({
+        player: player.slug,
+        pa_start: periodA.start, pa_end: periodA.end,
+        pb_start: periodB.start, pb_end: periodB.end,
+      })
+      const res = await apiFetch(`/api/transformation?${params}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: 'Request failed' }))
+        setError(body.detail ?? 'Request failed')
+      } else {
+        setResult(await res.json())
+      }
+    } catch (e) {
+      setError('Network error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="tform-page">
+      <div className="tform-controls">
+        {/* Player search */}
+        <div className="tform-ctrl-row">
+          <div className="ctrl-group" ref={searchRef} style={{ position: 'relative', flex: '0 0 260px' }}>
+            <span className="ctrl-label">Player</span>
+            <input
+              className="ctrl-input"
+              type="text"
+              placeholder="Search player…"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setPlayer(null); setShowSugg(true) }}
+              onFocus={() => setShowSugg(true)}
+            />
+            {showSugg && suggs.length > 0 && (
+              <ul className="suggestions tform-suggs">
+                {suggs.map(p => (
+                  <li key={p.slug} onMouseDown={() => selectPlayer(p)}>
+                    <span className="sugg-name">{p.name}</span>
+                    <span className="sugg-team">{p.team}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="ctrl-group ctrl-period">
+            <span className="ctrl-label">Before (baseline)</span>
+            <div className="date-pair">
+              <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={e => setPeriodA(p => ({ ...p, start: e.target.value }))} />
+              <span className="date-sep">–</span>
+              <input className="ctrl-input date-input" type="date" value={periodA.end} onChange={e => setPeriodA(p => ({ ...p, end: e.target.value }))} />
+            </div>
+          </div>
+
+          <div className="ctrl-group ctrl-period">
+            <span className="ctrl-label">After (comparison)</span>
+            <div className="date-pair">
+              <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={e => setPeriodB(p => ({ ...p, start: e.target.value }))} />
+              <span className="date-sep">–</span>
+              <input className="ctrl-input date-input" type="date" value={periodB.end} onChange={e => setPeriodB(p => ({ ...p, end: e.target.value }))} />
+            </div>
+          </div>
+
+          <button className="analyse-btn" onClick={analyse} disabled={loading}>
+            {loading ? '…' : 'Analyse'}
+          </button>
+        </div>
+
+        {/* Presets */}
+        <div className="preset-btns" style={{ marginTop: 8 }}>
+          {BREAKDOWN_PRESETS.map(p => (
+            <button key={p.label} className="preset-btn" onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {error && <div className="error-banner">{error}</div>}
+
+      {result && (
+        <div className="tform-result">
+          <div className="tform-header">
+            <span className="tform-player-name">{result.player.name}</span>
+            <span className="tform-periods">
+              <span className="tform-period-label period-a">Before: {result.period_a.start} – {result.period_a.end}{result.period_a.gp ? ` (${result.period_a.gp}G)` : ''}</span>
+              <span className="tform-arrow">→</span>
+              <span className="tform-period-label period-b">After: {result.period_b.start} – {result.period_b.end}{result.period_b.gp ? ` (${result.period_b.gp}G)` : ''}</span>
+            </span>
+          </div>
+
+          <div className="tform-table-wrap">
+            <table className="tform-table">
+              <thead>
+                <tr>
+                  <th className="tform-th tform-th-cat">Category</th>
+                  <th className="tform-th tform-th-group">Group</th>
+                  <th className="tform-th tform-th-driver">Driver</th>
+                  <th className="tform-th tform-th-raw">Raw Before</th>
+                  <th className="tform-th tform-th-raw">Raw After</th>
+                  <th className="tform-th tform-th-z">Z Before</th>
+                  <th className="tform-th tform-th-z">Z After</th>
+                  <th className="tform-th tform-th-impact">Z Impact</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.stats.map(stat => {
+                  const rows = 1 + stat.drivers.length
+                  return (
+                    <React.Fragment key={stat.key}>
+                      {/* Stat summary row */}
+                      <tr className="tform-stat-row">
+                        <td className="tform-td tform-td-cat" rowSpan={rows}>
+                          <span className="tform-cat-label">{stat.label}</span>
+                        </td>
+                        <td className="tform-td tform-td-group" />
+                        <td className="tform-td tform-td-driver" />
+                        <td className="tform-td tform-td-raw tform-stat-val">{fmtRaw(stat.key, stat.raw_a)}</td>
+                        <td className="tform-td tform-td-raw tform-stat-val">{fmtRaw(stat.key, stat.raw_b)}</td>
+                        <td className={`tform-td tform-td-z tform-z-val${stat.z_a > 0 ? ' pos' : stat.z_a < 0 ? ' neg' : ''}`}>{fmtZ(stat.z_a)}</td>
+                        <td className={`tform-td tform-td-z tform-z-val${stat.z_b > 0 ? ' pos' : stat.z_b < 0 ? ' neg' : ''}`}>{fmtZ(stat.z_b)}</td>
+                        <td className={`tform-td tform-td-impact tform-delta-z${stat.delta_z > 0.05 ? ' pos' : stat.delta_z < -0.05 ? ' neg' : ''}`}>
+                          {stat.delta_z !== null ? (stat.delta_z >= 0 ? '+' : '') + stat.delta_z.toFixed(2) : '—'}
+                        </td>
+                      </tr>
+                      {/* Driver rows */}
+                      {stat.drivers.map(d => (
+                        <tr key={d.key} className="tform-driver-row">
+                          <td className={`tform-td tform-td-group tform-group-${d.group.toLowerCase()}`}>{d.group}</td>
+                          <td className="tform-td tform-td-driver">{d.label}</td>
+                          <td className="tform-td tform-td-raw tform-driver-val">{formatDriverValue(d.key, d.value_a)}</td>
+                          <td className="tform-td tform-td-raw tform-driver-val">{formatDriverValue(d.key, d.value_b)}</td>
+                          <td className="tform-td tform-td-z" />
+                          <td className="tform-td tform-td-z" />
+                          <td className={`tform-td tform-td-impact tform-driver-impact${d.z_impact > 0.02 ? ' pos' : d.z_impact < -0.02 ? ' neg' : ''}`}>
+                            {d.z_impact !== null ? (d.z_impact >= 0 ? '+' : '') + d.z_impact.toFixed(2) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
@@ -7622,7 +7848,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0]
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation'])
     if (VALID.has(p0)) return p0
     return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
   })
@@ -7646,6 +7872,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     blog:              'Blog',
     adjustments:       'Player Adjustments',
     moderation:        'Moderation',
+    transformation:    'Driver Breakdown',
   }
   const FANTASY_TAB_TITLES = {
     dashboard:  'Dashboard',
@@ -7877,7 +8104,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0] || ''
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation'])
     const newPage = VALID.has(p0) ? p0 : 'dashboard'
     setPage(newPage)
     if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
@@ -8634,7 +8861,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation'].includes(page) ? ' active' : ''}`}>
                     Players <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
@@ -8642,6 +8869,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => go('projections')}>Projections</button>
                     <button className="nav-drop-item" onClick={() => go('trending')}>Trending Players</button>
                     <button className="nav-drop-item" onClick={() => go('depth')}>Depth Charts</button>
+                    <button className="nav-drop-item" onClick={() => go('transformation')}>Driver Breakdown</button>
                   </div>
                 </div>
 
@@ -8799,6 +9027,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
       {page === 'weekly-schedule' && <WeeklySchedulePage />}
       {page === 'season-schedule' && <SeasonSchedulePage />}
+
+      {page === 'transformation' && <TransformationPage />}
 
       {page === 'player' && <>
         {error && <div className="error-banner">{error}</div>}

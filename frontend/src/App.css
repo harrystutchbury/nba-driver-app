@@ -6259,3 +6259,58 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .dp-score.neg { color: #ff6b6b; }
 .draft-list-legend { flex-shrink: 0; padding: 5px 12px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); background: var(--card); }
 .draft-loading { padding: 20px 12px; text-align: center; font-size: 12px; color: var(--muted); }
+
+/* ── Driver Breakdown / Transformation page ─────────────────────────────── */
+.tform-page { padding: 20px 28px 40px; max-width: 1200px; margin: 0 auto; }
+.tform-controls { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px 14px; margin-bottom: 24px; }
+.tform-ctrl-row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.tform-suggs { position: absolute; top: 100%; left: 0; right: 0; z-index: 99; }
+
+.tform-result {}
+.tform-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.tform-player-name { font-size: 20px; font-weight: 800; color: var(--text); }
+.tform-periods { display: flex; align-items: center; gap: 10px; }
+.tform-period-label { font-size: 12px; font-weight: 600; letter-spacing: .03em; padding: 4px 10px; border-radius: 20px; }
+.tform-period-label.period-a { background: rgba(77,159,255,.13); color: #4d9fff; }
+.tform-period-label.period-b { background: rgba(0,230,118,.13); color: #00e676; }
+.tform-arrow { color: var(--muted); font-size: 16px; }
+
+.tform-table-wrap { overflow-x: auto; }
+.tform-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.tform-th { padding: 9px 12px; text-align: right; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); white-space: nowrap; }
+.tform-th-cat, .tform-th-group, .tform-th-driver { text-align: left; }
+
+.tform-td { padding: 7px 12px; border-bottom: 1px solid var(--border)44; vertical-align: middle; }
+.tform-td-cat { vertical-align: top; padding-top: 10px; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; border-right: 2px solid var(--border); }
+.tform-td-group { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; padding-left: 16px; }
+.tform-td-driver { color: var(--text); font-size: 13px; padding-left: 8px; }
+.tform-td-raw { text-align: right; font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.tform-td-z { text-align: right; font-family: var(--mono); font-size: 12px; }
+.tform-td-impact { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 700; }
+
+/* Stat summary rows */
+.tform-stat-row { background: var(--card); }
+.tform-stat-row .tform-td { border-top: 1px solid var(--border); }
+.tform-stat-val { color: var(--text) !important; font-size: 13px !important; font-weight: 600; }
+.tform-z-val { font-size: 13px !important; }
+.tform-z-val.pos { color: var(--accent); }
+.tform-z-val.neg { color: #ff6b6b; }
+.tform-delta-z { font-size: 14px !important; }
+.tform-delta-z.pos { color: var(--accent); }
+.tform-delta-z.neg { color: #ff6b6b; }
+
+/* Driver rows */
+.tform-driver-row { background: transparent; }
+.tform-driver-row:last-child .tform-td { border-bottom: 2px solid var(--border); }
+.tform-driver-val { color: var(--text) !important; }
+.tform-driver-impact { font-size: 12px !important; }
+.tform-driver-impact.pos { color: var(--accent); }
+.tform-driver-impact.neg { color: #ff6b6b; }
+
+/* Group badge colours */
+.tform-group-role  { color: #4d9fff; }
+.tform-group-skill { color: #00e676; }
+.tform-group-team  { color: var(--muted); }
+
+.tform-cat-label { display: block; }

@@ -1341,6 +1341,186 @@ def get_z_score_breakdown(
 
 
 # -----------------------------------------------------------------------
+# GET /transformation
+# -----------------------------------------------------------------------
+
+@router.get("/transformation")
+def get_transformation(
+    player:   str = Query(...),
+    pa_start: str = Query(...),
+    pa_end:   str = Query(...),
+    pb_start: str = Query(...),
+    pb_end:   str = Query(...),
+):
+    """
+    For each of the 9 fantasy categories, return raw stats, z-scores, and per-driver
+    z-score attribution between two periods.
+    z_impact per driver = (driver.contribution / delta_stat) * delta_z
+    """
+    from engine.decompose import (
+        fetch_period,
+        decompose_points, decompose_rebounds, decompose_assists,
+        decompose_steals, decompose_blocks, decompose_turnovers,
+        decompose_fg3m, decompose_fg_pct, decompose_ft_pct,
+    )
+
+    conn = get_conn()
+
+    player_row = conn.execute(
+        "SELECT full_name, team FROM players WHERE slug = ? LIMIT 1", (player,)
+    ).fetchone()
+    if not player_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Player '{player}' not found.")
+
+    def _period_pop(start, end, top_n=200):
+        rows = conn.execute("""
+            SELECT player_slug,
+                   AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
+            FROM game_logs
+            WHERE game_date BETWEEN ? AND ? AND min >= 5
+            GROUP BY player_slug
+            HAVING COUNT(*) >= 3
+            ORDER BY COUNT(*) DESC
+            LIMIT ?
+        """, (start, end, top_n)).fetchall()
+        return [dict(r) for r in rows]
+
+    def _player_stats(start, end):
+        row = conn.execute("""
+            SELECT AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
+                   COUNT(*) as gp
+            FROM game_logs
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
+        """, (player, start, end)).fetchone()
+        return dict(row) if row and row["gp"] and row["gp"] > 0 else None
+
+    def _z(val, pop_vals):
+        if val is None or len(pop_vals) < 2:
+            return None
+        mean = sum(pop_vals) / len(pop_vals)
+        std  = (sum((v - mean) ** 2 for v in pop_vals) / len(pop_vals)) ** 0.5
+        return (val - mean) / std if std > 1e-9 else 0.0
+
+    pop_a   = _period_pop(pa_start, pa_end)
+    pop_b   = _period_pop(pb_start, pb_end)
+    stats_a = _player_stats(pa_start, pa_end)
+    stats_b = _player_stats(pb_start, pb_end)
+
+    if not stats_a and not stats_b:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Insufficient data for the requested player and date ranges.")
+
+    pa_data = fetch_period(conn, player, pa_start, pa_end)
+    pb_data = fetch_period(conn, player, pb_start, pb_end)
+
+    CATS = [
+        ("pts",    "PTS",    False),
+        ("reb",    "REB",    False),
+        ("ast",    "AST",    False),
+        ("stl",    "STL",    False),
+        ("blk",    "BLK",    False),
+        ("tov",    "TOV",    True),
+        ("fg3m",   "3PM",    False),
+        ("fg_pct", "FG%",    False),
+        ("ft_pct", "FT%",    False),
+    ]
+
+    DECOMPOSERS = {
+        "pts":    decompose_points,
+        "reb":    decompose_rebounds,
+        "ast":    decompose_assists,
+        "stl":    decompose_steals,
+        "blk":    decompose_blocks,
+        "tov":    decompose_turnovers,
+        "fg3m":   decompose_fg3m,
+        "fg_pct": decompose_fg_pct,
+        "ft_pct": decompose_ft_pct,
+    }
+
+    RAW_KEYS = {
+        "pts":    "avg_pts",
+        "reb":    "avg_reb",
+        "ast":    "avg_ast",
+        "stl":    "avg_stl",
+        "blk":    "avg_blk",
+        "tov":    "avg_tov",
+        "fg3m":   "avg_fg3m",
+        "fg_pct": "fg_pct_pct",
+        "ft_pct": "ft_pct_pct",
+    }
+
+    GROUP_LABELS = {"role": "Role", "skill": "Skill", "team": "Team"}
+
+    result_stats = []
+    for key, label, inverted in CATS:
+        vals_a = [r[key] for r in pop_a if r.get(key) is not None]
+        vals_b = [r[key] for r in pop_b if r.get(key) is not None]
+        raw_a  = stats_a.get(key) if stats_a else None
+        raw_b  = stats_b.get(key) if stats_b else None
+
+        sign  = -1 if inverted else 1
+        z_raw_a = _z(raw_a, vals_a)
+        z_raw_b = _z(raw_b, vals_b)
+        z_a = (sign * z_raw_a) if z_raw_a is not None else None
+        z_b = (sign * z_raw_b) if z_raw_b is not None else None
+        delta_z = (z_b - z_a) if (z_a is not None and z_b is not None) else None
+
+        drivers_out = []
+        if pa_data and pb_data:
+            try:
+                raw_drivers  = DECOMPOSERS[key](pa_data, pb_data)
+                decomp_stat_a = pa_data.get(RAW_KEYS[key]) or 0
+                decomp_stat_b = pb_data.get(RAW_KEYS[key]) or 0
+                decomp_delta  = decomp_stat_b - decomp_stat_a
+
+                for d in raw_drivers:
+                    if delta_z is not None and abs(decomp_delta) > 1e-9:
+                        z_impact = round((d.contribution / decomp_delta) * delta_z, 3)
+                    else:
+                        z_impact = 0.0 if delta_z is not None else None
+
+                    drivers_out.append({
+                        "key":      d.key,
+                        "label":    d.label,
+                        "group":    GROUP_LABELS.get(d.category, d.category.title()),
+                        "value_a":  round(d.value_a, 4),
+                        "value_b":  round(d.value_b, 4),
+                        "z_impact": z_impact,
+                    })
+            except Exception:
+                pass
+
+        result_stats.append({
+            "key":      key,
+            "label":    label,
+            "inverted": inverted,
+            "raw_a":    round(raw_a, 3) if raw_a is not None else None,
+            "raw_b":    round(raw_b, 3) if raw_b is not None else None,
+            "z_a":      round(z_a, 3) if z_a is not None else None,
+            "z_b":      round(z_b, 3) if z_b is not None else None,
+            "delta_z":  round(delta_z, 3) if delta_z is not None else None,
+            "drivers":  drivers_out,
+        })
+
+    conn.close()
+    return {
+        "player":   {"slug": player, "name": player_row["full_name"], "team": player_row["team"]},
+        "period_a": {"start": pa_start, "end": pa_end, "gp": stats_a.get("gp") if stats_a else None},
+        "period_b": {"start": pb_start, "end": pb_end, "gp": stats_b.get("gp") if stats_b else None},
+        "stats":    result_stats,
+    }
+
+
+# -----------------------------------------------------------------------
 # GET /seasons
 # -----------------------------------------------------------------------
 

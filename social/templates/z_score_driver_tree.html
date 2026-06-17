@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0a0e1a;
+    --surface: #131827;
+    --text:    #ffffff;
+    --muted:   #8892a4;
+    --green:   #00e676;
+    --blue:    #4d9fff;
+    --border:  rgba(136,146,164,0.13);
+  }
+
+  html, body {
+    width: 1080px; height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  /* Subtle dot-grid overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(136,146,164,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,146,164,0.04) 1px, transparent 1px);
+    background-size: 54px 54px;
+    pointer-events: none;
+  }
+
+  /* Top green ambient glow */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse 900px 400px at 50% -20px, rgba(0,230,118,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .wrap {
+    width: 1080px; height: 1080px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top bar ── */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 48px 0;
+    flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: center; gap: 9px; }
+  .logo .ball { font-size: 22px; line-height: 1; }
+  .logo .wordmark { font-size: 17px; font-weight: 800; letter-spacing: 0.03em; }
+  .logo .roto  { color: #fff; }
+  .logo .intel { color: var(--green); }
+
+  .badge {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; color: var(--muted);
+    text-transform: uppercase;
+    border: 1px solid rgba(136,146,164,0.25);
+    border-radius: 20px; padding: 4px 13px;
+  }
+
+  /* ── Title ── */
+  .title-block {
+    text-align: center;
+    padding: 22px 0 10px;
+    flex-shrink: 0;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.22em; color: var(--green);
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .main-title {
+    font-size: 52px; font-weight: 900;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .main-title em { font-style: normal; color: var(--green); }
+  .sub-title {
+    margin-top: 8px;
+    font-size: 13px; font-weight: 500;
+    color: var(--muted); letter-spacing: 0.03em;
+  }
+
+  /* ── Main matrix grid ── */
+  /*
+    5 rows (implicit order):
+      1. 9 × .col-head
+      2. 1 × .band-label  (grid-column: 1/-1)
+      3. 9 × .s-role
+      4. 1 × .band-label  (grid-column: 1/-1)
+      5. 9 × .s-rate
+  */
+  .matrix {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    column-gap: 7px;
+    row-gap: 0;
+    padding: 20px 32px 36px;
+    align-content: start; /* rows pack toward top */
+    min-height: 0;
+  }
+
+  /* ── Column headers ── */
+  .col-head {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    padding: 14px 8px 12px;
+    text-align: center;
+    font-size: 13.5px; font-weight: 800;
+    letter-spacing: 0.01em;
+    position: relative;
+  }
+  /* Green top accent */
+  .col-head::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--green), rgba(0,230,118,0.25));
+    border-radius: 10px 10px 0 0;
+  }
+
+  /* ── Band labels (full-width rows) ── */
+  .band-label {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 2px 10px;
+    font-size: 10px; font-weight: 800;
+    letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .band-label .pip {
+    display: inline-block;
+    width: 28px; height: 3px;
+    border-radius: 2px; flex-shrink: 0;
+  }
+  .band-label.role { color: var(--blue); }
+  .band-label.role .pip { background: var(--blue); }
+  .band-label.rate { color: var(--green); }
+  .band-label.rate .pip { background: var(--green); }
+
+  /* ── Role cells ── */
+  .s-role {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid rgba(77,159,255,0.35);
+    border-radius: 0;
+    padding: 13px 11px 14px;
+    display: flex; flex-direction: column;
+  }
+
+  /* ── Rate cells ── */
+  .s-rate {
+    background: rgba(10,14,26,0.8);
+    border: 1px solid var(--border);
+    border-top: 2px solid rgba(0,230,118,0.35);
+    border-radius: 0 0 10px 10px;
+    padding: 13px 11px 16px;
+    display: flex; flex-direction: column;
+  }
+
+  /* ── Inner content ── */
+  .sec-label {
+    font-size: 7.5px; font-weight: 800;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .sec-label.role { color: var(--blue); }
+  .sec-label.rate { color: var(--green); }
+
+  .factors { display: flex; flex-direction: column; gap: 5px; }
+
+  .factor {
+    font-size: 11px; font-weight: 500;
+    color: rgba(255,255,255,0.70);
+    line-height: 1.3;
+    display: flex; align-items: flex-start; gap: 5px;
+  }
+  .factor::before {
+    content: '›';
+    font-size: 12px; opacity: 0.35;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top-bar">
+    <div class="logo">
+      <span class="ball">🏀</span>
+      <span class="wordmark"><span class="roto">Roto</span><span class="intel"> Intel</span></span>
+    </div>
+    <div class="badge">Fantasy Analytics</div>
+  </div>
+
+  <div class="title-block">
+    <div class="eyebrow">How Each Category is Explained</div>
+    <div class="main-title">Total <em>Z-score</em> Driver Tree</div>
+    <div class="sub-title">Every fantasy stat decomposed into the factors that drive it</div>
+  </div>
+
+  <div class="matrix">
+
+    <!-- ── Row 1: Column headers ── -->
+    <div class="col-head">Points</div>
+    <div class="col-head">3-Pointers</div>
+    <div class="col-head">Rebounds</div>
+    <div class="col-head">Assists</div>
+    <div class="col-head">Steals</div>
+    <div class="col-head">Blocks</div>
+    <div class="col-head">FG%</div>
+    <div class="col-head">FT%</div>
+    <div class="col-head">Turnovers</div>
+
+    <!-- ── Row 2: Role band label ── -->
+    <div class="band-label role">
+      <span class="pip"></span>Role Factors — volume &amp; opportunity
+    </div>
+
+    <!-- ── Row 3: Role cells (all start at same height) ── -->
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+        <div class="factor">2PA</div>
+        <div class="factor">3PA</div>
+        <div class="factor">FTA</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+        <div class="factor">3PA</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+        <div class="factor">3PA</div>
+        <div class="factor">2PA</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+        <div class="factor">FTA</div>
+      </div>
+    </div>
+    <div class="s-role">
+      <div class="sec-label role">Role</div>
+      <div class="factors">
+        <div class="factor">Minutes</div>
+      </div>
+    </div>
+
+    <!-- ── Row 4: Rate band label ── -->
+    <div class="band-label rate">
+      <span class="pip"></span>Rate Factors — efficiency &amp; skill
+    </div>
+
+    <!-- ── Row 5: Rate cells (all start at same height) ── -->
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">2P%</div>
+        <div class="factor">3P%</div>
+        <div class="factor">FT%</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">3P%</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">Def. Reb Rate</div>
+        <div class="factor">Off. Reb Rate</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">Assist Rate</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">Steals Rate</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">Blocks Rate</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">2P%</div>
+        <div class="factor">3P%</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">FT%</div>
+      </div>
+    </div>
+    <div class="s-rate">
+      <div class="sec-label rate">Rate</div>
+      <div class="factors">
+        <div class="factor">Turnover Rate</div>
+      </div>
+    </div>
+
+  </div><!-- /matrix -->
+
+</div><!-- /wrap -->
+</body>
+</html>
