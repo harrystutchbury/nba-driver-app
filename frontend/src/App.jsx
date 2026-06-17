@@ -7794,7 +7794,7 @@ function TransformationPage() {
                 {result.stats.map(stat => {
                   const rows = 1 + stat.drivers.length
                   return (
-                    <React.Fragment key={stat.key}>
+                    <Fragment key={stat.key}>
                       {/* Stat summary row */}
                       <tr className="tform-stat-row">
                         <td className="tform-td tform-td-cat" rowSpan={rows}>
@@ -7824,7 +7824,7 @@ function TransformationPage() {
                           </td>
                         </tr>
                       ))}
-                    </React.Fragment>
+                    </Fragment>
                   )
                 })}
               </tbody>
