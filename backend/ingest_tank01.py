@@ -276,6 +276,12 @@ def transform_game(game: dict, br_slug: str):
         return None
 
     gd = date.fromisoformat(game_date)
+
+    # Skip preseason (before Oct 1) and playoff (after Apr 15) games
+    end_year = gd.year + 1 if gd.month >= 10 else gd.year
+    if gd < date(end_year - 1, 10, 1) or gd > date(end_year, 4, 15):
+        return None
+
     season = season_from_date(gd)
     team   = TEAM_ABBREV.get(team_abbrev.upper(), team_abbrev.upper())
 

@@ -1156,8 +1156,8 @@ def get_z_score_comparison(
                    AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
                    AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
                    AVG(fg3m) as fg3m,
-                   AVG(fgm) as fg_pct,
-                   AVG(ftm) as ft_pct
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
             FROM game_logs
             WHERE game_date BETWEEN ? AND ? AND min >= 5
             GROUP BY player_slug
@@ -1172,8 +1172,8 @@ def get_z_score_comparison(
             SELECT AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
                    AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
                    AVG(fg3m) as fg3m,
-                   AVG(fgm) as fg_pct,
-                   AVG(ftm) as ft_pct,
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
                    COUNT(*) as gp
             FROM game_logs
             WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
