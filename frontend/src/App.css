@@ -6315,6 +6315,13 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 
 .tform-cat-label { display: block; }
 
+/* Driver summary table */
+.tform-summary { margin-top: 32px; max-width: 480px; }
+.tform-summary-title { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.tform-summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tform-summary-table .tform-th { border-bottom: 2px solid var(--border); }
+.tform-summary-table .tform-driver-row:first-child .tform-td { border-top: none; }
+
 /* Totals column */
 .tform-th-total { text-align: center; border-left: 2px solid var(--border); }
 .tform-td-total { border-left: 2px solid var(--border); vertical-align: middle !important; padding: 16px 14px; }

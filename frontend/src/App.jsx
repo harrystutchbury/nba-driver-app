@@ -7873,6 +7873,43 @@ function TransformationPage() {
               )
             })()}
           </div>
+
+          {/* ── Driver summary table ── */}
+          {(() => {
+            const map = {}
+            result.stats.forEach(stat => {
+              stat.drivers.forEach(d => {
+                if (!map[d.key]) map[d.key] = { key: d.key, label: d.label, group: d.group, total: 0 }
+                map[d.key].total += (d.z_impact ?? 0)
+              })
+            })
+            const rows = Object.values(map).sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+            return (
+              <div className="tform-summary">
+                <div className="tform-summary-title">Driver Impact Summary</div>
+                <table className="tform-summary-table">
+                  <thead>
+                    <tr>
+                      <th className="tform-th tform-th-group">Group</th>
+                      <th className="tform-th tform-th-driver">Driver</th>
+                      <th className="tform-th tform-th-impact">Total Z Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(d => (
+                      <tr key={d.key} className="tform-driver-row">
+                        <td className={`tform-td tform-td-group tform-group-${d.group.toLowerCase()}`}>{d.group}</td>
+                        <td className="tform-td tform-td-driver">{d.label}</td>
+                        <td className={`tform-td tform-td-impact tform-driver-impact${d.total > 0.02 ? ' pos' : d.total < -0.02 ? ' neg' : ''}`}>
+                          {(d.total >= 0 ? '+' : '') + d.total.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
