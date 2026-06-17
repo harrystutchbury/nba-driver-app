@@ -1361,7 +1361,7 @@ def get_transformation(
         fetch_period,
         decompose_points, decompose_rebounds, decompose_assists,
         decompose_steals, decompose_blocks, decompose_turnovers,
-        decompose_fg3m, decompose_fgm_usage, decompose_ftm_usage,
+        decompose_fg3m, decompose_fgm_split, decompose_ftm_usage,
     )
 
     conn = get_conn()
@@ -1444,7 +1444,7 @@ def get_transformation(
         "fg3m":   decompose_fg3m,
         # Use FGM/FTM usage decomp (min × attempts/min × pct) for FG%/FT% z-score attribution
         # so role (volume) and skill (efficiency) both contribute, matching z-score-breakdown logic
-        "fg_pct": decompose_fgm_usage,
+        "fg_pct": decompose_fgm_split,
         "ft_pct": decompose_ftm_usage,
     }
 

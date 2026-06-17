@@ -394,6 +394,29 @@ def decompose_fgm_usage(pa, pb):
                    contribution=round(c[k], 3)) for k in keys]
 
 
+def decompose_fgm_split(pa, pb):
+    """
+    FGM/g = min × (fg2a_per_min × fg2_pct + fg3a_per_min × fg3_pct)
+    Splits field-goal production into separate 2pt and 3pt usage + efficiency drivers.
+    Used for FG% z-score attribution so shot-type mix and efficiency are both visible.
+    """
+    keys = {
+        "min":          ("Minutes played", "role"),
+        "fg2a_per_min": ("2pt FGA/min",    "role"),
+        "fg2_pct":      ("2pt FG%",        "skill"),
+        "fg3a_per_min": ("3pt FGA/min",    "role"),
+        "fg3_pct":      ("3pt FG%",        "skill"),
+    }
+    def formula(d):
+        return d["min"] * (d["fg2a_per_min"] * d["fg2_pct"] + d["fg3a_per_min"] * d["fg3_pct"])
+    da = {k: pa[k] for k in keys}
+    db = {k: pb[k] for k in keys}
+    c  = midpoint_decomp(da, db, formula)
+    return [Driver(key=k, label=keys[k][0], category=keys[k][1],
+                   value_a=pa[k], value_b=pb[k],
+                   contribution=round(c[k], 3)) for k in keys]
+
+
 def decompose_ftm_usage(pa, pb):
     """
     FTM/g = min × fta_per_min × ft_pct
