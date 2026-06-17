@@ -1511,8 +1511,9 @@ function InjuriesPage({ onSelectPlayer, ownership }) {
   )
 }
 
-function BoxScoreTable({ players, onSelectPlayer, ownership }) {
+function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps }) {
   if (!players.length) return null
+  const COL_COUNT = 17
   return (
     <table className="bs-table">
       <colgroup>
@@ -1557,47 +1558,81 @@ function BoxScoreTable({ players, onSelectPlayer, ownership }) {
       </thead>
       <tbody>
         {players.filter(p => p.min > 0).map((p, i) => (
-          <tr key={i}>
-            <td className="bs-name">
-              <span
-                className={p.slug && onSelectPlayer ? 'rank-player-link' : undefined}
-                onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
-              >{p.name}</span>
-              {p.injury && <InjuryBadge injury={p.injury} compact />}
-              <OwnBadge slug={p.slug} ownership={ownership} />
-            </td>
-            <td className="bs-pos">{posAbbr(p.pos) || '—'}</td>
-            <td className="bs-ctr">{p.min}</td>
-            <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
-            <td className="bs-ctr bs-muted">{p.pf}</td>
-            <ZCell value={p.pts} z={p.z_pts} isTov={false} />
-            <ZCell value={p.fg3m} z={p.z_fg3m} isTov={false} />
-            <ZCell value={p.reb} z={p.z_reb} isTov={false} />
-            <ZCell value={p.ast} z={p.z_ast} isTov={false} />
-            <ZCell value={p.stl} z={p.z_stl} isTov={false} />
-            <ZCell value={p.blk} z={p.z_blk} isTov={false} />
-            <ZCell value={p.tov} z={p.z_tov} isTov={true} />
-            <td className="bs-ctr bs-muted">{p.fg}</td>
-            <ZCell value={p.fg_pct != null ? `${(p.fg_pct*100).toFixed(0)}%` : '—'} z={p.z_fg_pct} isTov={false} />
-            <td className="bs-ctr bs-muted">{p.ft}</td>
-            <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
-            <td className={`bs-ctr bs-ztotal ${p.z_total > 0 ? 'z-pos' : p.z_total < 0 ? 'z-neg' : 'z-neu'}`}>{p.z_total > 0 ? '+' : ''}{p.z_total}</td>
-          </tr>
+          <Fragment key={i}>
+            <tr>
+              <td className="bs-name">
+                <span
+                  className={p.slug && onSelectPlayer ? 'rank-player-link' : undefined}
+                  onClick={() => p.slug && onSelectPlayer && onSelectPlayer({ slug: p.slug, name: p.name })}
+                >{p.name}</span>
+                {p.injury && <InjuryBadge injury={p.injury} compact />}
+                <OwnBadge slug={p.slug} ownership={ownership} />
+                {adminProps && p.slug && (
+                  <button
+                    className="bs-note-pencil"
+                    title="Add note"
+                    onClick={() => adminProps.onPencilClick(p.slug)}
+                  >✏</button>
+                )}
+              </td>
+              <td className="bs-pos">{posAbbr(p.pos) || '—'}</td>
+              <td className="bs-ctr">{p.min}</td>
+              <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
+              <td className="bs-ctr bs-muted">{p.pf}</td>
+              <ZCell value={p.pts} z={p.z_pts} isTov={false} />
+              <ZCell value={p.fg3m} z={p.z_fg3m} isTov={false} />
+              <ZCell value={p.reb} z={p.z_reb} isTov={false} />
+              <ZCell value={p.ast} z={p.z_ast} isTov={false} />
+              <ZCell value={p.stl} z={p.z_stl} isTov={false} />
+              <ZCell value={p.blk} z={p.z_blk} isTov={false} />
+              <ZCell value={p.tov} z={p.z_tov} isTov={true} />
+              <td className="bs-ctr bs-muted">{p.fg}</td>
+              <ZCell value={p.fg_pct != null ? `${(p.fg_pct*100).toFixed(0)}%` : '—'} z={p.z_fg_pct} isTov={false} />
+              <td className="bs-ctr bs-muted">{p.ft}</td>
+              <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
+              <td className={`bs-ctr bs-ztotal ${p.z_total > 0 ? 'z-pos' : p.z_total < 0 ? 'z-neg' : 'z-neu'}`}>{p.z_total > 0 ? '+' : ''}{p.z_total}</td>
+            </tr>
+            {adminProps && adminProps.openNoteSlug === p.slug && (
+              <tr className="bs-note-entry-row">
+                <td colSpan={COL_COUNT} className="bs-note-entry-td">
+                  <textarea
+                    className="bs-note-textarea"
+                    placeholder={`Note on ${p.name}…`}
+                    value={adminProps.noteText}
+                    onChange={e => adminProps.onNoteChange(e.target.value)}
+                    autoFocus
+                    rows={2}
+                  />
+                  <div className="bs-note-actions">
+                    <button
+                      className="bs-note-save"
+                      onClick={() => adminProps.onNoteSubmit(p.slug)}
+                      disabled={adminProps.noteSubmitting || !adminProps.noteText.trim()}
+                    >{adminProps.noteSubmitting ? '…' : 'Save'}</button>
+                    <button className="bs-note-cancel" onClick={adminProps.onNoteCancel}>Cancel</button>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </Fragment>
         ))}
       </tbody>
     </table>
   )
 }
 
-function BoxScorePage({ onSelectPlayer, ownership, initialDate }) {
+function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
   const clientET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-  const [todayEt, setTodayEt] = useState(clientET)
-  const [date, setDate]       = useState(() => initialDate || clientET())
-  const [data, setData]       = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
+  const [todayEt, setTodayEt]         = useState(clientET)
+  const [date, setDate]               = useState(() => initialDate || clientET())
+  const [data, setData]               = useState(null)
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState(null)
+  const [notesMap, setNotesMap]       = useState({})   // slug → {player_name, notes[]}
+  const [openNoteSlug, setOpenSlug]   = useState(null)
+  const [noteText, setNoteText]       = useState('')
+  const [noteSubmitting, setNoteSubm] = useState(false)
 
-  // Fetch authoritative ET date from server on mount (avoids browser Intl quirks)
   useEffect(() => {
     apiFetch('/api/today')
       .then(r => r.ok ? r.json() : null)
@@ -1623,11 +1658,11 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate }) {
     setLoading(true)
     setError(null)
     setData(null)
+    setNotesMap({})
+    setOpenSlug(null)
     fetchScores()
 
     if (date !== todayEt) return
-
-    // Use SSE for live updates — single backend poll shared across all users
     const token = localStorage.getItem('nba_token')
     if (!token) return
     const es = new EventSource(`/api/box-score/stream?token=${encodeURIComponent(token)}`)
@@ -1637,11 +1672,66 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate }) {
     return () => es.close()
   }, [date, todayEt, fetchScores])
 
+  // Fetch notes whenever box score data arrives
+  useEffect(() => {
+    if (!data) return
+    const slugs = data.games
+      .flatMap(g => [...g.away_players, ...g.home_players])
+      .map(p => p.slug).filter(Boolean)
+    if (!slugs.length) return
+    apiFetch(`/api/box-score-notes?slugs=${encodeURIComponent(slugs.join(','))}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setNotesMap(d) })
+      .catch(() => {})
+  }, [data])
+
   function shiftDate(days) {
     const d = new Date(date + 'T12:00:00')
     d.setDate(d.getDate() + days)
     setDate(d.toISOString().slice(0, 10))
   }
+
+  const handlePencilClick = (slug) => {
+    setOpenSlug(s => s === slug ? null : slug)
+    setNoteText('')
+  }
+
+  const handleNoteSubmit = async (slug) => {
+    const text = noteText.trim()
+    if (!text) return
+    setNoteSubm(true)
+    try {
+      const res = await apiFetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_slug: slug, body: text }),
+      })
+      if (res.ok) {
+        const newNote = await res.json()
+        setNotesMap(prev => {
+          const existing = prev[slug] || { slug, player_name: slug, notes: [] }
+          return { ...prev, [slug]: { ...existing, notes: [newNote, ...existing.notes] } }
+        })
+        setOpenSlug(null)
+        setNoteText('')
+      }
+    } finally {
+      setNoteSubm(false)
+    }
+  }
+
+  const adminProps = isAdmin ? {
+    openNoteSlug, noteText, noteSubmitting,
+    onPencilClick: handlePencilClick,
+    onNoteChange: setNoteText,
+    onNoteSubmit: handleNoteSubmit,
+    onNoteCancel: () => { setOpenSlug(null); setNoteText('') },
+  } : null
+
+  // Notes with at least one entry, ordered by player name
+  const notesWithEntries = Object.values(notesMap)
+    .filter(p => p.notes?.length > 0)
+    .sort((a, b) => (a.player_name || '').localeCompare(b.player_name || ''))
 
   return (
     <div className="bs-page">
@@ -1689,15 +1779,33 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate }) {
           <div className="bs-teams-wrap">
             <div className="bs-team-section">
               <div className="bs-team-label">{game.away} <span className="bs-team-abbr">{game.away_abbr}</span></div>
-              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} ownership={ownership} />
+              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} />
             </div>
             <div className="bs-team-section">
               <div className="bs-team-label">{game.home} <span className="bs-team-abbr">{game.home_abbr}</span></div>
-              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} ownership={ownership} />
+              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} />
             </div>
           </div>
         </div>
       ))}
+
+      {/* Notes panel */}
+      {notesWithEntries.length > 0 && (
+        <div className="bs-notes-panel">
+          <div className="bs-notes-panel-title">Scouting Notes</div>
+          {notesWithEntries.map(p => (
+            <div key={p.slug} className="bs-notes-player-group">
+              <div className="bs-notes-player-name">{p.player_name}</div>
+              {p.notes.map(n => (
+                <div key={n.id} className="bs-note-row">
+                  <span className="bs-note-author">{n.author}</span>
+                  <span className="bs-note-body">{n.body}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -9072,7 +9180,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
       {page === 'rankings' && <RankingsPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />}
 
-      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} initialDate={boxScoreDate} />}
+      {page === 'boxscores' && <BoxScorePage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} initialDate={boxScoreDate} isAdmin={isAdmin} />}
 
       {page === 'projections' && (
         <ProjectionsPage onSelectPlayer={p => navigate('player', { playerObj: p })} ownership={ownership} />

@@ -9517,6 +9517,40 @@ def mod_delete_blocked_word(word: str, current_user: str = Depends(get_current_u
 # Comments (on the protected router so auth is required)
 # -----------------------------------------------------------------------
 
+@router.get("/box-score-notes")
+def get_box_score_notes(slugs: str = Query(...)):
+    """Return all comments for a comma-separated list of player slugs (used by box score page)."""
+    slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
+    if not slug_list:
+        return []
+    placeholders = ",".join("?" * len(slug_list))
+    conn = get_conn()
+    rows = conn.execute(f"""
+        SELECT c.id, c.body, c.created_at, c.username,
+               COALESCE(u.display_name, c.username) AS author,
+               c.player_slug,
+               p.full_name AS player_name
+        FROM comments c
+        LEFT JOIN players p ON p.slug = c.player_slug
+        LEFT JOIN users u ON u.username = c.username
+        WHERE c.player_slug IN ({placeholders}) AND c.is_hidden = 0
+        ORDER BY p.full_name, c.created_at DESC
+    """, slug_list).fetchall()
+    conn.close()
+    by_player = {}
+    for r in rows:
+        slug = r["player_slug"]
+        if slug not in by_player:
+            by_player[slug] = {"slug": slug, "player_name": r["player_name"] or slug, "notes": []}
+        by_player[slug]["notes"].append({
+            "id": r["id"], "body": r["body"],
+            "created_at": r["created_at"], "author": r["author"],
+        })
+    return by_player
+
+
+# -----------------------------------------------------------------------
+
 @router.get("/comments/recent")
 def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depends(get_current_user)):
     conn = get_conn()
