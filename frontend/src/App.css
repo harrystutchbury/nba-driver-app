@@ -1101,6 +1101,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 }
 .player-profile .z-header { color: var(--text) !important; }
 .player-profile .usage-th-z { opacity: 1; }
+.player-profile .stat-cell { color: var(--text); }
 
 .player-profile-header {
   display: flex;
