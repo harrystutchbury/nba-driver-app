@@ -9526,15 +9526,14 @@ def get_box_score_notes(slugs: str = Query(...)):
     placeholders = ",".join("?" * len(slug_list))
     conn = get_conn()
     rows = conn.execute(f"""
-        SELECT c.id, c.body, c.created_at, c.username,
+        SELECT c.id, c.body, c.created_at, c.game_date, c.username,
                COALESCE(u.display_name, c.username) AS author,
                c.player_slug,
-               p.full_name AS player_name
+               (SELECT full_name FROM players WHERE slug = c.player_slug LIMIT 1) AS player_name
         FROM comments c
-        LEFT JOIN players p ON p.slug = c.player_slug
         LEFT JOIN users u ON u.username = c.username
         WHERE c.player_slug IN ({placeholders}) AND c.is_hidden = 0
-        ORDER BY p.full_name, c.created_at DESC
+        ORDER BY player_name, c.created_at DESC
     """, slug_list).fetchall()
     conn.close()
     by_player = {}
@@ -9545,6 +9544,7 @@ def get_box_score_notes(slugs: str = Query(...)):
         by_player[slug]["notes"].append({
             "id": r["id"], "body": r["body"],
             "created_at": r["created_at"], "author": r["author"],
+            "game_date": r["game_date"],
         })
     return by_player
 
@@ -9585,7 +9585,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
 def get_comments(player: str = Query(...), current_user: str = Depends(get_current_user)):
     conn = get_conn()
     rows = conn.execute("""
-        SELECT c.id, c.body, c.created_at, c.username,
+        SELECT c.id, c.body, c.created_at, c.game_date, c.username,
                COALESCE(u.display_name, c.username) AS author,
                COALESCE(SUM(CASE WHEN v.vote = 1  THEN 1 ELSE 0 END), 0) AS thumbs_up,
                COALESCE(SUM(CASE WHEN v.vote = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
@@ -9605,17 +9605,18 @@ def get_comments(player: str = Query(...), current_user: str = Depends(get_curre
 def post_comment(body: dict = Body(...), current_user: str = Depends(get_current_user)):
     player_slug = (body.get("player_slug") or "").strip()
     text = (body.get("body") or "").strip()
+    game_date = (body.get("game_date") or "").strip() or None
     if not player_slug or not text:
         raise HTTPException(status_code=400, detail="player_slug and body required")
     conn = get_conn()
     is_hidden = 1 if _check_blocked(text, conn) else 0
     cur = conn.execute(
-        "INSERT INTO comments (player_slug, username, body, is_hidden) VALUES (?,?,?,?)",
-        [player_slug, current_user, text, is_hidden],
+        "INSERT INTO comments (player_slug, username, body, is_hidden, game_date) VALUES (?,?,?,?,?)",
+        [player_slug, current_user, text, is_hidden, game_date],
     )
     comment_id = cur.lastrowid
     row = conn.execute("""
-        SELECT c.id, c.body, c.created_at, c.username,
+        SELECT c.id, c.body, c.created_at, c.game_date, c.username,
                COALESCE(u.display_name, c.username) AS author,
                0 AS thumbs_up, 0 AS thumbs_down, 0 AS my_vote
         FROM comments c

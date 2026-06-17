@@ -386,6 +386,12 @@ def init_db():
         except Exception:
             pass  # already exists
 
+    # Box score origin flag on player comments
+    try:
+        conn.execute("ALTER TABLE comments ADD COLUMN game_date TEXT")
+    except Exception:
+        pass  # already exists
+
     # Blocked words for auto-moderation
     conn.execute("""
         CREATE TABLE IF NOT EXISTS blocked_words (

@@ -373,6 +373,17 @@
   color: #555;
 }
 
+.comment-boxscore-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #4d9fff;
+  background: rgba(77, 159, 255, 0.12);
+  border: 1px solid rgba(77, 159, 255, 0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
 .comment-body {
   font-size: 0.88rem;
   color: var(--text);

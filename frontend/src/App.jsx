@@ -1704,7 +1704,7 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
       const res = await apiFetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player_slug: slug, body: text }),
+        body: JSON.stringify({ player_slug: slug, body: text, game_date: date }),
       })
       if (res.ok) {
         const newNote = await res.json()
@@ -3225,6 +3225,7 @@ function CommentsSection({ playerSlug }) {
             <div className="comment-meta">
               <span className="comment-author">{c.author}</span>
               <span className="comment-time">{timeAgo(c.created_at)}</span>
+              {c.game_date && <span className="comment-boxscore-badge">📋 Box Score · {c.game_date}</span>}
             </div>
             <p className="comment-body">{c.body}</p>
             <div className="comment-votes">
