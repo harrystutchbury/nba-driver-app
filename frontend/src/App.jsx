@@ -7778,10 +7778,11 @@ function TransformationPage() {
 
           <div className="tform-table-wrap">
             {(() => {
-              const totalRows  = result.stats.reduce((acc, s) => acc + 1 + s.drivers.length, 0)
+              const totalRows  = result.stats.reduce((acc, s) => acc + Math.max(s.drivers.length, 1), 0)
               const totalZA    = result.stats.reduce((acc, s) => acc + (s.z_a ?? 0), 0)
               const totalZB    = result.stats.reduce((acc, s) => acc + (s.z_b ?? 0), 0)
               const totalDelta = result.stats.reduce((acc, s) => acc + (s.delta_z ?? 0), 0)
+              let globalRowIdx = 0
               return (
                 <table className="tform-table">
                   <thead>
@@ -7789,67 +7790,83 @@ function TransformationPage() {
                       <th className="tform-th tform-th-cat">Category</th>
                       <th className="tform-th tform-th-group">Group</th>
                       <th className="tform-th tform-th-driver">Driver</th>
-                      <th className="tform-th tform-th-raw">Raw Before</th>
-                      <th className="tform-th tform-th-raw">Raw After</th>
+                      <th className="tform-th tform-th-raw">Value Before</th>
+                      <th className="tform-th tform-th-raw">Value After</th>
+                      <th className="tform-th tform-th-impact">Z Impact</th>
+                      <th className="tform-th tform-th-stat-raw tform-sep">Avg Before</th>
+                      <th className="tform-th tform-th-stat-raw">Avg After</th>
                       <th className="tform-th tform-th-z">Z Before</th>
                       <th className="tform-th tform-th-z">Z After</th>
-                      <th className="tform-th tform-th-impact">Z Impact</th>
+                      <th className="tform-th tform-th-impact">Δ Z</th>
                       <th className="tform-th tform-th-total">Total Z</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {result.stats.map((stat, si) => {
-                      const rows = 1 + stat.drivers.length
-                      return (
-                        <Fragment key={stat.key}>
-                          <tr className="tform-stat-row">
-                            <td className="tform-td tform-td-cat" rowSpan={rows}>
-                              <span className="tform-cat-label">{stat.label}</span>
-                            </td>
-                            <td className="tform-td tform-td-group" />
-                            <td className="tform-td tform-td-driver" />
-                            <td className="tform-td tform-td-raw tform-stat-val">{fmtRaw(stat.key, stat.raw_a)}</td>
-                            <td className="tform-td tform-td-raw tform-stat-val">{fmtRaw(stat.key, stat.raw_b)}</td>
-                            <td className={`tform-td tform-td-z tform-z-val${stat.z_a > 0 ? ' pos' : stat.z_a < 0 ? ' neg' : ''}`}>{fmtZ(stat.z_a)}</td>
-                            <td className={`tform-td tform-td-z tform-z-val${stat.z_b > 0 ? ' pos' : stat.z_b < 0 ? ' neg' : ''}`}>{fmtZ(stat.z_b)}</td>
-                            <td className={`tform-td tform-td-impact tform-delta-z${stat.delta_z > 0.05 ? ' pos' : stat.delta_z < -0.05 ? ' neg' : ''}`}>
-                              {stat.delta_z !== null ? (stat.delta_z >= 0 ? '+' : '') + stat.delta_z.toFixed(2) : '—'}
-                            </td>
-                            {si === 0 && (
-                              <td className="tform-td tform-td-total" rowSpan={totalRows}>
-                                <div className="tform-total-cell">
-                                  <div className="tform-total-label">Total Z</div>
-                                  <div className={`tform-total-val${totalZA > 0 ? ' pos' : totalZA < 0 ? ' neg' : ''}`}>
-                                    <span className="tform-total-sub">Before</span>
-                                    {fmtZ(totalZA)}
-                                  </div>
-                                  <div className={`tform-total-val${totalZB > 0 ? ' pos' : totalZB < 0 ? ' neg' : ''}`}>
-                                    <span className="tform-total-sub">After</span>
-                                    {fmtZ(totalZB)}
-                                  </div>
-                                  <div className={`tform-total-delta${totalDelta > 0.1 ? ' pos' : totalDelta < -0.1 ? ' neg' : ''}`}>
-                                    <span className="tform-total-sub">Δ</span>
-                                    {(totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)}
-                                  </div>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                          {stat.drivers.map(d => (
-                            <tr key={d.key} className="tform-driver-row">
-                              <td className={`tform-td tform-td-group tform-group-${d.group.toLowerCase()}`}>{d.group}</td>
-                              <td className="tform-td tform-td-driver">{d.label}</td>
-                              <td className="tform-td tform-td-raw tform-driver-val">{formatDriverValue(d.key, d.value_a)}</td>
-                              <td className="tform-td tform-td-raw tform-driver-val">{formatDriverValue(d.key, d.value_b)}</td>
-                              <td className="tform-td tform-td-z" />
-                              <td className="tform-td tform-td-z" />
-                              <td className={`tform-td tform-td-impact tform-driver-impact${d.z_impact > 0.02 ? ' pos' : d.z_impact < -0.02 ? ' neg' : ''}`}>
-                                {d.z_impact !== null ? (d.z_impact >= 0 ? '+' : '') + d.z_impact.toFixed(2) : '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </Fragment>
+                    {result.stats.flatMap((stat, si) => {
+                      const span = Math.max(stat.drivers.length, 1)
+                      const isFirst = globalRowIdx === 0
+                      globalRowIdx += span
+
+                      const statCells = (
+                        <>
+                          <td className="tform-td tform-td-stat-raw tform-sep" rowSpan={span}>{fmtRaw(stat.key, stat.raw_a)}</td>
+                          <td className="tform-td tform-td-stat-raw" rowSpan={span}>{fmtRaw(stat.key, stat.raw_b)}</td>
+                          <td className={`tform-td tform-td-z tform-z-val${stat.z_a > 0 ? ' pos' : stat.z_a < 0 ? ' neg' : ''}`} rowSpan={span}>{fmtZ(stat.z_a)}</td>
+                          <td className={`tform-td tform-td-z tform-z-val${stat.z_b > 0 ? ' pos' : stat.z_b < 0 ? ' neg' : ''}`} rowSpan={span}>{fmtZ(stat.z_b)}</td>
+                          <td className={`tform-td tform-td-impact tform-delta-z${stat.delta_z > 0.05 ? ' pos' : stat.delta_z < -0.05 ? ' neg' : ''}`} rowSpan={span}>
+                            {stat.delta_z !== null ? (stat.delta_z >= 0 ? '+' : '') + stat.delta_z.toFixed(2) : '—'}
+                          </td>
+                        </>
                       )
+
+                      const totalCell = isFirst ? (
+                        <td className="tform-td tform-td-total" rowSpan={totalRows}>
+                          <div className="tform-total-cell">
+                            <div className="tform-total-label">Total Z</div>
+                            <div className={`tform-total-val${totalZA > 0 ? ' pos' : totalZA < 0 ? ' neg' : ''}`}>
+                              <span className="tform-total-sub">Before</span>{fmtZ(totalZA)}
+                            </div>
+                            <div className={`tform-total-val${totalZB > 0 ? ' pos' : totalZB < 0 ? ' neg' : ''}`}>
+                              <span className="tform-total-sub">After</span>{fmtZ(totalZB)}
+                            </div>
+                            <div className={`tform-total-delta${totalDelta > 0.1 ? ' pos' : totalDelta < -0.1 ? ' neg' : ''}`}>
+                              <span className="tform-total-sub">Δ</span>{(totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)}
+                            </div>
+                          </div>
+                        </td>
+                      ) : null
+
+                      if (stat.drivers.length === 0) {
+                        return [(
+                          <tr key={stat.key} className="tform-driver-row tform-first-driver">
+                            <td className="tform-td tform-td-cat" rowSpan={1}><span className="tform-cat-label">{stat.label}</span></td>
+                            <td className="tform-td tform-td-group" />
+                            <td className="tform-td tform-td-driver tform-muted">No data</td>
+                            <td className="tform-td tform-td-raw" />
+                            <td className="tform-td tform-td-raw" />
+                            <td className="tform-td tform-td-impact" />
+                            {statCells}
+                            {totalCell}
+                          </tr>
+                        )]
+                      }
+
+                      return stat.drivers.map((d, di) => (
+                        <tr key={`${stat.key}-${d.key}`} className={`tform-driver-row${di === 0 ? ' tform-first-driver' : ''}`}>
+                          {di === 0 && (
+                            <td className="tform-td tform-td-cat" rowSpan={span}><span className="tform-cat-label">{stat.label}</span></td>
+                          )}
+                          <td className={`tform-td tform-td-group tform-group-${d.group.toLowerCase()}`}>{d.group}</td>
+                          <td className="tform-td tform-td-driver">{d.label}</td>
+                          <td className="tform-td tform-td-raw">{formatDriverValue(d.key, d.value_a)}</td>
+                          <td className="tform-td tform-td-raw">{formatDriverValue(d.key, d.value_b)}</td>
+                          <td className={`tform-td tform-td-impact tform-driver-impact${d.z_impact > 0.02 ? ' pos' : d.z_impact < -0.02 ? ' neg' : ''}`}>
+                            {d.z_impact !== null ? (d.z_impact >= 0 ? '+' : '') + d.z_impact.toFixed(2) : '—'}
+                          </td>
+                          {di === 0 && statCells}
+                          {di === 0 && totalCell}
+                        </tr>
+                      ))
                     })}
                   </tbody>
                 </table>

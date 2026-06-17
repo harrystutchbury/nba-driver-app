@@ -6285,28 +6285,28 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .tform-td-cat { vertical-align: top; padding-top: 10px; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; border-right: 2px solid var(--border); }
 .tform-td-group { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; padding-left: 16px; }
 .tform-td-driver { color: var(--text); font-size: 13px; padding-left: 8px; }
-.tform-td-raw { text-align: right; font-family: var(--mono); color: var(--muted); font-size: 12px; }
-.tform-td-z { text-align: right; font-family: var(--mono); font-size: 12px; }
-.tform-td-impact { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 700; }
+.tform-td-raw { text-align: right; font-family: var(--mono); color: var(--text); font-size: 12px; }
+.tform-td-z { text-align: center; font-family: var(--mono); font-size: 13px; font-weight: 600; vertical-align: middle !important; }
+.tform-td-impact { text-align: center; font-family: var(--mono); font-size: 13px; font-weight: 700; vertical-align: middle !important; }
 
-/* Stat summary rows */
-.tform-stat-row { background: var(--card); }
-.tform-stat-row .tform-td { border-top: 1px solid var(--border); }
-.tform-stat-val { color: var(--text) !important; font-size: 13px !important; font-weight: 600; }
-.tform-z-val { font-size: 13px !important; }
+/* Stat-level merged columns (right section) */
+.tform-sep { border-left: 2px solid var(--border) !important; }
+.tform-th.tform-sep { border-left: 2px solid var(--border) !important; }
+.tform-td-stat-raw { text-align: center; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); vertical-align: middle !important; }
+
+/* Z-score colours */
 .tform-z-val.pos { color: var(--accent); }
 .tform-z-val.neg { color: #ff6b6b; }
-.tform-delta-z { font-size: 14px !important; }
+.tform-delta-z { font-size: 14px !important; font-weight: 800; }
 .tform-delta-z.pos { color: var(--accent); }
 .tform-delta-z.neg { color: #ff6b6b; }
 
 /* Driver rows */
+.tform-first-driver .tform-td { border-top: 2px solid var(--border); }
 .tform-driver-row { background: transparent; }
-.tform-driver-row:last-child .tform-td { border-bottom: 2px solid var(--border); }
-.tform-driver-val { color: var(--text) !important; }
-.tform-driver-impact { font-size: 12px !important; }
 .tform-driver-impact.pos { color: var(--accent); }
 .tform-driver-impact.neg { color: #ff6b6b; }
+.tform-muted { color: var(--muted); font-style: italic; font-size: 12px; }
 
 /* Group badge colours */
 .tform-group-role  { color: #4d9fff; }
