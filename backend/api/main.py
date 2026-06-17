@@ -1361,7 +1361,7 @@ def get_transformation(
         fetch_period,
         decompose_points, decompose_rebounds, decompose_assists,
         decompose_steals, decompose_blocks, decompose_turnovers,
-        decompose_fg3m, decompose_fg_pct, decompose_ft_pct,
+        decompose_fg3m, decompose_fgm_usage, decompose_ftm_usage,
     )
 
     conn = get_conn()
@@ -1442,10 +1442,13 @@ def get_transformation(
         "blk":    decompose_blocks,
         "tov":    decompose_turnovers,
         "fg3m":   decompose_fg3m,
-        "fg_pct": decompose_fg_pct,
-        "ft_pct": decompose_ft_pct,
+        # Use FGM/FTM usage decomp (min × attempts/min × pct) for FG%/FT% z-score attribution
+        # so role (volume) and skill (efficiency) both contribute, matching z-score-breakdown logic
+        "fg_pct": decompose_fgm_usage,
+        "ft_pct": decompose_ftm_usage,
     }
 
+    # Keys into fetch_period data for the stat value used as decomp denominator
     RAW_KEYS = {
         "pts":    "avg_pts",
         "reb":    "avg_reb",
@@ -1454,8 +1457,8 @@ def get_transformation(
         "blk":    "avg_blk",
         "tov":    "avg_tov",
         "fg3m":   "avg_fg3m",
-        "fg_pct": "fg_pct_pct",
-        "ft_pct": "ft_pct_pct",
+        "fg_pct": "avg_fgm",   # FGM units for proportional attribution
+        "ft_pct": "avg_ftm",   # FTM units for proportional attribution
     }
 
     GROUP_LABELS = {"role": "Role", "skill": "Skill", "team": "Team"}

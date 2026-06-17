@@ -6314,3 +6314,16 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .tform-group-team  { color: var(--muted); }
 
 .tform-cat-label { display: block; }
+
+/* Totals column */
+.tform-th-total { text-align: center; border-left: 2px solid var(--border); }
+.tform-td-total { border-left: 2px solid var(--border); vertical-align: middle !important; padding: 16px 14px; }
+.tform-total-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.tform-total-label { font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.tform-total-val { font-family: var(--mono); font-size: 15px; font-weight: 700; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.tform-total-val.pos { color: var(--accent); }
+.tform-total-val.neg { color: #ff6b6b; }
+.tform-total-delta { font-family: var(--mono); font-size: 18px; font-weight: 900; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; border-top: 1px solid var(--border); padding-top: 8px; }
+.tform-total-delta.pos { color: var(--accent); }
+.tform-total-delta.neg { color: #ff6b6b; }
+.tform-total-sub { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
