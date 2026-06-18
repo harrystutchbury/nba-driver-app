@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg:       #0a0e1a;
+  --surface:  #141824;
+  --border:   #1e2740;
+  --text:     #ffffff;
+  --muted:    #8892a4;
+  --label:    #b8c4d8;
+  --accent:   #00e676;
+  --pos:      #ffd060;
+  --neg:      #ff4d6a;
+  --role:     #7c8cff;
+  --skill:    #00e676;
+  --skill-bg: rgba(0, 230, 118, 0.12);
+  --opponent: #ffb84d;
+  --team:     #ff7cf5;
+  --mono: 'DM Mono', ui-monospace, monospace;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg:       #f0f2f7;
+  --surface:  #ffffff;
+  --border:   #d0d5e4;
+  --text:     #1a1d2e;
+  --muted:    #8890a8;
+  --label:    #3e4460;
+  --accent:   #1a1d2e;
+  --pos:      #c08800;
+  --neg:      #d42020;
+  --role:     #3a4adc;
+  --skill:    #0a7a36;
+  --skill-bg: rgba(10, 122, 54, 0.12);
+  --opponent: #a06010;
+  --team:     #a020c0;
+  --mono: 'DM Mono', ui-monospace, monospace;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,0 +1,27 @@
+{
+  "projectId": "8c34c306-83b9-4d73-808a-fb1108cd2626",
+  "pkg": "@roto-intel/ui",
+  "globalName": "RotoIntelUI",
+  "shape": "package",
+  "buildCmd": "node /Users/harry/projects/nba-driver-app/frontend/design-system/build.mjs",
+  "cssEntry": "./dist/index.css",
+  "srcDir": "src",
+  "runtimeFontPrefixes": ["DM Mono", "Space Grotesk"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "ZCell":       "src/ZCell.jsx",
+    "InjuryBadge": "src/InjuryBadge.jsx",
+    "OwnBadge":    "src/OwnBadge.jsx",
+    "PageLock":    "src/PageLock.jsx",
+    "SectionLock": "src/SectionLock.jsx",
+    "ForumVote":   "src/ForumVote.jsx"
+  },
+  "dtsPropsFor": {
+    "ZCell":       "value: string | number; z: number; isTov?: boolean;",
+    "InjuryBadge": "designation: 'Out' | 'Doubtful' | 'Questionable' | 'Day-To-Day'; description?: string; returnDate?: string; compact?: boolean;",
+    "OwnBadge":    "status: 'mine' | 'taken' | 'fa';",
+    "PageLock":    "title?: string; description?: string; ctaLabel?: string; icon?: string; onUpgrade?: () => void;",
+    "SectionLock": "label?: string; ctaLabel?: string; onUpgrade?: () => void;",
+    "ForumVote":   "score: number; myVote: -1 | 0 | 1; onVote?: (v: number) => void; sm?: boolean;"
+  }
+}
