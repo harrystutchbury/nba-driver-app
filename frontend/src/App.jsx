@@ -3547,57 +3547,66 @@ function TrendingPage({ onSelectPlayer, ownership }) {
 // Projection Audit Page
 // ─────────────────────────────────────────────────────────
 const AUDIT_STATS = [
-  { key: 'pts',    label: 'PTS' },
-  { key: 'reb',    label: 'REB' },
-  { key: 'ast',    label: 'AST' },
-  { key: 'stl',    label: 'STL' },
-  { key: 'blk',    label: 'BLK' },
-  { key: 'tov',    label: 'TOV', invert: true },
-  { key: 'fg3m',   label: '3PM' },
-  { key: 'min',    label: 'MIN' },
+  { key: 'pts',  label: 'PTS' },
+  { key: 'reb',  label: 'REB' },
+  { key: 'ast',  label: 'AST' },
+  { key: 'stl',  label: 'STL' },
+  { key: 'blk',  label: 'BLK' },
+  { key: 'tov',  label: 'TOV', invert: true },
+  { key: 'fg3m', label: '3PM' },
+  { key: 'min',  label: 'MIN' },
 ]
 
-function DeltaCell({ val, invert }) {
+function AuditDeltaCell({ val, invert }) {
   const good = invert ? val < -0.5 : val > 0.5
   const bad  = invert ? val > 0.5  : val < -0.5
   const cls  = good ? 'audit-delta pos' : bad ? 'audit-delta neg' : 'audit-delta neu'
-  const sign = val > 0 ? '+' : ''
-  return <td className={cls}>{sign}{val}</td>
+  return <td className={cls}>{val > 0 ? '+' : ''}{val}</td>
+}
+
+function AuditTh({ col, label, sortKey, sortDir, onSort }) {
+  const active = sortKey === col
+  return (
+    <th className={`audit-th${active ? ' sorted' : ''}`} onClick={() => onSort(col)}>
+      {label}{active ? (sortDir === -1 ? ' ↓' : ' ↑') : ''}
+    </th>
+  )
 }
 
 function ProjectionAuditPage() {
   const [days,    setDays]    = useState(14)
   const [rows,    setRows]    = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
   const [sortKey, setSortKey] = useState('comp_delta')
   const [sortDir, setSortDir] = useState(-1)
   const [search,  setSearch]  = useState('')
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     fetch(`/api/projection-audit?days=${days}`)
-      .then(r => r.json())
-      .then(data => { setRows(data); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
+      .then(data => { setRows(Array.isArray(data) ? data : []); setLoading(false) })
+      .catch(e => { setError(e.message); setLoading(false) })
   }, [days])
 
-  function toggleSort(key) {
+  function onSort(key) {
     if (sortKey === key) setSortDir(d => d * -1)
     else { setSortKey(key); setSortDir(-1) }
   }
 
   function getSortVal(row) {
     if (sortKey === 'comp_delta') return row.comp_delta
-    if (sortKey === 'name') return row.name
-    if (sortKey === 'gp_period') return row.gp_period
-    // stat delta columns keyed as "delta_pts" etc.
+    if (sortKey === 'name')       return row.name
+    if (sortKey === 'gp_period')  return row.gp_period
     const m = sortKey.match(/^(proj|act|delta)_(.+)$/)
     if (m) return row[m[1]][m[2]] ?? 0
     return 0
   }
 
   const filtered = rows
-    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.team.toLowerCase().includes(search.toLowerCase()))
+    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || (r.team||'').toLowerCase().includes(search.toLowerCase()))
     .slice()
     .sort((a, b) => {
       const av = getSortVal(a), bv = getSortVal(b)
@@ -3605,14 +3614,7 @@ function ProjectionAuditPage() {
       return sortDir * ((bv ?? -Infinity) - (av ?? -Infinity))
     })
 
-  function Th({ col, label }) {
-    const active = sortKey === col
-    return (
-      <th className={`audit-th${active ? ' sorted' : ''}`} onClick={() => toggleSort(col)}>
-        {label}{active ? (sortDir === -1 ? ' ↓' : ' ↑') : ''}
-      </th>
-    )
-  }
+  const thProps = { sortKey, sortDir, onSort }
 
   return (
     <div className="audit-page">
@@ -3627,45 +3629,46 @@ function ProjectionAuditPage() {
           />
           <div className="audit-pills">
             {[7, 14, 30].map(d => (
-              <button
-                key={d}
-                className={`audit-pill${days === d ? ' active' : ''}`}
-                onClick={() => setDays(d)}
-              >{d}D</button>
+              <button key={d} className={`audit-pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{d}D</button>
             ))}
           </div>
         </div>
       </div>
 
       <p className="audit-sub">
-        Season baseline vs actual per-game averages · last {days} days · {filtered.length} players · sorted by composite Δ
+        Season baseline vs actual per-game averages · last {days} days
+        {!loading && !error && ` · ${filtered.length} players`}
       </p>
 
-      {loading ? (
-        <div className="audit-loading">Loading…</div>
-      ) : (
+      {loading && <div className="audit-loading">Loading…</div>}
+      {error   && <div className="audit-loading">Error loading data ({error})</div>}
+      {!loading && !error && filtered.length === 0 && (
+        <div className="audit-loading">
+          No games found in the last {days} days — try a longer window or check back during the season.
+        </div>
+      )}
+
+      {!loading && !error && filtered.length > 0 && (
         <div className="audit-table-wrap">
           <table className="audit-table">
             <thead>
               <tr>
-                <Th col="name"       label="Player" />
+                <AuditTh col="name"       label="Player"  {...thProps} />
                 <th className="audit-th">Team</th>
                 <th className="audit-th">Pos</th>
-                <Th col="gp_period"  label="GP" />
+                <AuditTh col="gp_period"  label="GP"      {...thProps} />
                 {AUDIT_STATS.map(s => (
-                  <th key={s.key} className="audit-th audit-stat-group" colSpan={3}>
-                    {s.label}
-                  </th>
+                  <th key={s.key} className="audit-th audit-stat-group" colSpan={3}>{s.label}</th>
                 ))}
-                <Th col="comp_delta" label="Σ Δ" />
+                <AuditTh col="comp_delta" label="Σ Δ"     {...thProps} />
               </tr>
               <tr className="audit-subhead">
                 <th colSpan={4} />
                 {AUDIT_STATS.map(s => (
                   <React.Fragment key={s.key}>
-                    <Th col={`proj_${s.key}`}  label="Proj" />
-                    <Th col={`act_${s.key}`}   label="Act" />
-                    <Th col={`delta_${s.key}`} label="Δ" />
+                    <AuditTh col={`proj_${s.key}`}  label="Proj" {...thProps} />
+                    <AuditTh col={`act_${s.key}`}   label="Act"  {...thProps} />
+                    <AuditTh col={`delta_${s.key}`} label="Δ"    {...thProps} />
                   </React.Fragment>
                 ))}
                 <th />
@@ -3685,7 +3688,7 @@ function ProjectionAuditPage() {
                     <React.Fragment key={s.key}>
                       <td className="audit-val">{row.proj[s.key]}</td>
                       <td className="audit-val">{row.act[s.key]}</td>
-                      <DeltaCell val={row.delta[s.key]} invert={s.invert} />
+                      <AuditDeltaCell val={row.delta[s.key]} invert={s.invert} />
                     </React.Fragment>
                   ))}
                   <td className={`audit-comp ${row.comp_delta > 0 ? 'pos' : row.comp_delta < 0 ? 'neg' : 'neu'}`}>
