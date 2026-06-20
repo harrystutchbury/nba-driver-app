@@ -3546,6 +3546,19 @@ function TrendingPage({ onSelectPlayer, ownership }) {
 // ─────────────────────────────────────────────────────────
 // Projection Audit Page
 // ─────────────────────────────────────────────────────────
+class AuditErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  render() {
+    if (this.state.err) return (
+      <div className="audit-loading" style={{color:'var(--neg)'}}>
+        Render error: {this.state.err.message}
+        <button style={{marginLeft:12,fontSize:12}} onClick={() => this.setState({err:null})}>retry</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 const AUDIT_STATS = [
   { key: 'pts',  label: 'PTS' },
   { key: 'reb',  label: 'REB' },
@@ -3697,9 +3710,9 @@ function ProjectionAuditPage() {
                   <td className="audit-gp">{row.gp_period}</td>
                   {AUDIT_STATS.map(s => (
                     <React.Fragment key={s.key}>
-                      <td className="audit-val">{row.proj[s.key]}</td>
-                      <td className="audit-val">{row.act[s.key]}</td>
-                      <AuditDeltaCell val={row.delta[s.key]} invert={s.invert} />
+                      <td className="audit-val">{row.proj?.[s.key] ?? '—'}</td>
+                      <td className="audit-val">{row.act?.[s.key] ?? '—'}</td>
+                      <AuditDeltaCell val={row.delta?.[s.key] ?? 0} invert={s.invert} />
                     </React.Fragment>
                   ))}
                   <td className={`audit-comp ${row.comp_delta > 0 ? 'pos' : row.comp_delta < 0 ? 'neg' : 'neu'}`}>
@@ -9384,7 +9397,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {page === 'draft' && <DraftPage />}
 
       {page === 'adjustments' && <AdjustmentsPage />}
-      {page === 'proj-audit'  && <ProjectionAuditPage />}
+      {page === 'proj-audit'  && <AuditErrorBoundary><ProjectionAuditPage /></AuditErrorBoundary>}
 
       {page === 'moderation' && <ModerationPage />}
 
