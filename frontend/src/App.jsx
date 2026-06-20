@@ -3543,6 +3543,164 @@ function TrendingPage({ onSelectPlayer, ownership }) {
 }
 
 
+// ─────────────────────────────────────────────────────────
+// Projection Audit Page
+// ─────────────────────────────────────────────────────────
+const AUDIT_STATS = [
+  { key: 'pts',    label: 'PTS' },
+  { key: 'reb',    label: 'REB' },
+  { key: 'ast',    label: 'AST' },
+  { key: 'stl',    label: 'STL' },
+  { key: 'blk',    label: 'BLK' },
+  { key: 'tov',    label: 'TOV', invert: true },
+  { key: 'fg3m',   label: '3PM' },
+  { key: 'min',    label: 'MIN' },
+]
+
+function DeltaCell({ val, invert }) {
+  const good = invert ? val < -0.5 : val > 0.5
+  const bad  = invert ? val > 0.5  : val < -0.5
+  const cls  = good ? 'audit-delta pos' : bad ? 'audit-delta neg' : 'audit-delta neu'
+  const sign = val > 0 ? '+' : ''
+  return <td className={cls}>{sign}{val}</td>
+}
+
+function ProjectionAuditPage() {
+  const [days,    setDays]    = useState(14)
+  const [rows,    setRows]    = useState([])
+  const [loading, setLoading] = useState(false)
+  const [sortKey, setSortKey] = useState('comp_delta')
+  const [sortDir, setSortDir] = useState(-1)
+  const [search,  setSearch]  = useState('')
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/projection-audit?days=${days}`)
+      .then(r => r.json())
+      .then(data => { setRows(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [days])
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => d * -1)
+    else { setSortKey(key); setSortDir(-1) }
+  }
+
+  function getSortVal(row) {
+    if (sortKey === 'comp_delta') return row.comp_delta
+    if (sortKey === 'name') return row.name
+    if (sortKey === 'gp_period') return row.gp_period
+    // stat delta columns keyed as "delta_pts" etc.
+    const m = sortKey.match(/^(proj|act|delta)_(.+)$/)
+    if (m) return row[m[1]][m[2]] ?? 0
+    return 0
+  }
+
+  const filtered = rows
+    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.team.toLowerCase().includes(search.toLowerCase()))
+    .slice()
+    .sort((a, b) => {
+      const av = getSortVal(a), bv = getSortVal(b)
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv)
+      return sortDir * ((bv ?? -Infinity) - (av ?? -Infinity))
+    })
+
+  function Th({ col, label }) {
+    const active = sortKey === col
+    return (
+      <th className={`audit-th${active ? ' sorted' : ''}`} onClick={() => toggleSort(col)}>
+        {label}{active ? (sortDir === -1 ? ' ↓' : ' ↑') : ''}
+      </th>
+    )
+  }
+
+  return (
+    <div className="audit-page">
+      <div className="audit-header">
+        <h2 className="audit-title">Projection Audit</h2>
+        <div className="audit-controls">
+          <input
+            className="audit-search"
+            placeholder="Search player or team…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className="audit-pills">
+            {[7, 14, 30].map(d => (
+              <button
+                key={d}
+                className={`audit-pill${days === d ? ' active' : ''}`}
+                onClick={() => setDays(d)}
+              >{d}D</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="audit-sub">
+        Season baseline vs actual per-game averages · last {days} days · {filtered.length} players · sorted by composite Δ
+      </p>
+
+      {loading ? (
+        <div className="audit-loading">Loading…</div>
+      ) : (
+        <div className="audit-table-wrap">
+          <table className="audit-table">
+            <thead>
+              <tr>
+                <Th col="name"       label="Player" />
+                <th className="audit-th">Team</th>
+                <th className="audit-th">Pos</th>
+                <Th col="gp_period"  label="GP" />
+                {AUDIT_STATS.map(s => (
+                  <th key={s.key} className="audit-th audit-stat-group" colSpan={3}>
+                    {s.label}
+                  </th>
+                ))}
+                <Th col="comp_delta" label="Σ Δ" />
+              </tr>
+              <tr className="audit-subhead">
+                <th colSpan={4} />
+                {AUDIT_STATS.map(s => (
+                  <React.Fragment key={s.key}>
+                    <Th col={`proj_${s.key}`}  label="Proj" />
+                    <Th col={`act_${s.key}`}   label="Act" />
+                    <Th col={`delta_${s.key}`} label="Δ" />
+                  </React.Fragment>
+                ))}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(row => (
+                <tr key={row.slug} className="audit-row">
+                  <td className="audit-name">
+                    {row.name}
+                    {row.injury && <span className="audit-inj" title={row.injury.designation}>●</span>}
+                  </td>
+                  <td className="audit-team">{row.team}</td>
+                  <td className="audit-pos">{row.position}</td>
+                  <td className="audit-gp">{row.gp_period}</td>
+                  {AUDIT_STATS.map(s => (
+                    <React.Fragment key={s.key}>
+                      <td className="audit-val">{row.proj[s.key]}</td>
+                      <td className="audit-val">{row.act[s.key]}</td>
+                      <DeltaCell val={row.delta[s.key]} invert={s.invert} />
+                    </React.Fragment>
+                  ))}
+                  <td className={`audit-comp ${row.comp_delta > 0 ? 'pos' : row.comp_delta < 0 ? 'neg' : 'neu'}`}>
+                    {row.comp_delta > 0 ? '+' : ''}{row.comp_delta}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AdjustmentsPage() {
   const [isAdmin,       setIsAdmin]       = useState(false)
   const [checked,       setChecked]       = useState(false)
@@ -8037,7 +8195,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0]
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit'])
     if (VALID.has(p0)) return p0
     return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
   })
@@ -8293,7 +8451,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0] || ''
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit'])
     const newPage = VALID.has(p0) ? p0 : 'dashboard'
     setPage(newPage)
     if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
@@ -9086,6 +9244,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'matchup' })}>Matchup Analysis</button>
                     <button className="nav-drop-item" onClick={() => go('draft')}>Draft</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
+                    {isAdmin && <button className="nav-drop-item" onClick={() => go('proj-audit')}>Proj Audit</button>}
                   </div>
                 </div>
 
@@ -9211,6 +9370,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {page === 'draft' && <DraftPage />}
 
       {page === 'adjustments' && <AdjustmentsPage />}
+      {page === 'proj-audit'  && <ProjectionAuditPage />}
 
       {page === 'moderation' && <ModerationPage />}
 

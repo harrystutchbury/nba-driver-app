@@ -3077,6 +3077,139 @@ def get_projections(
 
 
 # -----------------------------------------------------------------------
+# GET /projection-audit
+# -----------------------------------------------------------------------
+
+@router.get("/projection-audit")
+def get_projection_audit(days: int = Query(14, ge=1, le=365)):
+    """
+    Compare each player's season-baseline projection against their actual
+    per-game averages over the last `days` days.
+    Delta = actual - projected (positive = outperforming baseline).
+    """
+    from datetime import date, timedelta
+
+    conn = get_conn()
+    try:
+        season_year = _current_season_end_year()
+        season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        end_dt   = date.today()
+        start_dt = end_dt - timedelta(days=days)
+        start    = start_dt.isoformat()
+        end      = end_dt.isoformat()
+
+        STATS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "min"]
+
+        # ── Season baseline (full-season per-game averages) ──────────────────
+        baseline_rows = conn.execute("""
+            SELECT g.player_slug,
+                   p.full_name,
+                   COALESCE(
+                       (SELECT gl.team FROM game_logs gl
+                        WHERE gl.player_slug = g.player_slug
+                        ORDER BY gl.game_date DESC LIMIT 1),
+                       p.team
+                   ) AS team,
+                   b.position_group,
+                   COUNT(*)    AS gp_season,
+                   AVG(g.min)  AS min,
+                   AVG(g.pts)  AS pts,
+                   AVG(g.reb)  AS reb,
+                   AVG(g.ast)  AS ast,
+                   AVG(g.stl)  AS stl,
+                   AVG(g.blk)  AS blk,
+                   AVG(g.tov)  AS tov,
+                   AVG(g.fg3m) AS fg3m,
+                   SUM(g.fgm) * 100.0 / NULLIF(SUM(g.fga), 0) AS fg_pct,
+                   SUM(g.ftm) * 100.0 / NULLIF(SUM(g.fta), 0) AS ft_pct
+            FROM game_logs g
+            JOIN players p ON p.slug = g.player_slug
+                AND p.season = (SELECT MAX(p2.season) FROM players p2 WHERE p2.slug = g.player_slug)
+            LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            WHERE g.season = ? AND g.min >= 5
+            GROUP BY g.player_slug
+            HAVING COUNT(*) >= 10
+        """, (season,)).fetchall()
+
+        # ── Actual averages over the audit window ────────────────────────────
+        actual_rows = conn.execute("""
+            SELECT player_slug,
+                   COUNT(*)    AS gp_period,
+                   AVG(min)    AS min,
+                   AVG(pts)    AS pts,
+                   AVG(reb)    AS reb,
+                   AVG(ast)    AS ast,
+                   AVG(stl)    AS stl,
+                   AVG(blk)    AS blk,
+                   AVG(tov)    AS tov,
+                   AVG(fg3m)   AS fg3m,
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
+            FROM game_logs
+            WHERE season = ? AND game_date >= ? AND game_date <= ? AND min >= 5
+            GROUP BY player_slug
+        """, (season, start, end)).fetchall()
+
+        actual_map = {r["player_slug"]: dict(r) for r in actual_rows}
+        injury_map = _get_injury_map(conn)
+
+        # League SDs for composite delta normalisation
+        Z_WEIGHTS = {"pts": 1.0, "reb": 1.0, "ast": 1.0, "stl": 1.5,
+                     "blk": 1.5, "tov": -1.0, "fg3m": 1.0}
+        league_sds = {}
+        for stat in Z_WEIGHTS:
+            vals = [r[stat] for r in baseline_rows if r[stat] is not None]
+            if len(vals) > 1:
+                mean = sum(vals) / len(vals)
+                sd   = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+                league_sds[stat] = sd if sd > 0 else 1.0
+            else:
+                league_sds[stat] = 1.0
+
+        results = []
+        for b in baseline_rows:
+            slug = b["player_slug"]
+            act  = actual_map.get(slug)
+            if not act or act["gp_period"] == 0:
+                continue
+
+            proj_vals = {s: round(b[s] or 0.0, 1) for s in STATS}
+            act_vals  = {s: round(act[s] or 0.0, 1) for s in STATS}
+            delta     = {s: round(act_vals[s] - proj_vals[s], 1) for s in STATS}
+
+            for p_stat in ("fg_pct", "ft_pct"):
+                proj_vals[p_stat] = round(b[p_stat] or 0.0, 1)
+                act_vals[p_stat]  = round(act[p_stat] or 0.0, 1)
+                delta[p_stat]     = round(act_vals[p_stat] - proj_vals[p_stat], 1)
+
+            comp = sum(
+                (delta[s] / league_sds[s]) * w
+                for s, w in Z_WEIGHTS.items()
+            )
+
+            results.append({
+                "slug":       slug,
+                "name":       b["full_name"],
+                "team":       b["team"],
+                "position":   b["position_group"],
+                "gp_season":  b["gp_season"],
+                "gp_period":  act["gp_period"],
+                "injury":     injury_map.get(slug),
+                "proj":       proj_vals,
+                "act":        act_vals,
+                "delta":      delta,
+                "comp_delta": round(comp, 2),
+            })
+
+        results.sort(key=lambda x: x["comp_delta"], reverse=True)
+        return results
+
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # GET /injuries
 # -----------------------------------------------------------------------
 
