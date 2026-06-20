@@ -9208,7 +9208,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation','proj-audit'].includes(page) ? ' active' : ''}`}>
                     Players <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
@@ -9217,6 +9217,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => go('trending')}>Trending Players</button>
                     <button className="nav-drop-item" onClick={() => go('depth')}>Depth Charts</button>
                     <button className="nav-drop-item" onClick={() => go('transformation')}>Driver Breakdown</button>
+                    {isAdmin && <button className="nav-drop-item" onClick={() => go('proj-audit')}>Proj Audit</button>}
                   </div>
                 </div>
 
@@ -9244,7 +9245,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'matchup' })}>Matchup Analysis</button>
                     <button className="nav-drop-item" onClick={() => go('draft')}>Draft</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
-                    {isAdmin && <button className="nav-drop-item" onClick={() => go('proj-audit')}>Proj Audit</button>}
                   </div>
                 </div>
 
