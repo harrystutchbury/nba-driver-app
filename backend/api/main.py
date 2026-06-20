@@ -3081,10 +3081,13 @@ def get_projections(
 # -----------------------------------------------------------------------
 
 @router.get("/projection-audit")
-def get_projection_audit(days: int = Query(14, ge=1, le=365)):
+def get_projection_audit(
+    days:     int = Query(14, ge=1, le=365),
+    end_date: str = Query(None, description="YYYY-MM-DD — defaults to today"),
+):
     """
     Compare each player's season-baseline projection against their actual
-    per-game averages over the last `days` days.
+    per-game averages over the `days` days ending on `end_date` (default today).
     Delta = actual - projected (positive = outperforming baseline).
     """
     from datetime import date, timedelta
@@ -3094,7 +3097,7 @@ def get_projection_audit(days: int = Query(14, ge=1, le=365)):
         season_year = _current_season_end_year()
         season      = f"{season_year - 1}-{str(season_year)[2:]}"
 
-        end_dt   = date.today()
+        end_dt   = date.fromisoformat(end_date) if end_date else date.today()
         start_dt = end_dt - timedelta(days=days)
         start    = start_dt.isoformat()
         end      = end_dt.isoformat()

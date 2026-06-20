@@ -3575,6 +3575,7 @@ function AuditTh({ col, label, sortKey, sortDir, onSort }) {
 
 function ProjectionAuditPage() {
   const [days,    setDays]    = useState(14)
+  const [endDate, setEndDate] = useState('')   // '' = today
   const [rows,    setRows]    = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
@@ -3585,11 +3586,13 @@ function ProjectionAuditPage() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`/api/projection-audit?days=${days}`)
+    const params = new URLSearchParams({ days })
+    if (endDate) params.set('end_date', endDate)
+    fetch(`/api/projection-audit?${params}`)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then(data => { setRows(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })
-  }, [days])
+  }, [days, endDate])
 
   function onSort(key) {
     if (sortKey === key) setSortDir(d => d * -1)
@@ -3632,11 +3635,19 @@ function ProjectionAuditPage() {
               <button key={d} className={`audit-pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{d}D</button>
             ))}
           </div>
+          <input
+            type="date"
+            className="audit-date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+            title="End date (defaults to today)"
+          />
+          {endDate && <button className="audit-pill" onClick={() => setEndDate('')}>Today</button>}
         </div>
       </div>
 
       <p className="audit-sub">
-        Season baseline vs actual per-game averages · last {days} days
+        Season baseline vs actual per-game averages · {days}d ending {endDate || 'today'}
         {!loading && !error && ` · ${filtered.length} players`}
       </p>
 
