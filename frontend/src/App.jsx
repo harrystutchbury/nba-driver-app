@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component } from 'react'
 import { Bar, Line, Radar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -3546,7 +3546,7 @@ function TrendingPage({ onSelectPlayer, ownership }) {
 // ─────────────────────────────────────────────────────────
 // Projection Audit Page
 // ─────────────────────────────────────────────────────────
-class AuditErrorBoundary extends React.Component {
+class AuditErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { err: null } }
   static getDerivedStateFromError(err) { return { err } }
   render() {
@@ -3689,11 +3689,11 @@ function ProjectionAuditPage() {
               <tr className="audit-subhead">
                 <th colSpan={4} />
                 {AUDIT_STATS.map(s => (
-                  <React.Fragment key={s.key}>
+                  <Fragment key={s.key}>
                     <AuditTh col={`proj_${s.key}`}  label="Proj" {...thProps} />
                     <AuditTh col={`act_${s.key}`}   label="Act"  {...thProps} />
                     <AuditTh col={`delta_${s.key}`} label="Δ"    {...thProps} />
-                  </React.Fragment>
+                  </Fragment>
                 ))}
                 <th />
               </tr>
@@ -3709,11 +3709,11 @@ function ProjectionAuditPage() {
                   <td className="audit-pos">{row.position}</td>
                   <td className="audit-gp">{row.gp_period}</td>
                   {AUDIT_STATS.map(s => (
-                    <React.Fragment key={s.key}>
+                    <Fragment key={s.key}>
                       <td className="audit-val">{row.proj?.[s.key] ?? '—'}</td>
                       <td className="audit-val">{row.act?.[s.key] ?? '—'}</td>
                       <AuditDeltaCell val={row.delta?.[s.key] ?? 0} invert={s.invert} />
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                   <td className={`audit-comp ${row.comp_delta > 0 ? 'pos' : row.comp_delta < 0 ? 'neg' : 'neu'}`}>
                     {row.comp_delta > 0 ? '+' : ''}{row.comp_delta}
