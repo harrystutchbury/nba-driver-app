@@ -145,7 +145,7 @@ def run(preview: bool = False) -> dict:
 
         # Thread follow-ups — X only, text only
         for tweet_text in thread_tweets:
-            buffer.post(tweet_text, profile_ids=buffer._x_profiles())
+            buffer.post(tweet_text, channel_ids=buffer._x_channels())
 
         renderer.cleanup(graphic_path)
         db.log_run(CONTENT_TYPE, "success")

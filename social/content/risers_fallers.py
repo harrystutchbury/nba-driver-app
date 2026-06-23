@@ -249,7 +249,7 @@ def run(preview: bool = False) -> dict:
                 time.sleep(1800)
             dd_hash      = hashlib.sha256(dd_tweet.encode()).hexdigest()[:16]
             dd_url       = cdn.upload(dd_path, public_id=f"deepdive_{dd_path.split('/')[-1].replace('.png','')}")
-            dd_update_ids = buffer.post(dd_tweet, image_url=dd_url, profile_ids=buffer._x_profiles())
+            dd_update_ids = buffer.post(dd_tweet, image_url=dd_url, channel_ids=buffer._x_channels())
             db.log_post(CONTENT_TYPE + "_deepdive", "buffer", dd_hash,
                         copy_preview=dd_tweet[:120], post_id=dd_update_ids[0] if dd_update_ids else None,
                         template="player_deepdive.html",

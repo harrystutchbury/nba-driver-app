@@ -155,18 +155,18 @@ def run(preview: bool = False) -> dict:
         # Wire graphic — X only
         if wire_tweet and wire_path:
             wire_url = cdn.upload(wire_path, public_id=f"daily_wire_{tomorrow}")
-            buffer.post(wire_tweet, image_url=wire_url, profile_ids=buffer._x_profiles())
+            buffer.post(wire_tweet, image_url=wire_url, channel_ids=buffer._x_channels())
 
         # Category text — X only (no image)
         if cat_tweet:
-            buffer.post(cat_tweet, profile_ids=buffer._x_profiles())
+            buffer.post(cat_tweet, channel_ids=buffer._x_channels())
 
         renderer.cleanup(overall_path)
         if wire_path:
             renderer.cleanup(wire_path)
 
         db.log_run(CONTENT_TYPE, "success")
-        result["tweet_ids"] = tweet_ids
+        result["update_ids"] = update_ids
         return result
 
     except Exception as exc:

@@ -122,7 +122,7 @@ def run(preview: bool = False) -> dict:
 
         # Follow-up tweets (rankings) — X only, text only
         for tweet_text in tweets[1:]:
-            buffer.post(tweet_text, profile_ids=buffer._x_profiles())
+            buffer.post(tweet_text, channel_ids=buffer._x_channels())
 
         renderer.cleanup(graphic_path)
         db.log_run(CONTENT_TYPE, "success")

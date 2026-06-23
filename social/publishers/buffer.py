@@ -1,4 +1,4 @@
-"""Buffer Publishing API client."""
+"""Buffer Publishing API client (GraphQL)."""
 
 import os
 import logging
@@ -6,77 +6,117 @@ import requests
 
 log = logging.getLogger(__name__)
 
-_BASE = "https://api.bufferapp.com/1"
+_GQL_URL = "https://api.buffer.com"
+
+_CREATE_POST = """
+mutation CreatePost($input: CreatePostInput!) {
+  createPost(input: $input) {
+    ... on PostActionSuccess {
+      post { id status }
+    }
+    ... on MutationError {
+      message
+    }
+  }
+}
+"""
 
 
 def _token() -> str:
     return os.environ["BUFFER_ACCESS_TOKEN"]
 
 
-def _x_profiles() -> list[str]:
-    pid = os.environ.get("BUFFER_PROFILE_X", "")
-    return [pid] if pid else []
+def _headers() -> dict:
+    return {
+        "Authorization": f"Bearer {_token()}",
+        "Content-Type": "application/json",
+    }
 
 
-def _ig_profiles() -> list[str]:
-    pid = os.environ.get("BUFFER_PROFILE_IG", "")
-    return [pid] if pid else []
+def _x_channels() -> list[str]:
+    c = os.environ.get("BUFFER_CHANNEL_X", "")
+    return [c] if c else []
 
 
-def all_profiles() -> list[str]:
-    return _x_profiles() + _ig_profiles()
+def _ig_channels() -> list[str]:
+    c = os.environ.get("BUFFER_CHANNEL_IG", "")
+    return [c] if c else []
 
 
-def get_profiles() -> list[dict]:
-    """Return connected Buffer profiles (useful for finding profile IDs)."""
-    resp = requests.get(
-        f"{_BASE}/profiles.json",
-        params={"access_token": _token()},
-        timeout=15,
+def _bsky_channels() -> list[str]:
+    c = os.environ.get("BUFFER_CHANNEL_BSKY", "")
+    return [c] if c else []
+
+
+def all_channels() -> list[str]:
+    return _x_channels() + _ig_channels() + _bsky_channels()
+
+
+def _gql(query: str, variables: dict = None) -> dict:
+    resp = requests.post(
+        _GQL_URL,
+        headers=_headers(),
+        json={"query": query, "variables": variables or {}},
+        timeout=20,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    if "errors" in data:
+        raise RuntimeError(f"Buffer GraphQL error: {data['errors']}")
+    return data["data"]
+
+
+def get_channels() -> list[dict]:
+    """List all connected Buffer channels (useful for finding IDs)."""
+    org_id = os.environ["BUFFER_ORG_ID"]
+    data = _gql(
+        '{ channels(input: { organizationId: "%s" }) { id name service displayName } }' % org_id
+    )
+    return data["channels"]
 
 
 def post(
     text: str,
     image_url: str = None,
-    profile_ids: list[str] = None,
+    channel_ids: list[str] = None,
     now: bool = True,
 ) -> list[str]:
     """
-    Create a Buffer update across the given profiles.
-    Returns list of Buffer update IDs.
+    Create a Buffer post across the given channels.
+    Returns list of Buffer post IDs.
     """
-    if profile_ids is None:
-        profile_ids = all_profiles()
+    if channel_ids is None:
+        channel_ids = all_channels()
 
-    if not profile_ids:
-        raise ValueError("No Buffer profile IDs configured.")
+    if not channel_ids:
+        raise ValueError("No Buffer channel IDs configured.")
 
-    data: dict = {
-        "access_token": _token(),
-        "text": text,
-        "now": "true" if now else "false",
-    }
-    for i, pid in enumerate(profile_ids):
-        data[f"profile_ids[{i}]"] = pid
+    mode = "shareNow" if now else "addToQueue"
+    update_ids = []
 
-    if image_url:
-        data["media[picture]"] = image_url
-        data["media[thumbnail]"] = image_url
+    for channel_id in channel_ids:
+        variables = {
+            "input": {
+                "channelId": channel_id,
+                "text": text,
+                "schedulingType": "automatic",
+                "mode": mode,
+            }
+        }
+        if image_url:
+            variables["input"]["assets"] = [{"image": {"url": image_url}}]
 
-    resp = requests.post(
-        f"{_BASE}/updates/create.json",
-        data=data,
-        timeout=20,
-    )
-    resp.raise_for_status()
-    result = resp.json()
+        try:
+            data = _gql(_CREATE_POST, variables)
+            result = data.get("createPost", {})
+            if "message" in result:
+                raise RuntimeError(result["message"])
+            post_id = result.get("post", {}).get("id")
+            if post_id:
+                update_ids.append(post_id)
+                log.info("Buffer post created on %s: %s", channel_id, post_id)
+        except Exception as exc:
+            log.error("Buffer post failed for channel %s: %s", channel_id, exc)
+            raise
 
-    if not result.get("success"):
-        raise RuntimeError(f"Buffer rejected the update: {result}")
-
-    update_ids = [u["id"] for u in result.get("updates", [])]
-    log.info("Buffer updates created: %s", update_ids)
     return update_ids
