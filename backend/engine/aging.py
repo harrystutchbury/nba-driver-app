@@ -86,6 +86,26 @@ def build_aging_curves(df):
     return curves
 
 
+def _peak_shape_ceiling(age):
+    """
+    Biological ceiling on the year-over-year improvement ratio by age.
+    Enforces the expected career arc: improvement up to ~27, flat through
+    28-29, then gradual decline from 30 onward.
+
+    Stats that already naturally decline (pts, ast) are unaffected because
+    their fitted ratios fall below this ceiling. Stats with survivorship-bias
+    artefacts (stl, blk, fg3m) are corrected down to sensible values.
+    """
+    if age <= 26:
+        return RATIO_CAP                          # uncapped in development years
+    if age == 27:
+        return 1.015                              # ~+1.5% max at peak
+    if age <= 29:
+        return 1.005                              # flatish through 28-29
+    # Gradual decline from 30: -0.8% per year
+    return max(RATIO_FLOOR, 1.0 - 0.008 * (age - 29))
+
+
 def aging_ratio(curves, archetype, stat, current_age, next_age):
     """
     Return the expected year-over-year multiplier for a player aging from
@@ -93,14 +113,15 @@ def aging_ratio(curves, archetype, stat, current_age, next_age):
 
     The curve at current_age gives the historically observed average ratio
     next_season/current_season for players of that age and stat.
-    Clamped to [RATIO_FLOOR, RATIO_CAP].
+    Clamped to [RATIO_FLOOR, peak_shape_ceiling(age)].
     """
     curve_obj = curves.get(stat)
     if curve_obj is None:
         return 1.0
     curve = curve_obj['mean'] if isinstance(curve_obj, dict) else curve_obj
     ratio = float(curve(current_age))
-    return float(np.clip(ratio, RATIO_FLOOR, RATIO_CAP))
+    ceiling = _peak_shape_ceiling(current_age)
+    return float(np.clip(ratio, RATIO_FLOOR, ceiling))
 
 
 def aging_ratio_std(curves, stat, current_age):
