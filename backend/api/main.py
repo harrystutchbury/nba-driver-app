@@ -969,6 +969,7 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 # -----------------------------------------------------------------------
 
 def _compute_z_rank(conn, player_stats: dict, dates: list = None, start: str = None, end: str = None):
+    import bisect as _bisect
     """
     Given a player's per-game averages dict, compute their z_total and rank
     against the population of players who played in the same date window.
