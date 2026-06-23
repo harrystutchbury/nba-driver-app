@@ -965,6 +965,38 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
 
 # -----------------------------------------------------------------------
+# GET /teammates
+# -----------------------------------------------------------------------
+
+@router.get("/teammates")
+def get_teammates(
+    player: str = Query(..., description="Player slug"),
+    start:  str = Query(..., description="Window start YYYY-MM-DD"),
+    end:    str = Query(..., description="Window end YYYY-MM-DD"),
+):
+    """Return all players who shared at least one game with the given player in the date window."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT DISTINCT gl2.player_slug AS slug, p.full_name AS name, gl2.team
+            FROM game_logs gl1
+            JOIN game_logs gl2
+                ON  gl2.team      = gl1.team
+                AND gl2.game_date = gl1.game_date
+            JOIN players p
+                ON  p.slug   = gl2.player_slug
+                AND p.season = (SELECT MAX(p2.season) FROM players p2 WHERE p2.slug = gl2.player_slug)
+            WHERE gl1.player_slug = ?
+              AND gl1.game_date BETWEEN ? AND ?
+              AND gl2.player_slug != ?
+              AND gl2.min > 0
+            ORDER BY p.full_name
+        """, (player, start, end, player)).fetchall()
+        return [{"slug": r["slug"], "name": r["name"], "team": r["team"]} for r in rows]
+    finally:
+        conn.close()
+
+
 # GET /with-without
 # -----------------------------------------------------------------------
 
