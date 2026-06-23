@@ -175,3 +175,54 @@ def list_images():
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+@app.post("/test-post")
+def test_post():
+    """
+    End-to-end pipeline test: renders a daily projections graphic (bypassing
+    off-season check), uploads to Cloudinary, and posts to X only via Buffer.
+    """
+    import renderer
+    from publishers import cdn, buffer
+    from datetime import date
+
+    # Render a minimal test graphic using the daily projections template
+    graphic_path = renderer.render_and_screenshot(
+        "daily_projections.html",
+        {
+            "date_label": "PIPELINE TEST",
+            "players": [
+                {
+                    "name": "Pipeline Test",
+                    "team": "RIT",
+                    "position": "G",
+                    "matchup": "vs TEST",
+                    "is_b2b": False,
+                    "ease": "112.0",
+                    "ease_val": 112.0,
+                    "top_stats": [
+                        {"label": "PTS", "value": "28.0", "z": 2.1},
+                        {"label": "AST", "value": "8.5", "z": 1.8},
+                        {"label": "REB", "value": "6.0", "z": 1.2},
+                    ],
+                }
+            ],
+            "waiver_mode": False,
+        },
+        f"test_post_{date.today().isoformat()}",
+        format="square",
+    )
+
+    image_url = cdn.upload(graphic_path, public_id="pipeline_test")
+    update_ids = buffer.post(
+        "🏀 Roto Intel pipeline test — ignore this post",
+        image_url=image_url,
+        channel_ids=buffer._x_channels(),
+    )
+
+    return {
+        "status": "ok",
+        "image_url": image_url,
+        "buffer_update_ids": update_ids,
+    }
