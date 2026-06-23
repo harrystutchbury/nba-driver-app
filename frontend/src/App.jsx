@@ -9983,7 +9983,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 )}
                 {statsResult && (() => {
                   const STAT_COLS = [
-                    { key: 'gp',      label: 'GP',   fmt: v => Math.round(v) },
                     { key: 'min',     label: 'MIN',  fmt: v => v?.toFixed(1) },
                     { key: 'pts',     label: 'PTS',  fmt: v => v?.toFixed(1) },
                     { key: 'reb',     label: 'REB',  fmt: v => v?.toFixed(1) },
@@ -10006,17 +10005,28 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           <thead>
                             <tr>
                               <th className="audit-th">Period</th>
+                              <th className="audit-th">GP</th>
+                              <th className="audit-th">Z Rank</th>
                               {STAT_COLS.map(c => <th key={c.key} className="audit-th">{c.label}</th>)}
                             </tr>
                           </thead>
                           <tbody>
                             {[
-                              { label: statsResult.period_a.start, sub: statsResult.period_a.end, stats: a },
-                              { label: statsResult.period_b.start, sub: statsResult.period_b.end, stats: b },
-                            ].map((row, ri) => (
+                              { label: statsResult.period_a.start, sub: statsResult.period_a.end, stats: a, z_total: statsResult.period_a.z_total, rank: statsResult.period_a.rank, pop: statsResult.period_a.pop },
+                              { label: statsResult.period_b.start, sub: statsResult.period_b.end, stats: b, z_total: statsResult.period_b.z_total, rank: statsResult.period_b.rank, pop: statsResult.period_b.pop },
+                            ].map((row, ri) => {
+                              const otherRank = ri === 0 ? statsResult.period_b.rank : statsResult.period_a.rank
+                              const rankBetter = row.rank != null && otherRank != null && (ri === 1 ? row.rank < otherRank : false)
+                              const rankWorse  = row.rank != null && otherRank != null && (ri === 1 ? row.rank > otherRank : false)
+                              return (
                               <tr key={ri} className="audit-row">
                                 <td className="audit-name" style={{ whiteSpace: 'nowrap' }}>
                                   {row.label}<br /><span style={{ color: 'var(--muted)', fontSize: 11 }}>{row.sub}</span>
+                                </td>
+                                <td className="audit-val">{row.stats?.gp ?? '—'}</td>
+                                <td className="audit-val" style={{ color: rankBetter ? 'var(--accent)' : rankWorse ? 'var(--neg)' : '' }}>
+                                  {row.rank != null ? `#${row.rank}` : '—'}
+                                  {row.pop != null && <span style={{ color: 'var(--muted)', fontSize: 10 }}> /{row.pop}</span>}
                                 </td>
                                 {STAT_COLS.map(c => {
                                   const va = a?.[c.key], vb = b?.[c.key]
@@ -10028,7 +10038,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                                   return <td key={c.key} className="audit-val" style={color ? { color } : undefined}>{v != null ? c.fmt(v) : '—'}</td>
                                 })}
                               </tr>
-                            ))}
+                            )})}
                           </tbody>
                         </table>
                       </div>

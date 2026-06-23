@@ -965,6 +965,76 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
 
 # -----------------------------------------------------------------------
+# Shared z-score helper
+# -----------------------------------------------------------------------
+
+def _compute_z_rank(conn, player_stats: dict, dates: list = None, start: str = None, end: str = None):
+    """
+    Given a player's per-game averages dict, compute their z_total and rank
+    against the population of players who played in the same date window.
+    Pass either dates=[list] or (start, end) for the population window.
+    Returns (z_total, rank, pop_size) or (None, None, 0) on failure.
+    """
+    CATS = [("pts",False),("reb",False),("ast",False),("stl",False),
+            ("blk",False),("tov",True),("fg3m",False),("fg_pct",False),("ft_pct",False)]
+
+    if dates is not None:
+        ph   = ','.join('?' * len(dates))
+        rows = conn.execute(f"""
+            SELECT player_slug,
+                   AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                   SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+            FROM game_logs
+            WHERE game_date IN ({ph}) AND min >= 5
+            GROUP BY player_slug HAVING COUNT(*) >= 2
+        """, dates).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT player_slug,
+                   AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                   AVG(fg3m) as fg3m,
+                   SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                   SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+            FROM game_logs
+            WHERE game_date BETWEEN ? AND ? AND min >= 5
+            GROUP BY player_slug HAVING COUNT(*) >= 3
+        """, (start, end)).fetchall()
+
+    pop = [dict(r) for r in rows]
+    if not pop:
+        return None, None, 0
+
+    def _z(val, vals):
+        if val is None or len(vals) < 2: return 0.0
+        mean = sum(vals) / len(vals)
+        std  = (sum((v - mean)**2 for v in vals) / len(vals))**0.5
+        return (val - mean) / std if std > 1e-9 else 0.0
+
+    z_total = 0.0
+    for key, invert in CATS:
+        pop_vals = [r[key] for r in pop if r.get(key) is not None]
+        z = _z(player_stats.get(key), pop_vals) * (-1 if invert else 1)
+        z_total += z
+
+    # Compute z_totals for all pop players to determine rank
+    all_z = []
+    for p in pop:
+        pz = 0.0
+        for key, invert in CATS:
+            pop_vals = [r[key] for r in pop if r.get(key) is not None]
+            pz += _z(p.get(key), pop_vals) * (-1 if invert else 1)
+        all_z.append(pz)
+    all_z.sort()
+    rank = len(all_z) - _bisect.bisect_left(all_z, z_total) + 1
+
+    return round(z_total, 2), rank, len(pop)
+
+
+# -----------------------------------------------------------------------
 # GET /stat-comparison
 # -----------------------------------------------------------------------
 
@@ -1008,8 +1078,12 @@ def get_stat_comparison(
         b = _avgs(pb_start, pb_end)
         if not a and not b:
             raise HTTPException(400, "No data found for either period.")
-        return {"period_a": {"start": pa_start, "end": pa_end, "stats": a},
-                "period_b": {"start": pb_start, "end": pb_end, "stats": b}}
+        za, ra, na = _compute_z_rank(conn, a or {}, start=pa_start, end=pa_end)
+        zb, rb, nb = _compute_z_rank(conn, b or {}, start=pb_start, end=pb_end)
+        return {
+            "period_a": {"start": pa_start, "end": pa_end, "stats": a, "z_total": za, "rank": ra, "pop": na},
+            "period_b": {"start": pb_start, "end": pb_end, "stats": b, "z_total": zb, "rank": rb, "pop": nb},
+        }
     finally:
         conn.close()
 
@@ -1122,9 +1196,13 @@ def get_with_without(
                 return {k: round(v, 2) if v is not None else None for k, v in dict(row).items()}
             a = _avgs_dates(with_dates)
             b = _avgs_dates(without_dates)
-            return {"period_a": {"start": label_a, "end": f"({len(with_dates)}g)",    "stats": a},
-                    "period_b": {"start": label_b, "end": f"({len(without_dates)}g)", "stats": b},
-                    "mode": "with_without", "companion": comp_name}
+            za, ra, na = _compute_z_rank(conn, a or {}, dates=with_dates)
+            zb, rb, nb = _compute_z_rank(conn, b or {}, dates=without_dates)
+            return {
+                "period_a": {"start": label_a, "end": f"({len(with_dates)}g)",    "stats": a, "z_total": za, "rank": ra, "pop": na},
+                "period_b": {"start": label_b, "end": f"({len(without_dates)}g)", "stats": b, "z_total": zb, "rank": rb, "pop": nb},
+                "mode": "with_without", "companion": comp_name,
+            }
 
         if stat == 'z_scores':
             # ── Z-score comparison ──────────────────────────────────────────
