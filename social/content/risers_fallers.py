@@ -12,7 +12,7 @@ import api_client as api
 import claude_gen as claude
 import renderer
 import db
-from publishers import twitter, instagram
+from publishers import buffer, cdn
 
 log = logging.getLogger(__name__)
 
@@ -83,37 +83,86 @@ def _build_mover_rows(movers: list[dict]) -> list[dict]:
 def _deepdive_data(player: dict) -> dict:
     """Build template data for the player deep dive graphic."""
     cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
+
+    z_delta    = player.get("z_delta") or 0
+    min_window = player.get("min_pg") or 0
+    fga_window = player.get("fga_pg") or 0
+    fg_window  = player.get("fg_pct") or 0
+    min_delta  = player.get("min_pg_delta") or 0
+    fga_delta  = player.get("fga_pg_delta") or 0
+    fg_delta   = player.get("fg_pct_delta") or 0
+    min_season = round(min_window - min_delta, 1)
+    fga_season = round(fga_window - fga_delta, 1)
+    fg_season  = round(fg_window - fg_delta, 1)
+
     drivers = []
     for cat in cats:
-        z_now  = player.get(f"z_{cat}") or 0
-        z_base = player.get("z_base", 0)
-        drivers.append({"label": _CAT_LABELS.get(cat, cat.upper()), "value": round(z_now - (z_base / len(cats)), 2)})
-
-    drivers_sorted = sorted(drivers, key=lambda d: abs(d["value"]), reverse=True)[:4]
-    max_driver = max((abs(d["value"]) for d in drivers_sorted), default=1) or 1
-    for d in drivers_sorted:
-        d["bar_pct"] = round(max(min(abs(d["value"]) / max_driver * 100, 100), 4), 1)
-
-    stat_rows = []
-    for cat in cats[:5]:
-        baseline = round((player.get("z_base") or 0) * 0.3 + (player.get(cat) or 0) * 0.7, 1)
-        current  = player.get(cat) or 0
-        stat_rows.append({
-            "label":    cat.upper(),
-            "baseline": baseline,
-            "current":  current,
+        contribution = player.get(f"z_{cat}_delta") or 0
+        drivers.append({
+            "stat":         cat,
+            "label":        _CAT_LABELS.get(cat, cat.upper()),
+            "contribution": contribution,
         })
+    drivers = sorted(drivers, key=lambda d: abs(d["contribution"]), reverse=True)[:5]
+    max_abs = max((abs(d["contribution"]) for d in drivers), default=1) or 1
+    for d in drivers:
+        d["bar_pct"] = round(max(abs(d["contribution"]) / max_abs * 100, 2), 1)
+
+    # Sustainability verdict driven by strongest usage signal
+    role_active  = abs(min_delta) >= 2.0
+    usage_active = abs(fga_delta) >= 1.5
+    fg_active    = abs(fg_delta)  >= 4.0
+    if role_active:
+        verdict_label  = "ROLE INCREASE" if min_delta > 0 else "ROLE DECREASE"
+        verdict_reason = f"{'Extra' if min_delta > 0 else 'Fewer'} {abs(min_delta):.1f} min/g vs season baseline"
+        level = "strong" if z_delta > 0 else "warn"
+    elif usage_active:
+        verdict_label  = "USAGE INCREASE" if fga_delta > 0 else "USAGE DECREASE"
+        verdict_reason = f"{'More' if fga_delta > 0 else 'Fewer'} shot attempts ({fga_delta:+.1f} FGA/g)"
+        level = "moderate" if z_delta > 0 else "warn"
+    elif fg_active:
+        verdict_label  = "HOT STREAK" if fg_delta > 0 else "COLD STRETCH"
+        verdict_reason = f"Shooting {fg_delta:+.1f}% vs season average — efficiency driven"
+        level = "weak" if z_delta > 0 else "warn"
+    else:
+        verdict_label  = "MIXED SIGNALS"
+        verdict_reason = "No dominant driver — trend may normalize"
+        level = "weak"
 
     return {
         "player": {
             "name":        player["name"],
-            "team":        player.get("team", ""),
-            "position":    player.get("position", ""),
-            "trending_up": (player.get("z_delta") or 0) > 0,
+            "team":        api.abbrev_team(player.get("team", "")),
+            "trending_up": z_delta > 0,
+            "z_delta_fmt": f"{z_delta:+.2f}",
         },
-        "drivers":    drivers_sorted,
-        "max_driver": max_driver,
-        "stat_rows":  stat_rows,
+        "usage_grid": [
+            {
+                "stat_label": "MIN/G",
+                "stat_fmt":   f"{min_delta:+.1f}",
+                "delta":      min_delta,
+                "label":      "ROLE INCREASE" if min_delta > 0 else "ROLE DECREASE",
+                "active":     abs(min_delta) >= 2.0,
+            },
+            {
+                "stat_label": "FGA/G",
+                "stat_fmt":   f"{fga_delta:+.1f}",
+                "delta":      fga_delta,
+                "label":      "USAGE INCREASE" if fga_delta > 0 else "USAGE DECREASE",
+                "active":     abs(fga_delta) >= 1.5,
+            },
+            {
+                "stat_label": "FG%",
+                "stat_fmt":   f"{fg_delta:+.1f}%",
+                "delta":      fg_delta,
+                "label":      "HOT STREAK" if fg_delta > 0 else "COLD STRETCH",
+                "active":     abs(fg_delta) >= 4.0,
+            },
+        ],
+        "season_z": round(player.get("z_base") or 0, 2),
+        "window_z": round(player.get("z_total") or 0, 2),
+        "drivers":  drivers,
+        "verdict":  {"label": verdict_label, "reason": verdict_reason, "level": level},
     }
 
 
@@ -184,44 +233,32 @@ def run(preview: bool = False) -> dict:
             db.log_run(CONTENT_TYPE, "skipped", "duplicate")
             return {"status": "skipped", "reason": "duplicate"}
 
-        # Post risers/fallers
-        rf_tweet_id = twitter.tweet(rf_tweet, image_path=rf_path)
-        db.log_post(CONTENT_TYPE, "twitter", rf_hash,
-                    copy_preview=rf_tweet[:120], post_id=rf_tweet_id,
+        # Post risers/fallers to X + Instagram via Buffer
+        rf_url       = cdn.upload(rf_path, public_id=f"risers_fallers_{rf_path.split('/')[-1].replace('.png','')}")
+        rf_update_ids = buffer.post(rf_tweet, image_url=rf_url)
+        db.log_post(CONTENT_TYPE, "buffer", rf_hash,
+                    copy_preview=rf_tweet[:120], post_id=rf_update_ids[0] if rf_update_ids else None,
                     template="risers_fallers.html",
                     graphic_name=rf_path.split("/")[-1])
-
-        # Instagram
-        try:
-            ig_id = instagram.upload_local_image(rf_path, rf_caption)
-            db.log_post(CONTENT_TYPE, "instagram", rf_hash,
-                        copy_preview=rf_caption[:120], post_id=ig_id,
-                        template="risers_fallers.html",
-                        graphic_name=rf_path.split("/")[-1])
-        except NotImplementedError:
-            log.warning("[%s] Instagram skipped — no CDN uploader", CONTENT_TYPE)
-        except Exception as exc:
-            log.error("[%s] Instagram failed: %s", CONTENT_TYPE, exc)
-
         renderer.cleanup(rf_path)
 
-        # Post deep dive as reply 30 minutes later (or immediately in preview)
+        # Deep dive — X only, posted 30 min later as a separate post (Buffer doesn't support replies)
         if dd_tweet and dd_path:
-            log.info("[%s] Waiting 30 min before deep dive reply…", CONTENT_TYPE)
+            log.info("[%s] Waiting 30 min before deep dive post…", CONTENT_TYPE)
             if not preview:
                 time.sleep(1800)
-            dd_hash   = hashlib.sha256(dd_tweet.encode()).hexdigest()[:16]
-            dd_tweet_id = twitter.tweet(dd_tweet, image_path=dd_path,
-                                        reply_to_id=rf_tweet_id)
-            db.log_post(CONTENT_TYPE + "_deepdive", "twitter", dd_hash,
-                        copy_preview=dd_tweet[:120], post_id=dd_tweet_id,
+            dd_hash      = hashlib.sha256(dd_tweet.encode()).hexdigest()[:16]
+            dd_url       = cdn.upload(dd_path, public_id=f"deepdive_{dd_path.split('/')[-1].replace('.png','')}")
+            dd_update_ids = buffer.post(dd_tweet, image_url=dd_url, profile_ids=buffer._x_profiles())
+            db.log_post(CONTENT_TYPE + "_deepdive", "buffer", dd_hash,
+                        copy_preview=dd_tweet[:120], post_id=dd_update_ids[0] if dd_update_ids else None,
                         template="player_deepdive.html",
                         graphic_name=dd_path.split("/")[-1])
             renderer.cleanup(dd_path)
-            result["dd_tweet_id"] = dd_tweet_id
+            result["dd_update_ids"] = dd_update_ids
 
         db.log_run(CONTENT_TYPE, "success")
-        result["rf_tweet_id"] = rf_tweet_id
+        result["rf_update_ids"] = rf_update_ids
         return result
 
     except Exception as exc:

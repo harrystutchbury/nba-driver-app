@@ -11,7 +11,7 @@ import api_client as api
 import claude_gen as claude
 import renderer
 import db
-from publishers import twitter, instagram
+from publishers import buffer, cdn
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ _CAT_LABELS = {
 }
 
 
-def _top_stats_for_player(player: dict, n: int = 2) -> list[dict]:
+def _top_stats_for_player(player: dict, n: int = 3) -> list[dict]:
     """Return the top N projected stat columns for a player with z-scores."""
     cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
     scored = []
@@ -38,7 +38,7 @@ def _top_stats_for_player(player: dict, n: int = 2) -> list[dict]:
         z   = player.get(f"z_{cat}") or 0
         if val is not None:
             scored.append({"label": _CAT_LABELS[cat], "value": f"{val:.1f}", "z": z, "_val": val})
-    scored.sort(key=lambda x: x["_val"], reverse=True)
+    scored.sort(key=lambda x: x["z"], reverse=True)
     return [{"label": s["label"], "value": s["value"], "z": s["z"]} for s in scored[:n]]
 
 
@@ -49,14 +49,16 @@ def _build_player_rows(players: list[dict]) -> list[dict]:
         is_home  = p.get("is_home", True)
         opp_abbr = api.abbrev_team(opponent)
         matchup  = f"vs {opp_abbr}" if is_home else f"@ {opp_abbr}"
+        ease = p.get("ease")
         rows.append({
             "name":      p["name"],
             "team":      api.abbrev_team(p.get("team", "")),
             "position":  p.get("position", ""),
             "matchup":   matchup if opp_abbr else "",
             "is_b2b":    p.get("is_b2b", False),
-            "is_fa":     p.get("ownership_pct", 100) < 50,
-            "top_stats": _top_stats_for_player(p, n=2),
+            "ease":      f"{ease:.1f}" if ease is not None else None,
+            "ease_val":  ease,
+            "top_stats": _top_stats_for_player(p, n=3),
         })
     return rows
 
@@ -142,34 +144,22 @@ def run(preview: bool = False) -> dict:
             db.log_run(CONTENT_TYPE, "skipped", "duplicate")
             return {"status": "skipped", "reason": "duplicate"}
 
-        # Twitter thread: overall graphic → wire graphic → category text
-        thread_texts  = [overall_tweet]
-        thread_images = [overall_path]
-        if wire_tweet:
-            thread_texts.append(wire_tweet)
-            thread_images.append(wire_path)
-        if cat_tweet:
-            thread_texts.append(cat_tweet)
-            thread_images.append(None)
-
-        tweet_ids = twitter.post_thread(thread_texts, image_paths=thread_images)
-
-        db.log_post(CONTENT_TYPE, "twitter", lead_hash,
-                    copy_preview=overall_tweet[:120], post_id=tweet_ids[0],
+        # Upload overall graphic to CDN, post to X + Instagram via Buffer
+        overall_url = cdn.upload(overall_path, public_id=f"daily_overall_{tomorrow}")
+        update_ids  = buffer.post(overall_tweet, image_url=overall_url)
+        db.log_post(CONTENT_TYPE, "buffer", lead_hash,
+                    copy_preview=overall_tweet[:120], post_id=update_ids[0] if update_ids else None,
                     template="daily_projections.html",
                     graphic_name=overall_path.split("/")[-1])
 
-        # Instagram — overall graphic only (morning slot)
-        try:
-            ig_id = instagram.upload_local_image(overall_path, ig_caption)
-            db.log_post(CONTENT_TYPE, "instagram", lead_hash,
-                        copy_preview=ig_caption[:120], post_id=ig_id,
-                        template="daily_projections.html",
-                        graphic_name=overall_path.split("/")[-1])
-        except NotImplementedError:
-            log.warning("[%s] Instagram skipped — no CDN uploader", CONTENT_TYPE)
-        except Exception as exc:
-            log.error("[%s] Instagram failed: %s", CONTENT_TYPE, exc)
+        # Wire graphic — X only
+        if wire_tweet and wire_path:
+            wire_url = cdn.upload(wire_path, public_id=f"daily_wire_{tomorrow}")
+            buffer.post(wire_tweet, image_url=wire_url, profile_ids=buffer._x_profiles())
+
+        # Category text — X only (no image)
+        if cat_tweet:
+            buffer.post(cat_tweet, profile_ids=buffer._x_profiles())
 
         renderer.cleanup(overall_path)
         if wire_path:

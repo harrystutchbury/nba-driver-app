@@ -1,6 +1,6 @@
 """
 Weekly best performers content — runs Monday 8am ET.
-Pulls top 10 projected players for the week, renders graphic, posts to Twitter + Instagram.
+Pulls top 10 l14-period players by z-score, renders graphic, posts to Twitter + Instagram.
 """
 
 import hashlib
@@ -11,31 +11,48 @@ import api_client as api
 import claude_gen as claude
 import renderer
 import db
-from publishers import twitter, instagram
+from publishers import buffer, cdn
 
 log = logging.getLogger(__name__)
 
 CONTENT_TYPE = "weekly_performers"
 
+_CAT_LABELS = {
+    "pts":    "PTS",
+    "reb":    "REB",
+    "ast":    "AST",
+    "stl":    "STL",
+    "blk":    "BLK",
+    "fg3m":   "3PM",
+    "fg_pct": "FG%",
+}
+
+
+def _top_stats_for_player(player: dict, n: int = 3) -> list[dict]:
+    cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
+    scored = []
+    for cat in cats:
+        val = player.get(cat)
+        z   = player.get(f"z_{cat}") or 0
+        if val is not None:
+            scored.append({"label": _CAT_LABELS[cat], "value": f"{val:.1f}", "z": z})
+    scored.sort(key=lambda x: x["z"], reverse=True)
+    return scored[:n]
+
 
 def _build_player_rows(players: list[dict]) -> list[dict]:
-    cats = ["pts", "reb", "ast", "stl", "blk", "fg3m"]
     rows = []
     for p in players:
-        scored = sorted(
-            [(c, p.get(c) or 0) for c in cats if p.get(c) is not None],
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        stats = [
-            {"label": c.upper(), "value": f"{v:.1f}"}
-            for c, v in scored[:3]
-        ]
         rows.append({
-            "name":  p["name"],
-            "team":  api.abbrev_team(p.get("team", "")),
-            "games": p.get("gp") or 0,
-            "stats": stats,
+            "name":     p["name"],
+            "team":     api.abbrev_team(p.get("team", "")),
+            "position": p.get("position", ""),
+            "pts":      p.get("pts"),   "z_pts":  p.get("z_pts")  or 0,
+            "reb":      p.get("reb"),   "z_reb":  p.get("z_reb")  or 0,
+            "ast":      p.get("ast"),   "z_ast":  p.get("z_ast")  or 0,
+            "stl":      p.get("stl"),   "z_stl":  p.get("z_stl")  or 0,
+            "blk":      p.get("blk"),   "z_blk":  p.get("z_blk")  or 0,
+            "fg3m":     p.get("fg3m"),  "z_fg3m": p.get("z_fg3m") or 0,
         })
     return rows
 
@@ -67,8 +84,7 @@ def run(preview: bool = False) -> dict:
         return {"status": "skipped", "reason": "off-season"}
 
     try:
-        api.refresh_schedule()
-        top_players = api.top_week_projections(n=10)
+        top_players = api.season_rankings("l14")[:10]
         if not top_players:
             db.log_run(CONTENT_TYPE, "skipped", "no players")
             return {"status": "skipped", "reason": "no projection data"}
@@ -116,38 +132,24 @@ def run(preview: bool = False) -> dict:
             db.log_run(CONTENT_TYPE, "skipped", "duplicate")
             return {"status": "skipped", "reason": "duplicate"}
 
-        # Post to Twitter — thread: lead tweet with graphic, then per-player follow-ups
-        all_tweets = [lead_tweet] + thread_tweets
-        img_paths  = [graphic_path] + [None] * len(thread_tweets)
-        tweet_ids  = twitter.post_thread(all_tweets, image_paths=img_paths)
-
+        # Upload graphic, post to X + Instagram via Buffer
+        graphic_url = cdn.upload(graphic_path, public_id=f"weekly_performers_{graphic_path.split('/')[-1].replace('.png','')}")
+        update_ids  = buffer.post(lead_tweet, image_url=graphic_url)
         db.log_post(
-            CONTENT_TYPE, "twitter", copy_hash,
+            CONTENT_TYPE, "buffer", copy_hash,
             copy_preview=lead_tweet[:120],
-            post_id=tweet_ids[0],
+            post_id=update_ids[0] if update_ids else None,
             template="weekly_performers.html",
             graphic_name=graphic_path.split("/")[-1],
         )
 
-        # Post to Instagram
-        try:
-            ig_id = instagram.upload_local_image(graphic_path, ig_caption)
-            db.log_post(
-                CONTENT_TYPE, "instagram", copy_hash,
-                copy_preview=ig_caption[:120],
-                post_id=ig_id,
-                template="weekly_performers.html",
-                graphic_name=graphic_path.split("/")[-1],
-            )
-        except NotImplementedError:
-            log.warning("[%s] Instagram skipped — no CDN uploader configured", CONTENT_TYPE)
-        except Exception as exc:
-            log.error("[%s] Instagram failed: %s", CONTENT_TYPE, exc)
-            db.log_post(CONTENT_TYPE, "instagram", copy_hash, status="failed", error_msg=str(exc))
+        # Thread follow-ups — X only, text only
+        for tweet_text in thread_tweets:
+            buffer.post(tweet_text, profile_ids=buffer._x_profiles())
 
         renderer.cleanup(graphic_path)
         db.log_run(CONTENT_TYPE, "success")
-        result["tweet_ids"] = tweet_ids
+        result["update_ids"] = update_ids
         return result
 
     except Exception as exc:
