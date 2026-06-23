@@ -9799,7 +9799,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       </div>
                     </div>
                     <div className="ctrl-group">
-                      <span className="ctrl-label">Companion player</span>
+                      <span className="ctrl-label">With/Without player</span>
                       {wwTeammates.length === 0 ? (
                         <span className="ctrl-input" style={{ color: 'var(--muted)' }}>
                           {selectedPlayer ? 'Loading…' : 'Select a player first'}
