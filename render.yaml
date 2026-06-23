@@ -28,23 +28,25 @@ services:
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright
-      - key: TWITTER_API_KEY
-        sync: false
-      - key: TWITTER_API_SECRET
-        sync: false
-      - key: TWITTER_ACCESS_TOKEN
-        sync: false
-      - key: TWITTER_ACCESS_SECRET
+      - key: ROTO_INTEL_API_BASE_URL
+        value: https://app.rotointel.com
+      - key: ROTO_INTEL_JWT_SECRET
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: INSTAGRAM_ACCESS_TOKEN
+      - key: BUFFER_ACCESS_TOKEN
         sync: false
-      - key: INSTAGRAM_ACCOUNT_ID
+      - key: BUFFER_ORG_ID
         sync: false
-      - key: ROTO_INTEL_API_BASE_URL
+      - key: BUFFER_CHANNEL_X
         sync: false
-      - key: ROTO_INTEL_JWT_SECRET
+      - key: BUFFER_CHANNEL_IG
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
         sync: false
 
   - type: web
