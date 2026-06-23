@@ -63,8 +63,21 @@ class DecompResult:
 # Fetch and aggregate a period
 # -----------------------------------------------------------------------
 
-def fetch_period(conn, player_slug, date_from, date_to):
-    row = conn.execute("""
+def fetch_period(conn, player_slug, date_from=None, date_to=None, dates=None):
+    """
+    Fetch and aggregate a period for a player.
+    Pass either (date_from, date_to) for a contiguous range, or dates=[list]
+    for an explicit set of game dates (used by with/without analysis).
+    """
+    if dates is not None:
+        ph  = ','.join('?' * len(dates))
+        where = f"g.player_slug = ? AND g.game_date IN ({ph}) AND g.min > 0"
+        params = [player_slug] + list(dates)
+    else:
+        where  = "g.player_slug = ? AND g.game_date >= ? AND g.game_date <= ? AND g.min > 0"
+        params = [player_slug, date_from, date_to]
+
+    row = conn.execute(f"""
         SELECT
             COUNT(*)            AS games,
             AVG(g.min)          AS avg_min,
@@ -87,30 +100,24 @@ def fetch_period(conn, player_slug, date_from, date_to):
             AVG(t.pace)         AS avg_pace,
             AVG(t.minutes)      AS avg_team_minutes,
 
-            -- opp_avail_rate: available defensive rebounds per player-minute
-            -- = SUM(available dreb per game) / SUM(player minutes)
-            -- available per game = (opp FG misses + 0.44 * opp FT misses) * min_share
             SUM(
                 (t.opp_fga * (1.0 - t.opp_fg_pct)
                  + 0.44 * t.opp_fta * (1.0 - t.opp_ft_pct))
                 * (g.min / NULLIF(t.minutes, 0))
             ) / NULLIF(SUM(g.min), 0) AS opp_avail_rate,
 
-            -- team_avail_rate: available offensive rebounds per player-minute
             SUM(
                 (t.team_fga * (1.0 - t.team_fg_pct)
                  + 0.44 * t.team_fta * (1.0 - t.team_ft_pct))
                 * (g.min / NULLIF(t.minutes, 0))
             ) / NULLIF(SUM(g.min), 0) AS team_avail_rate,
 
-            -- dreb_pct: ratio of sums (not average of ratios)
             SUM(g.dreb) / NULLIF(SUM(
                 (t.opp_fga * (1.0 - t.opp_fg_pct)
                  + 0.44 * t.opp_fta * (1.0 - t.opp_ft_pct))
                 * (g.min / NULLIF(t.minutes, 0))
             ), 0) AS dreb_pct,
 
-            -- oreb_pct: ratio of sums
             SUM(g.oreb) / NULLIF(SUM(
                 (t.team_fga * (1.0 - t.team_fg_pct)
                  + 0.44 * t.team_fta * (1.0 - t.team_ft_pct))
@@ -121,12 +128,8 @@ def fetch_period(conn, player_slug, date_from, date_to):
         LEFT JOIN team_games t
             ON  t.team      = g.team
             AND t.game_date = g.game_date
-        WHERE
-            g.player_slug = ?
-            AND g.game_date >= ?
-            AND g.game_date <= ?
-            AND g.min > 0
-    """, (player_slug, date_from, date_to)).fetchone()
+        WHERE {where}
+    """, params).fetchone()
 
     if not row or row["games"] == 0:
         return None
@@ -468,12 +471,12 @@ STAT_RAW_KEYS = {
 }
 
 
-def decompose(conn, player_slug, stat, period_a, period_b):
+def decompose(conn, player_slug, stat, period_a, period_b, dates_a=None, dates_b=None):
     if stat not in STAT_DECOMPOSERS:
         raise ValueError(f"Unknown stat '{stat}'. Choose from {list(STAT_DECOMPOSERS)}")
 
-    pa = fetch_period(conn, player_slug, period_a[0], period_a[1])
-    pb = fetch_period(conn, player_slug, period_b[0], period_b[1])
+    pa = fetch_period(conn, player_slug, dates=dates_a) if dates_a is not None else fetch_period(conn, player_slug, period_a[0], period_a[1])
+    pb = fetch_period(conn, player_slug, dates=dates_b) if dates_b is not None else fetch_period(conn, player_slug, period_b[0], period_b[1])
 
     if pa is None or pb is None:
         return None

@@ -965,6 +965,168 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
 
 # -----------------------------------------------------------------------
+# GET /with-without
+# -----------------------------------------------------------------------
+
+@router.get("/with-without")
+def get_with_without(
+    player:    str = Query(..., description="Player slug"),
+    companion: str = Query(..., description="Companion player slug to split on"),
+    start:     str = Query(..., description="Window start YYYY-MM-DD"),
+    end:       str = Query(..., description="Window end YYYY-MM-DD"),
+    stat:      str = Query('pts'),
+):
+    """
+    Driver analysis split by companion player presence.
+    Period A = games where companion.min > 0 (with).
+    Period B = games where companion.min == 0 or absent (without).
+    Returns same shape as /decompose or /z-score-comparison depending on stat.
+    """
+    conn = get_conn()
+    try:
+        season_end = _current_season_end_year()
+        season     = f"{season_end - 1}-{str(season_end)[2:]}"
+
+        # Companion display name
+        comp_row = conn.execute(
+            "SELECT full_name FROM players WHERE slug = ? LIMIT 1", (companion,)
+        ).fetchone()
+        comp_name = comp_row["full_name"] if comp_row else companion
+
+        # Get the main player's team games in the window
+        player_games = conn.execute("""
+            SELECT DISTINCT game_date, team FROM game_logs
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ?
+        """, (player, start, end)).fetchall()
+
+        if not player_games:
+            raise HTTPException(400, "No games found for player in this date range.")
+
+        # Companion minutes by date
+        comp_mins = {
+            r["game_date"]: r["min"]
+            for r in conn.execute("""
+                SELECT game_date, COALESCE(min, 0) AS min FROM game_logs
+                WHERE player_slug = ? AND game_date BETWEEN ? AND ?
+            """, (companion, start, end)).fetchall()
+        }
+
+        with_dates    = sorted([r["game_date"] for r in player_games if (comp_mins.get(r["game_date"]) or 0) > 0])
+        without_dates = sorted([r["game_date"] for r in player_games if (comp_mins.get(r["game_date"]) or 0) == 0])
+
+        if len(with_dates) < 2:
+            raise HTTPException(400, f"Not enough 'with {comp_name}' games ({len(with_dates)}) — need at least 2.")
+        if len(without_dates) < 2:
+            raise HTTPException(400, f"Not enough 'without {comp_name}' games ({len(without_dates)}) — need at least 2.")
+
+        label_a = f"With {comp_name}"
+        label_b = f"Without {comp_name}"
+
+        if stat == 'z_scores':
+            # ── Z-score comparison ──────────────────────────────────────────
+            ph_a = ','.join('?' * len(with_dates))
+            ph_b = ','.join('?' * len(without_dates))
+
+            def _pop(dates, ph):
+                rows = conn.execute(f"""
+                    SELECT player_slug,
+                           AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                           AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                           AVG(fg3m) as fg3m,
+                           SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                           SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct
+                    FROM game_logs
+                    WHERE game_date IN ({ph}) AND min >= 5
+                    GROUP BY player_slug HAVING COUNT(*) >= 2
+                    ORDER BY COUNT(*) DESC LIMIT 200
+                """, dates).fetchall()
+                return [dict(r) for r in rows]
+
+            def _pstats(dates, ph):
+                row = conn.execute(f"""
+                    SELECT AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
+                           AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
+                           AVG(fg3m) as fg3m,
+                           SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                           SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+                           COUNT(*) as gp
+                    FROM game_logs
+                    WHERE player_slug = ? AND game_date IN ({ph}) AND min >= 5
+                """, [player] + list(dates)).fetchone()
+                return dict(row) if row and row["gp"] else None
+
+            def _z(val, pop_vals):
+                if val is None or len(pop_vals) < 2: return 0.0
+                mean = sum(pop_vals) / len(pop_vals)
+                std  = (sum((v - mean)**2 for v in pop_vals) / len(pop_vals))**0.5
+                return (val - mean) / std if std > 1e-9 else 0.0
+
+            pop_a   = _pop(with_dates,    ph_a)
+            pop_b   = _pop(without_dates, ph_b)
+            stats_a = _pstats(with_dates,    ph_a)
+            stats_b = _pstats(without_dates, ph_b)
+
+            CATS = [
+                ("pts","PTS",False),("reb","REB",False),("ast","AST",False),
+                ("stl","STL",False),("blk","BLK",False),("tov","TOV",True),
+                ("fg3m","3PM",False),("fg_pct","FG%",False),("ft_pct","FT%",False),
+            ]
+
+            categories = []
+            z_a_total = z_b_total = 0.0
+            for key, label, invert in CATS:
+                pop_vals_a = [r[key] for r in pop_a if r.get(key) is not None]
+                pop_vals_b = [r[key] for r in pop_b if r.get(key) is not None]
+                va = stats_a.get(key) if stats_a else None
+                vb = stats_b.get(key) if stats_b else None
+                za = _z(va, pop_vals_a) * (-1 if invert else 1)
+                zb = _z(vb, pop_vals_b) * (-1 if invert else 1)
+                z_a_total += za; z_b_total += zb
+                categories.append({"key": key, "label": label, "z_a": round(za,3), "z_b": round(zb,3),
+                                   "delta": round(zb-za,3), "raw_a": round(va,2) if va else None,
+                                   "raw_b": round(vb,2) if vb else None})
+
+            return {
+                "player": player,
+                "period_a": {"start": label_a, "end": f"({len(with_dates)}g)",    "z_total": round(z_a_total,3), "gp": len(with_dates)},
+                "period_b": {"start": label_b, "end": f"({len(without_dates)}g)", "z_total": round(z_b_total,3), "gp": len(without_dates)},
+                "delta": round(z_b_total - z_a_total, 3),
+                "categories": categories,
+                "mode": "with_without",
+                "companion": comp_name,
+            }
+
+        # ── Stat decomposition ──────────────────────────────────────────────
+        result = decompose(
+            conn, player, stat,
+            period_a=(start, end), period_b=(start, end),
+            dates_a=with_dates, dates_b=without_dates,
+        )
+        if result is None:
+            raise HTTPException(400, "Insufficient data to decompose.")
+
+        player_row = conn.execute(
+            "SELECT full_name, team FROM players WHERE slug = ? LIMIT 1", (player,)
+        ).fetchone()
+
+        return {
+            "player":   {"slug": player, "name": player_row["full_name"] if player_row else player},
+            "stat":     stat,
+            "period_a": {"start": label_a, "end": f"({len(with_dates)}g)",    "value": result.stat_a},
+            "period_b": {"start": label_b, "end": f"({len(without_dates)}g)", "value": result.stat_b},
+            "delta":    round(result.stat_b - result.stat_a, 3),
+            "drivers":  [{"key": d.key, "label": d.label, "category": d.category,
+                          "value_a": d.value_a, "value_b": d.value_b,
+                          "contribution": d.contribution} for d in result.drivers],
+            "mode": "with_without",
+            "companion": comp_name,
+            "with_gp":    len(with_dates),
+            "without_gp": len(without_dates),
+        }
+    finally:
+        conn.close()
+
+
 # GET /decompose
 # -----------------------------------------------------------------------
 

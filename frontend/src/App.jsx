@@ -8277,6 +8277,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [zBreakdown, setZBreakdown]   = useState(null)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
+  // With/Without mode
+  const [wwMode, setWwMode]           = useState(false)
+  const [wwStart, setWwStart]         = useState('2025-10-22')
+  const [wwEnd, setWwEnd]             = useState('2026-04-06')
+  const [wwQuery, setWwQuery]         = useState('')
+  const [wwSuggs, setWwSuggs]         = useState([])
+  const [wwCompanion, setWwCompanion] = useState(null)
   const [dataRange, setDataRange]     = useState(null)
   const [gameLog, setGameLog]         = useState(null)
   const [careerLogOpen, setCareerLogOpen] = useState(false)
@@ -8507,7 +8514,40 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       .catch(() => {})
   }
 
+  // With/Without companion suggestions
+  useEffect(() => {
+    if (!wwQuery || wwQuery.length < 2) { setWwSuggs([]); return }
+    apiFetch(`/api/players?q=${encodeURIComponent(wwQuery)}`)
+      .then(r => r.json()).then(d => setWwSuggs(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [wwQuery])
+
+  // Clear WW companion when player changes
+  useEffect(() => { setWwCompanion(null); setWwQuery('') }, [selectedPlayer])
+
   const handleAnalyse = async () => {
+    // ── With/Without mode ───────────────────────────────────────────────
+    if (wwMode) {
+      if (!selectedPlayer || !wwCompanion || !wwStart || !wwEnd) {
+        setError('Select a player, a companion, and a date window.')
+        return
+      }
+      setLoading(true); setError(null); setResult(null); setZResult(null); setZBreakdown(null); setGameLog(null); setShotDiet(null); setShotDietErr(null)
+      try {
+        const params = new URLSearchParams({ player: selectedPlayer.slug, companion: wwCompanion.slug, start: wwStart, end: wwEnd, stat })
+        if (stat === 'z_scores') {
+          const res = await apiFetch(`/api/with-without?${params}`)
+          if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
+          else setZResult(await res.json())
+        } else {
+          const res = await apiFetch(`/api/with-without?${params}`)
+          if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
+          else setResult(await res.json())
+        }
+      } catch (e) { setError(e.message) }
+      setLoading(false)
+      return
+    }
+    // ── Period vs Period mode ────────────────────────────────────────────
     if (!selectedPlayer || !periodA.start || !periodA.end || !periodB.start || !periodB.end) {
       setError('Please select a player and fill in both date ranges.')
       return
@@ -9697,24 +9737,15 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               {driverExpanded && (
                 <>
                 <div className="controls-inner">
-                  <div className="ctrl-group preset-group">
-                    <span className="ctrl-label">Presets</span>
-                    <div className="preset-btns">
-                      {[
-                        { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-04-13' }, b: { start: '2025-10-22', end: '2026-04-06' } },
-                        { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-06' } },
-                        { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-                        { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-                        { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-04-06' } },
-                      ].map(p => (
-                        <button
-                          key={p.label}
-                          className="preset-btn"
-                          onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}
-                        >{p.label}</button>
-                      ))}
+                  {/* Mode toggle */}
+                  <div className="ctrl-group">
+                    <div className="hist-mode-toggle">
+                      <button className={`hist-mode-btn${!wwMode ? ' active' : ''}`} onClick={() => { setWwMode(false); setResult(null); setZResult(null); setZBreakdown(null) }}>Period vs Period</button>
+                      <button className={`hist-mode-btn${wwMode  ? ' active' : ''}`} onClick={() => { setWwMode(true);  setResult(null); setZResult(null); setZBreakdown(null) }}>With / Without</button>
                     </div>
                   </div>
+
+                  {/* Stat selector — always shown */}
                   <div className="ctrl-group">
                     <span className="ctrl-label">Stat</span>
                     <select className="ctrl-input" value={stat} onChange={(e) => setStat(e.target.value)}>
@@ -9723,22 +9754,78 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       ))}
                     </select>
                   </div>
-                  <div className="ctrl-group ctrl-period">
-                    <span className="ctrl-label">Baseline period</span>
-                    <div className="date-pair">
-                      <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={(e) => setPeriodA(p => ({ ...p, start: e.target.value }))} />
-                      <span className="date-sep">–</span>
-                      <input className="ctrl-input date-input" type="date" value={periodA.end} onChange={(e) => setPeriodA(p => ({ ...p, end: e.target.value }))} />
+
+                  {!wwMode ? <>
+                    {/* Period vs Period controls */}
+                    <div className="ctrl-group preset-group">
+                      <span className="ctrl-label">Presets</span>
+                      <div className="preset-btns">
+                        {[
+                          { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-04-13' }, b: { start: '2025-10-22', end: '2026-04-06' } },
+                          { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-04-06' } },
+                          { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+                          { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
+                          { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-04-06' } },
+                        ].map(p => (
+                          <button key={p.label} className="preset-btn" onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}>{p.label}</button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="ctrl-group ctrl-period">
-                    <span className="ctrl-label">Comparison period</span>
-                    <div className="date-pair">
-                      <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={(e) => setPeriodB(p => ({ ...p, start: e.target.value }))} />
-                      <span className="date-sep">–</span>
-                      <input className="ctrl-input date-input" type="date" value={periodB.end} onChange={(e) => setPeriodB(p => ({ ...p, end: e.target.value }))} />
+                    <div className="ctrl-group ctrl-period">
+                      <span className="ctrl-label">Baseline period</span>
+                      <div className="date-pair">
+                        <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={(e) => setPeriodA(p => ({ ...p, start: e.target.value }))} />
+                        <span className="date-sep">–</span>
+                        <input className="ctrl-input date-input" type="date" value={periodA.end} onChange={(e) => setPeriodA(p => ({ ...p, end: e.target.value }))} />
+                      </div>
                     </div>
-                  </div>
+                    <div className="ctrl-group ctrl-period">
+                      <span className="ctrl-label">Comparison period</span>
+                      <div className="date-pair">
+                        <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={(e) => setPeriodB(p => ({ ...p, start: e.target.value }))} />
+                        <span className="date-sep">–</span>
+                        <input className="ctrl-input date-input" type="date" value={periodB.end} onChange={(e) => setPeriodB(p => ({ ...p, end: e.target.value }))} />
+                      </div>
+                    </div>
+                  </> : <>
+                    {/* With/Without controls */}
+                    <div className="ctrl-group ctrl-period">
+                      <span className="ctrl-label">Date window</span>
+                      <div className="date-pair">
+                        <input className="ctrl-input date-input" type="date" value={wwStart} onChange={e => setWwStart(e.target.value)} />
+                        <span className="date-sep">–</span>
+                        <input className="ctrl-input date-input" type="date" value={wwEnd}   onChange={e => setWwEnd(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="ctrl-group" style={{ position: 'relative' }}>
+                      <span className="ctrl-label">Companion player</span>
+                      {wwCompanion ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span className="ctrl-input" style={{ flex: 1 }}>{wwCompanion.name}</span>
+                          <button className="preset-btn" onClick={() => { setWwCompanion(null); setWwQuery('') }}>✕</button>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            className="ctrl-input"
+                            placeholder="Search teammate…"
+                            value={wwQuery}
+                            onChange={e => setWwQuery(e.target.value)}
+                          />
+                          {wwSuggs.length > 0 && (
+                            <div className="search-dropdown" style={{ top: '100%', left: 0, right: 0 }}>
+                              {wwSuggs.slice(0, 6).map(p => (
+                                <div key={p.slug} className="search-item" onClick={() => { setWwCompanion(p); setWwQuery(''); setWwSuggs([]) }}>
+                                  {p.name} <span className="search-item-team">{p.team}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>}
+
                   <button className="analyse-btn" onClick={handleAnalyse} disabled={loading}>
                     {loading ? '…' : 'Analyse'}
                   </button>
@@ -9747,9 +9834,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   <div className="driver-results">
                     <div className="metrics-row">
                       <div className="metric-card">
-                        <span className="metric-label">Baseline Z</span>
+                        <span className="metric-label">{zResult.mode === 'with_without' ? zResult.period_a.start : 'Baseline Z'}</span>
                         <span className="metric-value">{zResult.period_a.z_total.toFixed(2)}</span>
-                        <span className="metric-sub">{zResult.period_a.start} – {zResult.period_a.end}</span>
+                        <span className="metric-sub">{zResult.mode === 'with_without' ? zResult.period_a.end : `${zResult.period_a.start} – ${zResult.period_a.end}`}</span>
                       </div>
                       <div className="metric-card">
                         <span className="metric-label">Δ Z-Score</span>
@@ -9759,9 +9846,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         <span className="metric-sub">across all categories</span>
                       </div>
                       <div className="metric-card">
-                        <span className="metric-label">Comparison Z</span>
+                        <span className="metric-label">{zResult.mode === 'with_without' ? zResult.period_b.start : 'Comparison Z'}</span>
                         <span className="metric-value">{zResult.period_b.z_total.toFixed(2)}</span>
-                        <span className="metric-sub">{zResult.period_b.start} – {zResult.period_b.end}</span>
+                        <span className="metric-sub">{zResult.mode === 'with_without' ? zResult.period_b.end : `${zResult.period_b.start} – ${zResult.period_b.end}`}</span>
                       </div>
                     </div>
                     <div className="chart-wrap">
