@@ -2117,7 +2117,7 @@ def get_projection(
 
     # Build iterated multi-year projections.
     # Year N's per-30 output becomes year N+1's input, age increments each year.
-    MAX_YEARS   = 4
+    MAX_YEARS   = 1
     scale       = mpg / 30.0
     counting    = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
 

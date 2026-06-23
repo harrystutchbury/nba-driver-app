@@ -10621,7 +10621,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             {(projection || projLoading) && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setProjExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Career Projection</h3>
+                  <h3 className="panel-title">Next Season Projection</h3>
                   <span className="proj-toggle">{projExpanded ? '▲' : '▼'}</span>
                 </div>
 
