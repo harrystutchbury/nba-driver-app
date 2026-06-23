@@ -8270,7 +8270,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [showSugg, setShowSugg]       = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedPlayer, setSelected] = useState(null)
-  const [stat, setStat]               = useState('reb')
+  const [stat, setStat]               = useState('z_scores')
   const [periodA, setPeriodA]         = useState({ start: '2025-10-22', end: '2026-02-13' })
   const [periodB, setPeriodB]         = useState({ start: '2026-02-21', end: '2026-04-06' })
   const [result, setResult]           = useState(null)

@@ -1041,7 +1041,9 @@ def get_teammates(
               AND gl2.min > 0
             ORDER BY p.full_name
         """, (player, start, end, player)).fetchall()
-        return [{"slug": r["slug"], "name": r["name"], "team": r["team"]} for r in rows]
+        players = [{"slug": r["slug"], "name": r["name"], "team": r["team"]} for r in rows]
+        players.sort(key=lambda p: p["name"].split()[-1].lower())
+        return players
     finally:
         conn.close()
 
