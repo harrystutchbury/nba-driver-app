@@ -10022,10 +10022,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                                   const va = a?.[c.key], vb = b?.[c.key]
                                   const v  = row.stats?.[c.key]
                                   const delta = (va != null && vb != null) ? vb - va : null
-                                  const better = delta != null && (TOV_KEYS.has(c.key) ? delta < -0.05 : delta > 0.05)
-                                  const worse  = delta != null && (TOV_KEYS.has(c.key) ? delta > 0.05  : delta < -0.05)
-                                  const cls = ri === 1 && better ? 'audit-delta pos' : ri === 1 && worse ? 'audit-delta neg' : 'audit-val'
-                                  return <td key={c.key} className={cls}>{v != null ? c.fmt(v) : '—'}</td>
+                                  const better = ri === 1 && delta != null && (TOV_KEYS.has(c.key) ? delta < -0.05 : delta > 0.05)
+                                  const worse  = ri === 1 && delta != null && (TOV_KEYS.has(c.key) ? delta > 0.05  : delta < -0.05)
+                                  const color  = better ? 'var(--accent)' : worse ? 'var(--neg)' : ''
+                                  return <td key={c.key} className="audit-val" style={color ? { color } : undefined}>{v != null ? c.fmt(v) : '—'}</td>
                                 })}
                               </tr>
                             ))}
