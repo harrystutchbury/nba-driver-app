@@ -965,6 +965,55 @@ def get_player_stats(player: str = Query(..., description="Player slug")):
 
 
 # -----------------------------------------------------------------------
+# GET /stat-comparison
+# -----------------------------------------------------------------------
+
+@router.get("/stat-comparison")
+def get_stat_comparison(
+    player:   str = Query(...),
+    pa_start: str = Query(...), pa_end: str = Query(...),
+    pb_start: str = Query(...), pb_end: str = Query(...),
+):
+    """Return per-game averages for all fantasy stats across two periods."""
+    conn = get_conn()
+    try:
+        CATS = ["min","pts","reb","ast","stl","blk","tov","fg3m","fg3a","fgm","fga","ftm","fta"]
+
+        def _avgs(start, end, dates=None):
+            if dates is not None:
+                ph  = ','.join('?' * len(dates))
+                row = conn.execute(f"""
+                    SELECT COUNT(*) as gp,
+                           {', '.join(f'AVG({c}) as {c}' for c in CATS)},
+                           SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                           SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+                           SUM(fg3m)*100.0/NULLIF(SUM(fg3a),0) AS fg3_pct
+                    FROM game_logs WHERE player_slug=? AND game_date IN ({ph}) AND min>0
+                """, [player] + list(dates)).fetchone()
+            else:
+                row = conn.execute(f"""
+                    SELECT COUNT(*) as gp,
+                           {', '.join(f'AVG({c}) as {c}' for c in CATS)},
+                           SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                           SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+                           SUM(fg3m)*100.0/NULLIF(SUM(fg3a),0) AS fg3_pct
+                    FROM game_logs WHERE player_slug=? AND game_date BETWEEN ? AND ? AND min>0
+                """, (player, start, end)).fetchone()
+            if not row or not row["gp"]:
+                return None
+            d = dict(row)
+            return {k: round(v, 2) if v is not None else None for k, v in d.items()}
+
+        a = _avgs(pa_start, pa_end)
+        b = _avgs(pb_start, pb_end)
+        if not a and not b:
+            raise HTTPException(400, "No data found for either period.")
+        return {"period_a": {"start": pa_start, "end": pa_end, "stats": a},
+                "period_b": {"start": pb_start, "end": pb_end, "stats": b}}
+    finally:
+        conn.close()
+
+
 # GET /teammates
 # -----------------------------------------------------------------------
 
@@ -1053,6 +1102,27 @@ def get_with_without(
 
         label_a = f"With {comp_name}"
         label_b = f"Without {comp_name}"
+
+        if stat == 'stats':
+            # ── Raw stat comparison ─────────────────────────────────────────
+            CATS = ["min","pts","reb","ast","stl","blk","tov","fg3m","fg3a","fgm","fga","ftm","fta"]
+            def _avgs_dates(dates):
+                ph  = ','.join('?' * len(dates))
+                row = conn.execute(f"""
+                    SELECT COUNT(*) as gp,
+                           {', '.join(f'AVG({c}) as {c}' for c in CATS)},
+                           SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+                           SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+                           SUM(fg3m)*100.0/NULLIF(SUM(fg3a),0) AS fg3_pct
+                    FROM game_logs WHERE player_slug=? AND game_date IN ({ph}) AND min>0
+                """, [player] + list(dates)).fetchone()
+                if not row or not row["gp"]: return None
+                return {k: round(v, 2) if v is not None else None for k, v in dict(row).items()}
+            a = _avgs_dates(with_dates)
+            b = _avgs_dates(without_dates)
+            return {"period_a": {"start": label_a, "end": f"({len(with_dates)}g)",    "stats": a},
+                    "period_b": {"start": label_b, "end": f"({len(without_dates)}g)", "stats": b},
+                    "mode": "with_without", "companion": comp_name}
 
         if stat == 'z_scores':
             # ── Z-score comparison ──────────────────────────────────────────

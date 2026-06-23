@@ -442,6 +442,7 @@ function LoginPage({ onLogin, onClose, initialMode }) {
 }
 
 const STAT_OPTIONS = [
+  { value: 'stats',   label: 'Stats' },
   { value: 'z_scores', label: 'Z-Scores (all cats)' },
   { value: 'pts',    label: 'Points' },
   { value: 'reb',    label: 'Rebounds' },
@@ -8275,6 +8276,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [result, setResult]           = useState(null)
   const [zResult, setZResult]         = useState(null)
   const [zBreakdown, setZBreakdown]   = useState(null)
+  const [statsResult, setStatsResult] = useState(null)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   // With/Without mode
@@ -8532,17 +8534,16 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         setError('Select a player, a companion, and a date window.')
         return
       }
-      setLoading(true); setError(null); setResult(null); setZResult(null); setZBreakdown(null); setGameLog(null); setShotDiet(null); setShotDietErr(null)
+      setLoading(true); setError(null); setResult(null); setZResult(null); setZBreakdown(null); setStatsResult(null); setGameLog(null); setShotDiet(null); setShotDietErr(null)
       try {
         const params = new URLSearchParams({ player: selectedPlayer.slug, companion: wwCompanion.slug, start: wwStart, end: wwEnd, stat })
-        if (stat === 'z_scores') {
-          const res = await apiFetch(`/api/with-without?${params}`)
-          if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
-          else setZResult(await res.json())
-        } else {
-          const res = await apiFetch(`/api/with-without?${params}`)
-          if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
-          else setResult(await res.json())
+        const res = await apiFetch(`/api/with-without?${params}`)
+        if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
+        else {
+          const data = await res.json()
+          if (stat === 'z_scores') setZResult(data)
+          else if (stat === 'stats') setStatsResult(data)
+          else setResult(data)
         }
       } catch (e) { setError(e.message) }
       setLoading(false)
@@ -8558,6 +8559,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setResult(null)
     setZResult(null)
     setZBreakdown(null)
+    setStatsResult(null)
     setGameLog(null)
     setShotDiet(null)
     setShotDietErr(null)
@@ -8567,6 +8569,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         pa_start: periodA.start, pa_end: periodA.end,
         pb_start: periodB.start, pb_end: periodB.end,
       })
+      if (stat === 'stats') {
+        const res = await apiFetch(`/api/stat-comparison?${params}`)
+        if (!res.ok) { const b = await res.json().catch(() => ({})); setError(b.detail ?? 'Request failed') }
+        else setStatsResult(await res.json())
+        setLoading(false)
+        return
+      }
       if (stat === 'z_scores') {
         const [res, bdRes] = await Promise.all([
           apiFetch(`/api/z-score-comparison?${params}`),
@@ -9972,6 +9981,61 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     )}
                   </div>
                 )}
+                {statsResult && (() => {
+                  const STAT_COLS = [
+                    { key: 'gp',      label: 'GP',   fmt: v => Math.round(v) },
+                    { key: 'min',     label: 'MIN',  fmt: v => v?.toFixed(1) },
+                    { key: 'pts',     label: 'PTS',  fmt: v => v?.toFixed(1) },
+                    { key: 'reb',     label: 'REB',  fmt: v => v?.toFixed(1) },
+                    { key: 'ast',     label: 'AST',  fmt: v => v?.toFixed(1) },
+                    { key: 'stl',     label: 'STL',  fmt: v => v?.toFixed(1) },
+                    { key: 'blk',     label: 'BLK',  fmt: v => v?.toFixed(1) },
+                    { key: 'tov',     label: 'TOV',  fmt: v => v?.toFixed(1) },
+                    { key: 'fg3m',    label: '3PM',  fmt: v => v?.toFixed(1) },
+                    { key: 'fg_pct',  label: 'FG%',  fmt: v => v?.toFixed(1) },
+                    { key: 'fg3_pct', label: '3P%',  fmt: v => v?.toFixed(1) },
+                    { key: 'ft_pct',  label: 'FT%',  fmt: v => v?.toFixed(1) },
+                  ]
+                  const a = statsResult.period_a.stats
+                  const b = statsResult.period_b.stats
+                  const TOV_KEYS = new Set(['tov'])
+                  return (
+                    <div className="driver-results">
+                      <div className="audit-table-wrap" style={{ marginTop: 12 }}>
+                        <table className="audit-table">
+                          <thead>
+                            <tr>
+                              <th className="audit-th">Period</th>
+                              {STAT_COLS.map(c => <th key={c.key} className="audit-th">{c.label}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { label: statsResult.period_a.start, sub: statsResult.period_a.end, stats: a },
+                              { label: statsResult.period_b.start, sub: statsResult.period_b.end, stats: b },
+                            ].map((row, ri) => (
+                              <tr key={ri} className="audit-row">
+                                <td className="audit-name" style={{ whiteSpace: 'nowrap' }}>
+                                  {row.label}<br /><span style={{ color: 'var(--muted)', fontSize: 11 }}>{row.sub}</span>
+                                </td>
+                                {STAT_COLS.map(c => {
+                                  const va = a?.[c.key], vb = b?.[c.key]
+                                  const v  = row.stats?.[c.key]
+                                  const delta = (va != null && vb != null) ? vb - va : null
+                                  const better = delta != null && (TOV_KEYS.has(c.key) ? delta < -0.05 : delta > 0.05)
+                                  const worse  = delta != null && (TOV_KEYS.has(c.key) ? delta > 0.05  : delta < -0.05)
+                                  const cls = ri === 1 && better ? 'audit-delta pos' : ri === 1 && worse ? 'audit-delta neg' : 'audit-val'
+                                  return <td key={c.key} className={cls}>{v != null ? c.fmt(v) : '—'}</td>
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {result && selectedPlayer && (
                   <div className="driver-results">
                     {/* ── Metrics row ──────────────────────────────── */}
