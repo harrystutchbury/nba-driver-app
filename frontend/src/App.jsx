@@ -7584,13 +7584,15 @@ function FantasySignupPrompt({ onSignup }) {
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 // ── League History ─────────────────────────────────────────────────────────────
+const HIST_COLORS = ['#00e676','#ff4d6a','#40c4ff','#ffab40','#e040fb','#80cbc4','#fff176','#ff80ab','#b9f6ca','#84ffff']
+
 function LeagueHistory() {
-  const [data,        setData]        = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [refreshing,  setRefreshing]  = useState(false)
-  const [subTab,      setSubTab]      = useState('seasons')
-  const [playerSearch,setPlayerSearch]= useState('')
-  const [playerSort,  setPlayerSort]  = useState('times_drafted')
+  const [data,         setData]        = useState(null)
+  const [loading,      setLoading]     = useState(true)
+  const [refreshing,   setRefreshing]  = useState(false)
+  const [subTab,       setSubTab]      = useState('seasons')
+  const [playerSearch, setPlayerSearch]= useState('')
+  const [playerSort,   setPlayerSort]  = useState('times_drafted')
 
   function load() {
     setLoading(true)
@@ -7616,12 +7618,13 @@ function LeagueHistory() {
   const needsRefresh = !data || data.needs_refresh || !data.seasons?.length
 
   const SUB_TABS = ['Seasons','H2H','All-Time','Trend','Players']
+  const tabKey   = subTab.replace(/[^a-z]/g,'')
 
   const headerRow = (
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 24px',borderBottom:'1px solid var(--border)'}}>
       <div style={{display:'flex',gap:6}}>
         {SUB_TABS.map(t => (
-          <button key={t} className={`hist-mode-btn${subTab===t.toLowerCase().replace('-','') ? ' active' : ''}`}
+          <button key={t} className={`hist-mode-btn${tabKey===t.toLowerCase().replace(/[^a-z]/g,'') ? ' active' : ''}`}
             onClick={() => setSubTab(t.toLowerCase().replace(/[^a-z]/g,''))}>
             {t}
           </button>
@@ -7648,21 +7651,19 @@ function LeagueHistory() {
     </div>
   )
 
-  const { seasons = [], h2h = {}, aggregate = [], yearly_standings = {}, player_history = [], my_team_name } = data
+  const { seasons = [], h2h = {}, aggregate = [], yearly_standings = {}, player_history = [], my_owner_id } = data
 
-  // ── Seasons view ───────────────────────────────────────────────────────────
-  const SeasonsView = () => (
+  // ── Seasons ────────────────────────────────────────────────────────────────
+  const seasonsEl = tabKey === 'seasons' && (
     <div style={{overflowX:'auto',padding:'0 0 24px'}}>
       <table className="audit-table" style={{minWidth:600}}>
-        <thead>
-          <tr>
-            <th className="audit-th">Year</th>
-            <th className="audit-th">Champion</th>
-            <th className="audit-th">Reg Season</th>
-            <th className="audit-th">Teams</th>
-            <th className="audit-th">Avg PF</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th className="audit-th">Year</th>
+          <th className="audit-th">Champion</th>
+          <th className="audit-th">Reg Season</th>
+          <th className="audit-th">Managers</th>
+          <th className="audit-th">Avg PF</th>
+        </tr></thead>
         <tbody>
           {seasons.map(s => {
             const avgPf = s.teams.length ? (s.teams.reduce((a,t)=>a+(t.points_for||0),0)/s.teams.length).toFixed(1) : '—'
@@ -7672,11 +7673,15 @@ function LeagueHistory() {
                 <td className="audit-val" style={{color:'var(--accent)'}}>{s.champion || '—'}</td>
                 <td className="audit-val">{s.reg_season_winner || '—'}</td>
                 <td className="audit-val">
-                  {s.teams.map((t,i) => (
-                    <span key={t.team_name} style={{color: t.team_name===my_team_name ? 'var(--accent)' : 'inherit'}}>
-                      {t.team_name}{i<s.teams.length-1 ? ', ' : ''}
-                    </span>
-                  ))}
+                  {s.teams.map((t,i) => {
+                    const label = t.owner_label || t.owner || t.team_name
+                    const isMe  = my_owner_id && t.owner_id === my_owner_id
+                    return (
+                      <span key={t.owner_id || t.team_name} style={{color: isMe ? 'var(--accent)' : 'inherit'}}>
+                        {label}{i<s.teams.length-1 ? ', ' : ''}
+                      </span>
+                    )
+                  })}
                 </td>
                 <td className="audit-val">{avgPf}</td>
               </tr>
@@ -7687,203 +7692,195 @@ function LeagueHistory() {
     </div>
   )
 
-  // ── H2H view ───────────────────────────────────────────────────────────────
-  const H2HView = () => {
-    if (!my_team_name) return <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your team to be identified. Try refreshing history.</div>
-    const entries = Object.entries(h2h).sort((a,b) => (b[1].win_pct||0)-(a[1].win_pct||0))
-    if (!entries.length) return <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data available.</div>
-    return (
-      <div style={{overflowX:'auto',padding:'0 0 24px'}}>
-        <div style={{padding:'12px 24px',fontSize:13,color:'var(--muted)'}}>Your team: <strong style={{color:'var(--accent)'}}>{my_team_name}</strong></div>
-        <table className="audit-table">
-          <thead>
-            <tr>
-              <th className="audit-th">Opponent</th>
-              <th className="audit-th">W</th>
-              <th className="audit-th">L</th>
-              <th className="audit-th">T</th>
-              <th className="audit-th">Win%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map(([opp, rec]) => (
-              <tr key={opp} className="audit-row">
-                <td className="audit-name">{opp}</td>
-                <td className="audit-val" style={{color:'var(--accent)'}}>{rec.wins}</td>
-                <td className="audit-val" style={{color:'var(--neg)'}}>{rec.losses}</td>
-                <td className="audit-val">{rec.ties}</td>
-                <td className="audit-val" style={{fontWeight:700,color:rec.win_pct>=0.5?'var(--accent)':'var(--neg)'}}>
-                  {(rec.win_pct*100).toFixed(0)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
+  // ── H2H ───────────────────────────────────────────────────────────────────
+  const h2hEntries = Object.entries(h2h).sort((a,b) => (b[1].win_pct||0)-(a[1].win_pct||0))
+  const h2hEl = tabKey === 'h2h' && (
+    !my_owner_id
+      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your account to be identified. Try refreshing history.</div>
+      : !h2hEntries.length
+        ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data available.</div>
+        : <div style={{overflowX:'auto',padding:'0 0 24px'}}>
+            <table className="audit-table">
+              <thead><tr>
+                <th className="audit-th">Opponent</th>
+                <th className="audit-th">W</th>
+                <th className="audit-th">L</th>
+                <th className="audit-th">T</th>
+                <th className="audit-th">Win%</th>
+              </tr></thead>
+              <tbody>
+                {h2hEntries.map(([oid, rec]) => (
+                  <tr key={oid} className="audit-row">
+                    <td className="audit-name">{rec.opponent || oid}</td>
+                    <td className="audit-val" style={{color:'var(--accent)'}}>{rec.wins}</td>
+                    <td className="audit-val" style={{color:'var(--neg)'}}>{rec.losses}</td>
+                    <td className="audit-val">{rec.ties}</td>
+                    <td className="audit-val" style={{fontWeight:700,color:rec.win_pct>=0.5?'var(--accent)':'var(--neg)'}}>
+                      {(rec.win_pct*100).toFixed(0)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+  )
 
-  // ── All-Time view ──────────────────────────────────────────────────────────
-  const AllTimeView = () => (
+  // ── All-Time ───────────────────────────────────────────────────────────────
+  const allTimeEl = tabKey === 'alltime' && (
     <div style={{overflowX:'auto',padding:'0 0 24px'}}>
       <table className="audit-table">
-        <thead>
-          <tr>
-            <th className="audit-th">Team</th>
-            <th className="audit-th">Seasons</th>
-            <th className="audit-th">W</th>
-            <th className="audit-th">L</th>
-            <th className="audit-th">Win%</th>
-            <th className="audit-th">Titles</th>
-            <th className="audit-th">Avg Finish</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th className="audit-th">Manager</th>
+          <th className="audit-th">Seasons</th>
+          <th className="audit-th">W</th>
+          <th className="audit-th">L</th>
+          <th className="audit-th">Win%</th>
+          <th className="audit-th">Titles</th>
+          <th className="audit-th">Avg Finish</th>
+        </tr></thead>
         <tbody>
-          {aggregate.map(t => (
-            <tr key={t.team_name} className="audit-row"
-              style={t.team_name===my_team_name ? {background:'rgba(0,230,118,0.04)'} : {}}>
-              <td className="audit-name" style={{color: t.team_name===my_team_name ? 'var(--accent)' : 'inherit'}}>{t.team_name}</td>
-              <td className="audit-val">{t.seasons}</td>
-              <td className="audit-val">{t.total_wins}</td>
-              <td className="audit-val">{t.total_losses}</td>
-              <td className="audit-val">{(t.win_pct*100).toFixed(0)}%</td>
-              <td className="audit-val" style={{color: t.championships>0 ? 'var(--accent)' : 'inherit', fontWeight: t.championships>0?700:400}}>
-                {t.championships>0 ? `🏆 ${t.championships}` : '—'}
-              </td>
-              <td className="audit-val">{t.avg_standing || '—'}</td>
-            </tr>
-          ))}
+          {aggregate.map(t => {
+            const isMe  = my_owner_id && t.owner_id === my_owner_id
+            const label = t.owner || t.team_name
+            return (
+              <tr key={t.owner_id || t.team_name} className="audit-row"
+                style={isMe ? {background:'rgba(0,230,118,0.04)'} : {}}>
+                <td className="audit-name" style={{color: isMe ? 'var(--accent)' : 'inherit'}}>
+                  {label}
+                  {t.team_name && t.owner && t.team_name !== t.owner &&
+                    <span style={{fontSize:11,color:'var(--muted)',marginLeft:6}}>({t.team_name})</span>}
+                </td>
+                <td className="audit-val">{t.seasons}</td>
+                <td className="audit-val">{t.total_wins}</td>
+                <td className="audit-val">{t.total_losses}</td>
+                <td className="audit-val">{(t.win_pct*100).toFixed(0)}%</td>
+                <td className="audit-val" style={{color:t.championships>0?'var(--accent)':'inherit',fontWeight:t.championships>0?700:400}}>
+                  {t.championships>0 ? `🏆 ${t.championships}` : '—'}
+                </td>
+                <td className="audit-val">{t.avg_standing || '—'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
   )
 
-  // ── Trend view (SVG line chart) ────────────────────────────────────────────
-  const TrendView = () => {
-    const years = [...new Set(Object.values(yearly_standings).flat().map(d=>d.year))].sort()
-    if (!years.length) return <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No trend data.</div>
+  // ── Trend (SVG) ────────────────────────────────────────────────────────────
+  const ownerKeys  = Object.keys(yearly_standings)
+  const allPts     = ownerKeys.flatMap(k => yearly_standings[k].data || [])
+  const trendYears = [...new Set(allPts.map(d => d.year))].sort()
+  const maxStanding= Math.max(...allPts.map(d => d.standing || 0), 1)
+  const TW = 640, TH = 280, TPAD = {t:20,r:20,b:40,l:40}
+  const tCW = TW - TPAD.l - TPAD.r
+  const tCH = TH - TPAD.t - TPAD.b
+  const tXPos = yr => TPAD.l + ((yr - trendYears[0]) / Math.max(trendYears.length-1,1)) * tCW
+  const tYPos = s  => TPAD.t + ((s - 1) / Math.max(maxStanding-1,1)) * tCH
 
-    const teams = Object.keys(yearly_standings)
-    const maxStanding = Math.max(...Object.values(yearly_standings).flat().map(d=>d.standing||0), 1)
-
-    const W = 640, H = 280, PAD = {t:20,r:20,b:40,l:40}
-    const cW = W - PAD.l - PAD.r
-    const cH = H - PAD.t - PAD.b
-
-    const xPos = year => PAD.l + ((year - years[0]) / Math.max(years.length-1,1)) * cW
-    const yPos = standing => PAD.t + ((standing - 1) / Math.max(maxStanding-1,1)) * cH
-
-    const COLORS = ['#00e676','#ff4d6a','#40c4ff','#ffab40','#e040fb','#80cbc4','#fff176','#ff80ab','#b9f6ca','#84ffff']
-
-    return (
-      <div style={{padding:'16px 24px'}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',maxWidth:W,display:'block'}}>
-          {/* Y axis labels (standings) */}
-          {Array.from({length:maxStanding},(_,i)=>i+1).map(s => (
-            <g key={s}>
-              <line x1={PAD.l} x2={PAD.l+cW} y1={yPos(s)} y2={yPos(s)} stroke="var(--border)" strokeWidth={0.5}/>
-              <text x={PAD.l-6} y={yPos(s)+4} fontSize={10} fill="var(--muted)" textAnchor="end">#{s}</text>
-            </g>
-          ))}
-          {/* X axis labels (years) */}
-          {years.map(y => (
-            <text key={y} x={xPos(y)} y={H-8} fontSize={10} fill="var(--muted)" textAnchor="middle">{y}</text>
-          ))}
-          {/* Team lines */}
-          {teams.map((tn, ti) => {
-            const color = tn === my_team_name ? '#00e676' : COLORS[ti % COLORS.length]
-            const pts = yearly_standings[tn].filter(d=>d.standing).sort((a,b)=>a.year-b.year)
-            if (pts.length < 2) return null
-            const d = pts.map((p,i) => `${i===0?'M':'L'}${xPos(p.year)},${yPos(p.standing)}`).join(' ')
-            const avgS = pts.reduce((a,p)=>a+p.standing,0)/pts.length
-            const isMe = tn === my_team_name
-            return (
-              <g key={tn}>
-                <path d={d} fill="none" stroke={color} strokeWidth={isMe?2.5:1.5} opacity={isMe?1:0.5}
-                  strokeDasharray={isMe?'none':'4 2'}/>
-                {/* Avg dashed line */}
-                <line x1={PAD.l} x2={PAD.l+cW} y1={yPos(avgS)} y2={yPos(avgS)}
-                  stroke={color} strokeWidth={1} strokeDasharray="2 4" opacity={0.4}/>
-                {pts.map(p => (
-                  <circle key={p.year} cx={xPos(p.year)} cy={yPos(p.standing)} r={isMe?4:2.5}
-                    fill={color} opacity={isMe?1:0.6}/>
-                ))}
+  const trendEl = tabKey === 'trend' && (
+    !trendYears.length
+      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No trend data.</div>
+      : <div style={{padding:'16px 24px'}}>
+          <svg viewBox={`0 0 ${TW} ${TH}`} style={{width:'100%',maxWidth:TW,display:'block'}}>
+            {Array.from({length:maxStanding},(_,i)=>i+1).map(s => (
+              <g key={s}>
+                <line x1={TPAD.l} x2={TPAD.l+tCW} y1={tYPos(s)} y2={tYPos(s)} stroke="var(--border)" strokeWidth={0.5}/>
+                <text x={TPAD.l-6} y={tYPos(s)+4} fontSize={10} fill="var(--muted)" textAnchor="end">#{s}</text>
               </g>
-            )
-          })}
-        </svg>
-        {/* Legend */}
-        <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px',marginTop:8}}>
-          {teams.map((tn,ti)=>(
-            <span key={tn} style={{fontSize:11,color: tn===my_team_name?'var(--accent)':COLORS[ti%COLORS.length],opacity:0.8}}>
-              ● {tn}
-            </span>
-          ))}
+            ))}
+            {trendYears.map(y => (
+              <text key={y} x={tXPos(y)} y={TH-8} fontSize={10} fill="var(--muted)" textAnchor="middle">{y}</text>
+            ))}
+            {ownerKeys.map((ok, ti) => {
+              const entry = yearly_standings[ok]
+              const isMe  = my_owner_id && ok === my_owner_id
+              const color = isMe ? '#00e676' : HIST_COLORS[ti % HIST_COLORS.length]
+              const pts   = (entry.data || []).filter(d => d.standing).sort((a,b) => a.year - b.year)
+              if (pts.length < 2) return null
+              const dPath = pts.map((p,i) => `${i===0?'M':'L'}${tXPos(p.year)},${tYPos(p.standing)}`).join(' ')
+              const avgS  = pts.reduce((a,p) => a+p.standing, 0) / pts.length
+              return (
+                <g key={ok}>
+                  <path d={dPath} fill="none" stroke={color} strokeWidth={isMe?2.5:1.5}
+                    opacity={isMe?1:0.5} strokeDasharray={isMe?undefined:'4 2'}/>
+                  <line x1={TPAD.l} x2={TPAD.l+tCW} y1={tYPos(avgS)} y2={tYPos(avgS)}
+                    stroke={color} strokeWidth={1} strokeDasharray="2 4" opacity={0.4}/>
+                  {pts.map(p => (
+                    <circle key={p.year} cx={tXPos(p.year)} cy={tYPos(p.standing)} r={isMe?4:2.5}
+                      fill={color} opacity={isMe?1:0.6}/>
+                  ))}
+                </g>
+              )
+            })}
+          </svg>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px',marginTop:8}}>
+            {ownerKeys.map((ok, ti) => {
+              const entry = yearly_standings[ok]
+              const isMe  = my_owner_id && ok === my_owner_id
+              return (
+                <span key={ok} style={{fontSize:11,color:isMe?'var(--accent)':HIST_COLORS[ti%HIST_COLORS.length],opacity:0.85}}>
+                  ● {entry.label || ok}
+                </span>
+              )
+            })}
+          </div>
         </div>
-      </div>
-    )
-  }
+  )
 
-  // ── Players view ───────────────────────────────────────────────────────────
-  const PlayersView = () => {
-    const filtered = player_history
-      .filter(p => p.player.toLowerCase().includes(playerSearch.toLowerCase()))
-      .sort((a,b) => {
-        if (playerSort==='times_drafted') return b.times_drafted - a.times_drafted
-        if (playerSort==='avg_round') return a.avg_round - b.avg_round
-        if (playerSort==='by_you') return b.by_you - a.by_you
-        return 0
-      })
-    const SortBtn = ({col, label}) => (
-      <th className="audit-th" style={{cursor:'pointer',userSelect:'none'}} onClick={()=>setPlayerSort(col)}>
-        {label}{playerSort===col?' ▼':''}
-      </th>
-    )
-    return (
-      <div style={{padding:'0 0 24px'}}>
-        <div style={{padding:'12px 24px'}}>
-          <input value={playerSearch} onChange={e=>setPlayerSearch(e.target.value)}
-            placeholder="Search player…"
-            style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',
-                    color:'var(--text)',fontSize:13,width:220}}/>
-        </div>
-        <div style={{overflowX:'auto'}}>
-          <table className="audit-table">
-            <thead>
-              <tr>
-                <th className="audit-th">Player</th>
-                <SortBtn col="times_drafted" label="Times Drafted" />
-                <SortBtn col="by_you" label="By You" />
-                <th className="audit-th">Years</th>
-                <SortBtn col="avg_round" label="Avg Round" />
+  // ── Players ────────────────────────────────────────────────────────────────
+  const filteredPlayers = player_history
+    .filter(p => p.player.toLowerCase().includes(playerSearch.toLowerCase()))
+    .sort((a,b) => {
+      if (playerSort==='times_drafted') return b.times_drafted - a.times_drafted
+      if (playerSort==='avg_round')    return a.avg_round - b.avg_round
+      if (playerSort==='by_you')       return b.by_you - a.by_you
+      return 0
+    })
+
+  const playersEl = tabKey === 'players' && (
+    <div style={{padding:'0 0 24px'}}>
+      <div style={{padding:'12px 24px'}}>
+        <input value={playerSearch} onChange={e => setPlayerSearch(e.target.value)}
+          placeholder="Search player…"
+          style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',
+                  color:'var(--text)',fontSize:13,width:220}}/>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table className="audit-table">
+          <thead><tr>
+            <th className="audit-th">Player</th>
+            {['times_drafted','by_you','avg_round'].map((col, i) => (
+              <th key={col} className="audit-th" style={{cursor:'pointer',userSelect:'none'}}
+                onClick={() => setPlayerSort(col)}>
+                {['Times Drafted','By You','Avg Round'][i]}{playerSort===col?' ▼':''}
+              </th>
+            ))}
+            <th className="audit-th">Years</th>
+          </tr></thead>
+          <tbody>
+            {filteredPlayers.slice(0,100).map(p => (
+              <tr key={p.player} className="audit-row">
+                <td className="audit-name">{p.player}</td>
+                <td className="audit-val">{p.times_drafted}</td>
+                <td className="audit-val" style={{color:p.by_you>0?'var(--accent)':'var(--muted)'}}>{p.by_you||'—'}</td>
+                <td className="audit-val">{p.avg_round}</td>
+                <td className="audit-val" style={{fontSize:11,color:'var(--muted)'}}>{[...p.years].sort((a,b)=>b-a).join(', ')}</td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0,100).map(p => (
-                <tr key={p.player} className="audit-row">
-                  <td className="audit-name">{p.player}</td>
-                  <td className="audit-val">{p.times_drafted}</td>
-                  <td className="audit-val" style={{color: p.by_you>0?'var(--accent)':'var(--muted)'}}>{p.by_you || '—'}</td>
-                  <td className="audit-val" style={{fontSize:11,color:'var(--muted)'}}>{p.years.sort((a,b)=>b-a).join(', ')}</td>
-                  <td className="audit-val">{p.avg_round}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
-    )
-  }
+    </div>
+  )
 
-  const tabKey = subTab.replace(/[^a-z]/g,'')
   return (
     <div>
       {headerRow}
-      {tabKey === 'seasons'  && <SeasonsView />}
-      {tabKey === 'h2h'      && <H2HView />}
-      {tabKey === 'alltime'  && <AllTimeView />}
-      {tabKey === 'trend'    && <TrendView />}
-      {tabKey === 'players'  && <PlayersView />}
+      {seasonsEl}
+      {h2hEl}
+      {allTimeEl}
+      {trendEl}
+      {playersEl}
     </div>
   )
 }
