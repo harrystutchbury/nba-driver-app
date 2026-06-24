@@ -6397,9 +6397,12 @@ def _fetch_yahoo_season_history(access_token: str, league_key: str, year: int):
         return None
 
 
-def _compute_history_views(rows: list, my_owner_id: str | None, my_team_name_fallback: str | None = None):
+def _compute_history_views(rows: list, my_owner_id: str | None,
+                           my_team_name_fallback: str | None = None,
+                           my_team_id: int | None = None):
     """Compute all 5 history views from cached season rows.
     Groups by owner_id (stable across team renames). Falls back to team_name for Yahoo.
+    my_team_id: ESPN numeric team_id (from team_key) used as fallback for old cached data.
     """
     import json as _json
 
@@ -6421,10 +6424,19 @@ def _compute_history_views(rows: list, my_owner_id: str | None, my_team_name_fal
         return t.get("owner_id") or t.get("owner") or t["team_name"]
 
     def _is_mine(t):
-        if my_owner_id and t.get("owner_id"):
-            return t["owner_id"] == my_owner_id
-        # fallback for Yahoo (no owner_id)
-        return my_team_name_fallback and t["team_name"] == my_team_name_fallback
+        oid = (t.get("owner_id") or "").strip("{}")
+        # 1. owner_id match — case-insensitive (ESPN SWIDs are UUIDs, case may vary)
+        if my_owner_id and oid:
+            return oid.upper() == my_owner_id.upper()
+        # 2. Fallback: ESPN team_id for old cached data that predates owner_id storage
+        if my_team_id is not None:
+            try:
+                if int(t.get("team_id", -1)) == my_team_id:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        # 3. Fallback for Yahoo
+        return bool(my_team_name_fallback and t["team_name"] == my_team_name_fallback)
 
     # 1. Seasons list — enrich teams with owner label
     seasons = []
@@ -6616,10 +6628,11 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         fc_rows = conn.execute(
             "SELECT provider, team_key, refresh_token FROM fantasy_connections WHERE username=?", [current_user]
         ).fetchall()
-        # For ESPN: identify user by SWID (stored as refresh_token), strip braces
-        # For Yahoo: fall back to team_name match via team_key
-        my_owner_id = None
-        my_team_name = None
+        # Identify the current user's team across providers
+        my_owner_id   = None   # ESPN: SWID stripped of braces
+        my_team_name  = None   # Yahoo: team name
+        my_team_id    = None   # ESPN: numeric team_id (fallback for old cached data)
+
         if fc_rows:
             for fc in fc_rows:
                 provider = fc["provider"]
@@ -6627,7 +6640,12 @@ def get_league_history(current_user: str = Depends(get_current_user)):
                     swid = (fc["refresh_token"] or "").strip("{}")
                     if swid:
                         my_owner_id = swid
-                        break
+                    # team_key is the ESPN team_id for current season — fallback for old data
+                    try:
+                        my_team_id = int(fc["team_key"]) if fc["team_key"] else None
+                    except (TypeError, ValueError):
+                        my_team_id = None
+                    break
                 elif provider == "yahoo":
                     team_key = fc["team_key"]
                     for row in rows:
@@ -6642,7 +6660,10 @@ def get_league_history(current_user: str = Depends(get_current_user)):
                             break
 
         last_refreshed = max(r["fetched_at"] for r in rows) if rows else None
-        views = _compute_history_views([{"data": r["data"]} for r in rows], my_owner_id, my_team_name)
+        views = _compute_history_views(
+            [{"data": r["data"]} for r in rows],
+            my_owner_id, my_team_name, my_team_id
+        )
         views["last_refreshed"] = last_refreshed
         views["my_owner_id"]    = my_owner_id
         return views
