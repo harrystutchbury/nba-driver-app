@@ -6255,6 +6255,20 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
             except Exception:
                 continue
 
+        # Roster (final-season snapshot — acquisition type tells us how they were acquired)
+        roster = []
+        try:
+            for player in team.roster:
+                acq = getattr(player, "acquisitionType", "") or ""
+                if hasattr(acq, "name"):
+                    acq = acq.name
+                roster.append({
+                    "name":             getattr(player, "name", str(player)),
+                    "acquisition_type": str(acq).upper(),
+                })
+        except Exception:
+            pass
+
         teams.append({
             "team_id":        team.team_id,
             "team_name":      team.team_name,
@@ -6269,27 +6283,36 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
             "final_standing": team.final_standing,
             "schedule_results": schedule_results,
             "draft_picks":    draft_by_team.get(team.team_id, []),
+            "roster":         roster,
         })
 
     # Champion = final_standing 1, else first in standings()
-    champion = None
+    champion_team = None
     for t in teams:
         if t["final_standing"] == 1:
-            champion = t["team_name"]
+            champion_team = t
             break
-    if not champion:
+    if not champion_team:
         try:
-            champion = league.standings()[0].team_name
+            ct = league.standings()[0]
+            champion_team = next((t for t in teams if t["team_name"] == ct.team_name), None)
         except Exception:
-            champion = teams[0]["team_name"] if teams else ""
+            pass
+    champion_team = champion_team or (teams[0] if teams else None)
 
-    # Reg season winner = best record (standing = playoff seed 1)
-    reg_winner = None
-    seed1 = [t for t in teams if t["standing"] == 1]
-    if seed1:
-        reg_winner = seed1[0]["team_name"]
+    # Reg season winner = best playoff seed (standing == 1)
+    reg_team = next((t for t in teams if t["standing"] == 1), None)
 
-    return {"year": year, "champion": champion, "reg_season_winner": reg_winner, "teams": teams}
+    return {
+        "year":              year,
+        "champion":          champion_team["team_name"] if champion_team else "",
+        "champion_owner":    champion_team["owner"] if champion_team else "",
+        "champion_owner_id": champion_team["owner_id"] if champion_team else "",
+        "reg_season_winner":          reg_team["team_name"] if reg_team else "",
+        "reg_season_winner_owner":    reg_team["owner"] if reg_team else "",
+        "reg_season_winner_owner_id": reg_team["owner_id"] if reg_team else "",
+        "teams":             teams,
+    }
 
 
 def _discover_yahoo_leagues(access_token: str) -> list:
@@ -6409,10 +6432,29 @@ def _compute_history_views(rows: list, my_owner_id: str | None, my_team_name_fal
         enriched = []
         for t in s["teams"]:
             enriched.append({**t, "owner_label": owner_display.get(_owner_key(t), t.get("owner", t["team_name"]))})
+        # Resolve champion/reg-winner to owner name using enriched team data
+        def _resolve_owner_label(team_name, owner_id, owner_name, enr):
+            # Prefer stored owner name, fall back to scanning enriched teams
+            if owner_name:
+                return owner_name
+            if owner_id:
+                for et in enr:
+                    if et.get("owner_id") == owner_id:
+                        return et.get("owner_label") or et.get("owner") or team_name
+            for et in enr:
+                if et.get("team_name") == team_name:
+                    return et.get("owner_label") or et.get("owner") or team_name
+            return team_name
+
+        champ_label = _resolve_owner_label(
+            s.get("champion", ""), s.get("champion_owner_id", ""), s.get("champion_owner", ""), enriched)
+        reg_label   = _resolve_owner_label(
+            s.get("reg_season_winner", ""), s.get("reg_season_winner_owner_id", ""), s.get("reg_season_winner_owner", ""), enriched)
+
         seasons.append({
             "year":              s["year"],
-            "champion":          s.get("champion"),
-            "reg_season_winner": s.get("reg_season_winner"),
+            "champion":          champ_label,
+            "reg_season_winner": reg_label,
             "teams":             sorted(enriched, key=lambda t: t.get("final_standing") or 99),
         })
 
@@ -6517,12 +6559,43 @@ def _compute_history_views(rows: list, my_owner_id: str | None, my_team_name_fal
         player_history.append(pd)
     player_history.sort(key=lambda x: -x["times_drafted"])
 
+    # 6. Per-owner player ownership (from roster snapshots; only available after refresh with new code)
+    raw_ownership = {}  # owner_key → {player_name → stats}
+    for s in seasons_data:
+        for t in s["teams"]:
+            ok = _owner_key(t)
+            for player in t.get("roster", []):
+                pn = player.get("name", "")
+                if not pn:
+                    continue
+                raw_ownership.setdefault(ok, {})
+                if pn not in raw_ownership[ok]:
+                    raw_ownership[ok][pn] = {"player": pn, "seasons": 0, "drafted": 0, "waiver": 0, "trade": 0}
+                raw_ownership[ok][pn]["seasons"] += 1
+                acq = player.get("acquisition_type", "")
+                if "DRAFT" in acq:
+                    raw_ownership[ok][pn]["drafted"] += 1
+                elif "WAIVER" in acq or "FREE" in acq:
+                    raw_ownership[ok][pn]["waiver"] += 1
+                elif "TRADE" in acq:
+                    raw_ownership[ok][pn]["trade"] += 1
+
+    player_ownership = {}
+    for ok, pdict in raw_ownership.items():
+        player_ownership[ok] = {
+            "owner_id": ok,
+            "label":    owner_display.get(ok, ok),
+            "players":  sorted(pdict.values(), key=lambda x: -x["seasons"]),
+        }
+
     return {
-        "seasons":        seasons,
-        "h2h":            h2h,
-        "aggregate":      aggregate,
+        "seasons":          seasons,
+        "h2h":              h2h,
+        "aggregate":        aggregate,
         "yearly_standings": yearly,
-        "player_history": player_history,
+        "player_history":   player_history,
+        "player_ownership": player_ownership,
+        "owners":           [{"owner_id": ok, "label": owner_display.get(ok, ok)} for ok in owner_display],
     }
 
 

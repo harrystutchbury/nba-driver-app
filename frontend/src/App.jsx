@@ -7584,15 +7584,18 @@ function FantasySignupPrompt({ onSignup }) {
 // ── FantasyPage ────────────────────────────────────────────────────────────────
 
 // ── League History ─────────────────────────────────────────────────────────────
-const HIST_COLORS = ['#00e676','#ff4d6a','#40c4ff','#ffab40','#e040fb','#80cbc4','#fff176','#ff80ab','#b9f6ca','#84ffff']
+const HIST_COLORS = ['#ff4d6a','#40c4ff','#ffab40','#e040fb','#80cbc4','#fff176','#ff80ab','#b9f6ca','#84ffff','#cf6679','#69f0ae','#82b1ff']
 
 function LeagueHistory() {
-  const [data,         setData]        = useState(null)
-  const [loading,      setLoading]     = useState(true)
-  const [refreshing,   setRefreshing]  = useState(false)
-  const [subTab,       setSubTab]      = useState('seasons')
-  const [playerSearch, setPlayerSearch]= useState('')
-  const [playerSort,   setPlayerSort]  = useState('times_drafted')
+  const [data,          setData]         = useState(null)
+  const [loading,       setLoading]      = useState(true)
+  const [refreshing,    setRefreshing]   = useState(false)
+  const [subTab,        setSubTab]       = useState('seasons')
+  const [aggSort,       setAggSort]      = useState('avg_standing')
+  const [aggDir,        setAggDir]       = useState(1)
+  const [hiddenOwners,  setHiddenOwners] = useState(new Set())
+  const [selectedOwner, setSelectedOwner]= useState('')
+  const [playerSearch,  setPlayerSearch] = useState('')
 
   function load() {
     setLoading(true)
@@ -7616,7 +7619,6 @@ function LeagueHistory() {
   if (loading) return <div className="dash-empty">Loading history…</div>
 
   const needsRefresh = !data || data.needs_refresh || !data.seasons?.length
-
   const SUB_TABS = ['Seasons','H2H','All-Time','Trend','Players']
   const tabKey   = subTab.replace(/[^a-z]/g,'')
 
@@ -7624,7 +7626,7 @@ function LeagueHistory() {
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 24px',borderBottom:'1px solid var(--border)'}}>
       <div style={{display:'flex',gap:6}}>
         {SUB_TABS.map(t => (
-          <button key={t} className={`hist-mode-btn${tabKey===t.toLowerCase().replace(/[^a-z]/g,'') ? ' active' : ''}`}
+          <button key={t} className={'hist-mode-btn' + (tabKey===t.toLowerCase().replace(/[^a-z]/g,'') ? ' active' : '')}
             onClick={() => setSubTab(t.toLowerCase().replace(/[^a-z]/g,''))}>
             {t}
           </button>
@@ -7651,38 +7653,31 @@ function LeagueHistory() {
     </div>
   )
 
-  const { seasons = [], h2h = {}, aggregate = [], yearly_standings = {}, player_history = [], my_owner_id } = data
+  const { seasons = [], h2h = {}, aggregate = [], yearly_standings = {},
+          player_ownership = {}, owners = [], my_owner_id } = data
 
-  // ── Seasons ────────────────────────────────────────────────────────────────
+  // Seasons
   const seasonsEl = tabKey === 'seasons' && (
     <div style={{overflowX:'auto',padding:'0 0 24px'}}>
-      <table className="audit-table" style={{minWidth:600}}>
+      <table className="audit-table" style={{minWidth:500}}>
         <thead><tr>
           <th className="audit-th">Year</th>
           <th className="audit-th">Champion</th>
-          <th className="audit-th">Reg Season</th>
-          <th className="audit-th">Managers</th>
+          <th className="audit-th">Reg Season Winner</th>
+          <th className="audit-th">Teams</th>
           <th className="audit-th">Avg PF</th>
         </tr></thead>
         <tbody>
           {seasons.map(s => {
             const avgPf = s.teams.length ? (s.teams.reduce((a,t)=>a+(t.points_for||0),0)/s.teams.length).toFixed(1) : '—'
+            const isMyChamp = my_owner_id && s.teams.some(t => t.owner_id === my_owner_id && t.final_standing === 1)
+            const isMyReg   = my_owner_id && s.teams.some(t => t.owner_id === my_owner_id && t.standing === 1)
             return (
               <tr key={s.year} className="audit-row">
                 <td className="audit-val" style={{fontWeight:700}}>{s.year}</td>
-                <td className="audit-val" style={{color:'var(--accent)'}}>{s.champion || '—'}</td>
-                <td className="audit-val">{s.reg_season_winner || '—'}</td>
-                <td className="audit-val">
-                  {s.teams.map((t,i) => {
-                    const label = t.owner_label || t.owner || t.team_name
-                    const isMe  = my_owner_id && t.owner_id === my_owner_id
-                    return (
-                      <span key={t.owner_id || t.team_name} style={{color: isMe ? 'var(--accent)' : 'inherit'}}>
-                        {label}{i<s.teams.length-1 ? ', ' : ''}
-                      </span>
-                    )
-                  })}
-                </td>
+                <td className="audit-val" style={{color:'var(--accent)',fontWeight:isMyChamp?700:400}}>{s.champion || '—'}</td>
+                <td className="audit-val" style={{color:isMyReg?'var(--accent)':'inherit'}}>{s.reg_season_winner || '—'}</td>
+                <td className="audit-val">{s.teams.length}</td>
                 <td className="audit-val">{avgPf}</td>
               </tr>
             )
@@ -7692,13 +7687,13 @@ function LeagueHistory() {
     </div>
   )
 
-  // ── H2H ───────────────────────────────────────────────────────────────────
+  // H2H
   const h2hEntries = Object.entries(h2h).sort((a,b) => (b[1].win_pct||0)-(a[1].win_pct||0))
   const h2hEl = tabKey === 'h2h' && (
     !my_owner_id
-      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your account to be identified. Try refreshing history.</div>
+      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your ESPN account to be identified. Try refreshing history.</div>
       : !h2hEntries.length
-        ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data available.</div>
+        ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data yet. Hit Refresh Data to rebuild history with owner identifiers.</div>
         : <div style={{overflowX:'auto',padding:'0 0 24px'}}>
             <table className="audit-table">
               <thead><tr>
@@ -7725,37 +7720,48 @@ function LeagueHistory() {
           </div>
   )
 
-  // ── All-Time ───────────────────────────────────────────────────────────────
+  // All-Time (sortable)
+  const AGG_COLS = [
+    {key:'owner',         label:'Manager',    num:false},
+    {key:'seasons',       label:'Seasons',    num:true},
+    {key:'total_wins',    label:'W',          num:true},
+    {key:'total_losses',  label:'L',          num:true},
+    {key:'win_pct',       label:'Win%',       num:true},
+    {key:'championships', label:'Titles',     num:true},
+    {key:'avg_standing',  label:'Avg Finish', num:true},
+  ]
+  const sortedAgg = [...aggregate].sort((a,b) => {
+    const av = a[aggSort] ?? (aggSort==='owner' ? '' : 0)
+    const bv = b[aggSort] ?? (aggSort==='owner' ? '' : 0)
+    if (typeof av === 'string') return aggDir * av.localeCompare(bv)
+    return aggDir * (av - bv)
+  })
+
   const allTimeEl = tabKey === 'alltime' && (
     <div style={{overflowX:'auto',padding:'0 0 24px'}}>
       <table className="audit-table">
         <thead><tr>
-          <th className="audit-th">Manager</th>
-          <th className="audit-th">Seasons</th>
-          <th className="audit-th">W</th>
-          <th className="audit-th">L</th>
-          <th className="audit-th">Win%</th>
-          <th className="audit-th">Titles</th>
-          <th className="audit-th">Avg Finish</th>
+          {AGG_COLS.map(c => (
+            <th key={c.key} className="audit-th" style={{cursor:'pointer',userSelect:'none'}}
+              onClick={() => { if(aggSort===c.key) setAggDir(d=>-d); else { setAggSort(c.key); setAggDir(c.num?1:-1) } }}>
+              {c.label}{aggSort===c.key ? (aggDir>0?' ▲':' ▼') : ''}
+            </th>
+          ))}
         </tr></thead>
         <tbody>
-          {aggregate.map(t => {
+          {sortedAgg.map(t => {
             const isMe  = my_owner_id && t.owner_id === my_owner_id
             const label = t.owner || t.team_name
             return (
               <tr key={t.owner_id || t.team_name} className="audit-row"
                 style={isMe ? {background:'rgba(0,230,118,0.04)'} : {}}>
-                <td className="audit-name" style={{color: isMe ? 'var(--accent)' : 'inherit'}}>
-                  {label}
-                  {t.team_name && t.owner && t.team_name !== t.owner &&
-                    <span style={{fontSize:11,color:'var(--muted)',marginLeft:6}}>({t.team_name})</span>}
-                </td>
+                <td className="audit-name" style={{color:isMe?'var(--accent)':'inherit'}}>{label}</td>
                 <td className="audit-val">{t.seasons}</td>
                 <td className="audit-val">{t.total_wins}</td>
                 <td className="audit-val">{t.total_losses}</td>
                 <td className="audit-val">{(t.win_pct*100).toFixed(0)}%</td>
                 <td className="audit-val" style={{color:t.championships>0?'var(--accent)':'inherit',fontWeight:t.championships>0?700:400}}>
-                  {t.championships>0 ? `🏆 ${t.championships}` : '—'}
+                  {t.championships>0 ? '🏆 ' + t.championships : '—'}
                 </td>
                 <td className="audit-val">{t.avg_standing || '—'}</td>
               </tr>
@@ -7766,110 +7772,130 @@ function LeagueHistory() {
     </div>
   )
 
-  // ── Trend (SVG) ────────────────────────────────────────────────────────────
+  // Trend (full-width SVG + toggle)
   const ownerKeys  = Object.keys(yearly_standings)
   const allPts     = ownerKeys.flatMap(k => yearly_standings[k].data || [])
   const trendYears = [...new Set(allPts.map(d => d.year))].sort()
-  const maxStanding= Math.max(...allPts.map(d => d.standing || 0), 1)
-  const TW = 640, TH = 280, TPAD = {t:20,r:20,b:40,l:40}
-  const tCW = TW - TPAD.l - TPAD.r
-  const tCH = TH - TPAD.t - TPAD.b
-  const tXPos = yr => TPAD.l + ((yr - trendYears[0]) / Math.max(trendYears.length-1,1)) * tCW
-  const tYPos = s  => TPAD.t + ((s - 1) / Math.max(maxStanding-1,1)) * tCH
+  const maxStand   = Math.max(...allPts.map(d => d.standing || 0), 1)
+  const otherKeys  = ownerKeys.filter(k => k !== my_owner_id)
+  const colorOf    = ok => ok === my_owner_id ? '#00e676' : HIST_COLORS[otherKeys.indexOf(ok) % HIST_COLORS.length]
 
   const trendEl = tabKey === 'trend' && (
     !trendYears.length
       ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No trend data.</div>
-      : <div style={{padding:'16px 24px'}}>
-          <svg viewBox={`0 0 ${TW} ${TH}`} style={{width:'100%',maxWidth:TW,display:'block'}}>
-            {Array.from({length:maxStanding},(_,i)=>i+1).map(s => (
-              <g key={s}>
-                <line x1={TPAD.l} x2={TPAD.l+tCW} y1={tYPos(s)} y2={tYPos(s)} stroke="var(--border)" strokeWidth={0.5}/>
-                <text x={TPAD.l-6} y={tYPos(s)+4} fontSize={10} fill="var(--muted)" textAnchor="end">#{s}</text>
-              </g>
-            ))}
-            {trendYears.map(y => (
-              <text key={y} x={tXPos(y)} y={TH-8} fontSize={10} fill="var(--muted)" textAnchor="middle">{y}</text>
-            ))}
-            {ownerKeys.map((ok, ti) => {
-              const entry = yearly_standings[ok]
-              const isMe  = my_owner_id && ok === my_owner_id
-              const color = isMe ? '#00e676' : HIST_COLORS[ti % HIST_COLORS.length]
-              const pts   = (entry.data || []).filter(d => d.standing).sort((a,b) => a.year - b.year)
-              if (pts.length < 2) return null
-              const dPath = pts.map((p,i) => `${i===0?'M':'L'}${tXPos(p.year)},${tYPos(p.standing)}`).join(' ')
-              const avgS  = pts.reduce((a,p) => a+p.standing, 0) / pts.length
+      : <div style={{padding:'12px 24px 24px'}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:14}}>
+            {ownerKeys.map(ok => {
+              const entry  = yearly_standings[ok]
+              const color  = colorOf(ok)
+              const hidden = hiddenOwners.has(ok)
               return (
-                <g key={ok}>
-                  <path d={dPath} fill="none" stroke={color} strokeWidth={isMe?2.5:1.5}
-                    opacity={isMe?1:0.5} strokeDasharray={isMe?undefined:'4 2'}/>
-                  <line x1={TPAD.l} x2={TPAD.l+tCW} y1={tYPos(avgS)} y2={tYPos(avgS)}
-                    stroke={color} strokeWidth={1} strokeDasharray="2 4" opacity={0.4}/>
-                  {pts.map(p => (
-                    <circle key={p.year} cx={tXPos(p.year)} cy={tYPos(p.standing)} r={isMe?4:2.5}
-                      fill={color} opacity={isMe?1:0.6}/>
-                  ))}
-                </g>
-              )
-            })}
-          </svg>
-          <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px',marginTop:8}}>
-            {ownerKeys.map((ok, ti) => {
-              const entry = yearly_standings[ok]
-              const isMe  = my_owner_id && ok === my_owner_id
-              return (
-                <span key={ok} style={{fontSize:11,color:isMe?'var(--accent)':HIST_COLORS[ti%HIST_COLORS.length],opacity:0.85}}>
-                  ● {entry.label || ok}
-                </span>
+                <button key={ok}
+                  onClick={() => setHiddenOwners(prev => { const n=new Set(prev); n.has(ok)?n.delete(ok):n.add(ok); return n })}
+                  style={{padding:'3px 10px',fontSize:11,borderRadius:12,cursor:'pointer',
+                          border:'1px solid ' + (hidden?'var(--border)':color),
+                          background:hidden?'transparent':color+'22',
+                          color:hidden?'var(--muted)':color,
+                          fontWeight:ok===my_owner_id?700:400}}>
+                  {entry.label || ok}
+                </button>
               )
             })}
           </div>
+          <svg viewBox="0 0 800 300" style={{width:'100%',display:'block'}}>
+            {(() => {
+              const PAD={t:20,r:16,b:36,l:36}
+              const cW=800-PAD.l-PAD.r, cH=300-PAD.t-PAD.b
+              const xP=yr=>PAD.l+((yr-trendYears[0])/Math.max(trendYears.length-1,1))*cW
+              const yP=s=>PAD.t+((s-1)/Math.max(maxStand-1,1))*cH
+              return <>
+                {Array.from({length:maxStand},(_,i)=>i+1).map(s=>(
+                  <g key={s}>
+                    <line x1={PAD.l} x2={PAD.l+cW} y1={yP(s)} y2={yP(s)} stroke="var(--border)" strokeWidth={0.5}/>
+                    <text x={PAD.l-4} y={yP(s)+4} fontSize={9} fill="var(--muted)" textAnchor="end">#{s}</text>
+                  </g>
+                ))}
+                {trendYears.map(y=>(
+                  <text key={y} x={xP(y)} y={292} fontSize={9} fill="var(--muted)" textAnchor="middle">{y}</text>
+                ))}
+                {ownerKeys.map(ok=>{
+                  if(hiddenOwners.has(ok)) return null
+                  const entry=yearly_standings[ok]
+                  const isMe=ok===my_owner_id
+                  const color=colorOf(ok)
+                  const pts=(entry.data||[]).filter(d=>d.standing).sort((a,b)=>a.year-b.year)
+                  if(pts.length<2) return null
+                  const d=pts.map((p,i)=>(i===0?'M':'L')+xP(p.year)+','+yP(p.standing)).join(' ')
+                  return (
+                    <g key={ok}>
+                      <path d={d} fill="none" stroke={color} strokeWidth={isMe?2.5:1.5}
+                        opacity={isMe?1:0.6} strokeDasharray={isMe?undefined:'5 3'}/>
+                      {pts.map(p=>(
+                        <circle key={p.year} cx={xP(p.year)} cy={yP(p.standing)} r={isMe?4:3}
+                          fill={color} opacity={isMe?1:0.7}/>
+                      ))}
+                    </g>
+                  )
+                })}
+              </>
+            })()}
+          </svg>
         </div>
   )
 
-  // ── Players ────────────────────────────────────────────────────────────────
-  const filteredPlayers = player_history
-    .filter(p => p.player.toLowerCase().includes(playerSearch.toLowerCase()))
-    .sort((a,b) => {
-      if (playerSort==='times_drafted') return b.times_drafted - a.times_drafted
-      if (playerSort==='avg_round')    return a.avg_round - b.avg_round
-      if (playerSort==='by_you')       return b.by_you - a.by_you
-      return 0
-    })
+  // Players (per-manager roster history)
+  const ownerList      = owners.length ? owners : Object.keys(player_ownership).map(k=>({owner_id:k,label:player_ownership[k]?.label||k}))
+  const effectiveOwner = selectedOwner || (my_owner_id && player_ownership[my_owner_id] ? my_owner_id : ownerList[0]?.owner_id || '')
+  const ownerData      = player_ownership[effectiveOwner]
+  const hasRosterData  = Object.keys(player_ownership).length > 0
+  const filteredOwnerPlayers = ownerData
+    ? ownerData.players.filter(p => p.player.toLowerCase().includes(playerSearch.toLowerCase()))
+    : []
 
   const playersEl = tabKey === 'players' && (
     <div style={{padding:'0 0 24px'}}>
-      <div style={{padding:'12px 24px'}}>
-        <input value={playerSearch} onChange={e => setPlayerSearch(e.target.value)}
+      <div style={{padding:'12px 24px',display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+        <select value={effectiveOwner} onChange={e=>setSelectedOwner(e.target.value)}
+          style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',
+                  color:'var(--text)',fontSize:13,minWidth:180}}>
+          {ownerList.map(o=>(
+            <option key={o.owner_id} value={o.owner_id}>{o.label}{o.owner_id===my_owner_id?' (you)':''}</option>
+          ))}
+        </select>
+        <input value={playerSearch} onChange={e=>setPlayerSearch(e.target.value)}
           placeholder="Search player…"
           style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',
-                  color:'var(--text)',fontSize:13,width:220}}/>
+                  color:'var(--text)',fontSize:13,width:200}}/>
       </div>
-      <div style={{overflowX:'auto'}}>
-        <table className="audit-table">
-          <thead><tr>
-            <th className="audit-th">Player</th>
-            {['times_drafted','by_you','avg_round'].map((col, i) => (
-              <th key={col} className="audit-th" style={{cursor:'pointer',userSelect:'none'}}
-                onClick={() => setPlayerSort(col)}>
-                {['Times Drafted','By You','Avg Round'][i]}{playerSort===col?' ▼':''}
-              </th>
-            ))}
-            <th className="audit-th">Years</th>
-          </tr></thead>
-          <tbody>
-            {filteredPlayers.slice(0,100).map(p => (
-              <tr key={p.player} className="audit-row">
-                <td className="audit-name">{p.player}</td>
-                <td className="audit-val">{p.times_drafted}</td>
-                <td className="audit-val" style={{color:p.by_you>0?'var(--accent)':'var(--muted)'}}>{p.by_you||'—'}</td>
-                <td className="audit-val">{p.avg_round}</td>
-                <td className="audit-val" style={{fontSize:11,color:'var(--muted)'}}>{[...p.years].sort((a,b)=>b-a).join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!hasRosterData
+        ? <div style={{padding:32,textAlign:'center',color:'var(--muted)'}}>
+            Hit <strong>Refresh Data</strong> to load full roster history across all seasons.
+          </div>
+        : !ownerData || !filteredOwnerPlayers.length
+          ? <div style={{padding:32,textAlign:'center',color:'var(--muted)'}}>No players found.</div>
+          : <div style={{overflowX:'auto'}}>
+              <table className="audit-table">
+                <thead><tr>
+                  <th className="audit-th">Player</th>
+                  <th className="audit-th">Seasons</th>
+                  <th className="audit-th">Drafted</th>
+                  <th className="audit-th">Waiver / FA</th>
+                  <th className="audit-th">Trade</th>
+                </tr></thead>
+                <tbody>
+                  {filteredOwnerPlayers.slice(0,150).map(p=>(
+                    <tr key={p.player} className="audit-row">
+                      <td className="audit-name">{p.player}</td>
+                      <td className="audit-val" style={{fontWeight:p.seasons>1?700:400,color:p.seasons>2?'var(--accent)':'inherit'}}>{p.seasons}</td>
+                      <td className="audit-val">{p.drafted||'—'}</td>
+                      <td className="audit-val">{p.waiver||'—'}</td>
+                      <td className="audit-val">{p.trade||'—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+      }
     </div>
   )
 
@@ -7884,7 +7910,6 @@ function LeagueHistory() {
     </div>
   )
 }
-
 
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [status,        setStatus]      = useState(null)
