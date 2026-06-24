@@ -7877,19 +7877,23 @@ function LeagueHistory() {
               <table className="audit-table">
                 <thead><tr>
                   <th className="audit-th">Player</th>
-                  <th className="audit-th">Seasons</th>
+                  <th className="audit-th" title="Total days on roster across all seasons">Days</th>
+                  <th className="audit-th" title="End-of-season roster appearances">Seasons</th>
                   <th className="audit-th">Drafted</th>
-                  <th className="audit-th">Waiver / FA</th>
-                  <th className="audit-th">Trade</th>
+                  <th className="audit-th" title="Waiver wire & free agent pickups">Added</th>
+                  <th className="audit-th">Dropped</th>
                 </tr></thead>
                 <tbody>
                   {filteredOwnerPlayers.slice(0,150).map(p=>(
                     <tr key={p.player} className="audit-row">
                       <td className="audit-name">{p.player}</td>
-                      <td className="audit-val" style={{fontWeight:p.seasons>1?700:400,color:p.seasons>2?'var(--accent)':'inherit'}}>{p.seasons}</td>
+                      <td className="audit-val" style={{fontWeight:700,color:p.days>100?'var(--accent)':p.days>0?'inherit':'var(--muted)'}}>
+                        {p.days > 0 ? p.days : '—'}
+                      </td>
+                      <td className="audit-val" style={{color:p.seasons>2?'var(--accent)':'inherit'}}>{p.seasons||'—'}</td>
                       <td className="audit-val">{p.drafted||'—'}</td>
-                      <td className="audit-val">{p.waiver||'—'}</td>
-                      <td className="audit-val">{p.trade||'—'}</td>
+                      <td className="audit-val">{p.added||'—'}</td>
+                      <td className="audit-val">{p.dropped||'—'}</td>
                     </tr>
                   ))}
                 </tbody>

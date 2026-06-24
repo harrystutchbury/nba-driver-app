@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# design-sync
+frontend/design-system/.ds-sync/
+frontend/design-system/ds-bundle/
+frontend/design-system/.design-sync/.cache/
+frontend/design-system/.design-sync/learnings/
+frontend/design-system/node_modules/

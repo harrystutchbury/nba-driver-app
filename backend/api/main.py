@@ -6270,21 +6270,57 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
             pass
 
         teams.append({
-            "team_id":        team.team_id,
-            "team_name":      team.team_name,
-            "owner":          owner,
-            "owner_id":       owner_id,
-            "wins":           team.wins,
-            "losses":         team.losses,
-            "ties":           team.ties,
-            "points_for":     round(float(team.points_for or 0), 2),
-            "points_against": round(float(team.points_against or 0), 2),
-            "standing":       team.standing,
-            "final_standing": team.final_standing,
+            "team_id":          team.team_id,
+            "team_name":        team.team_name,
+            "owner":            owner,
+            "owner_id":         owner_id,
+            "wins":             team.wins,
+            "losses":           team.losses,
+            "ties":             team.ties,
+            "points_for":       round(float(team.points_for or 0), 2),
+            "points_against":   round(float(team.points_against or 0), 2),
+            "standing":         team.standing,
+            "final_standing":   team.final_standing,
             "schedule_results": schedule_results,
-            "draft_picks":    draft_by_team.get(team.team_id, []),
-            "roster":         roster,
+            "draft_picks":      draft_by_team.get(team.team_id, []),
+            "roster":           roster,
         })
+
+    # Transaction log — league-wide adds/drops/trades with timestamps
+    transactions = []
+    try:
+        offset = 0
+        batch  = 500
+        while offset < 3000:  # safety cap: 6 pages max
+            acts = league.recent_activity(size=batch, offset=offset)
+            if not acts:
+                break
+            for act in acts:
+                try:
+                    dt = act.date
+                    ts = int(dt.timestamp()) if hasattr(dt, "timestamp") else 0
+                    if not ts:
+                        continue
+                    for entry in act.actions:
+                        if len(entry) < 3:
+                            continue
+                        team_obj, action_type, player_name = entry[0], entry[1], entry[2]
+                        if not player_name:
+                            continue
+                        tid = getattr(team_obj, "team_id", None)
+                        transactions.append({
+                            "player": str(player_name),
+                            "team_id": tid,
+                            "action": str(action_type),
+                            "ts": ts,
+                        })
+                except Exception:
+                    continue
+            if len(acts) < batch:
+                break
+            offset += batch
+    except Exception:
+        pass
 
     # Champion = final_standing 1, else first in standings()
     champion_team = None
@@ -6311,7 +6347,8 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
         "reg_season_winner":          reg_team["team_name"] if reg_team else "",
         "reg_season_winner_owner":    reg_team["owner"] if reg_team else "",
         "reg_season_winner_owner_id": reg_team["owner_id"] if reg_team else "",
-        "teams":             teams,
+        "teams":        teams,
+        "transactions": transactions,
     }
 
 
@@ -6571,33 +6608,104 @@ def _compute_history_views(rows: list, my_owner_id: str | None,
         player_history.append(pd)
     player_history.sort(key=lambda x: -x["times_drafted"])
 
-    # 6. Per-owner player ownership (from roster snapshots; only available after refresh with new code)
+    # 6. Per-owner player ownership — roster snapshots + draft picks + transaction log
+    import datetime as _dt
     raw_ownership = {}  # owner_key → {player_name → stats}
+
+    def _ensure(ok, pn):
+        raw_ownership.setdefault(ok, {})
+        if pn not in raw_ownership[ok]:
+            raw_ownership[ok][pn] = {"player": pn, "seasons": 0, "drafted": 0,
+                                     "added": 0, "dropped": 0, "days": 0}
+        return raw_ownership[ok][pn]
+
+    # Season appearances from end-of-season roster
     for s in seasons_data:
         for t in s["teams"]:
             ok = _owner_key(t)
             for player in t.get("roster", []):
-                pn = player.get("name", "")
+                pn = (player.get("name") or "").strip()
+                if pn:
+                    _ensure(ok, pn)["seasons"] += 1
+
+    # Draft picks count
+    for s in seasons_data:
+        for t in s["teams"]:
+            ok = _owner_key(t)
+            for pick in t.get("draft_picks", []):
+                pn = (pick.get("player") or "").strip()
+                if pn:
+                    _ensure(ok, pn)["drafted"] += 1
+
+    # Transaction-based: adds, drops, days on roster
+    for s in seasons_data:
+        year = s["year"]
+        # Approximate season boundaries (NBA: draft Oct-1, season ends Jun-30)
+        draft_ts      = int(_dt.datetime(year - 1, 10, 1, tzinfo=_dt.timezone.utc).timestamp())
+        season_end_ts = int(_dt.datetime(year,     6, 30, tzinfo=_dt.timezone.utc).timestamp())
+
+        tid_to_ok = {t.get("team_id"): _owner_key(t)
+                     for t in s["teams"] if t.get("team_id") is not None}
+
+        # Build per-(owner, player) event list; seed with synthetic draft events
+        ev_map = {}  # (ok, pn) → {"adds": [ts], "drops": [ts]}
+
+        for t in s["teams"]:
+            ok = _owner_key(t)
+            for pick in t.get("draft_picks", []):
+                pn = (pick.get("player") or "").strip()
                 if not pn:
                     continue
-                raw_ownership.setdefault(ok, {})
-                if pn not in raw_ownership[ok]:
-                    raw_ownership[ok][pn] = {"player": pn, "seasons": 0, "drafted": 0, "waiver": 0, "trade": 0}
-                raw_ownership[ok][pn]["seasons"] += 1
-                acq = player.get("acquisition_type", "")
-                if "DRAFT" in acq:
-                    raw_ownership[ok][pn]["drafted"] += 1
-                elif "WAIVER" in acq or "FREE" in acq:
-                    raw_ownership[ok][pn]["waiver"] += 1
-                elif "TRADE" in acq:
-                    raw_ownership[ok][pn]["trade"] += 1
+                key = (ok, pn)
+                ev_map.setdefault(key, {"adds": [], "drops": []})
+                ev_map[key]["adds"].append(draft_ts)
+
+        # Real transaction events
+        for txn in s.get("transactions", []):
+            tid = txn.get("team_id")
+            ok  = tid_to_ok.get(tid)
+            if not ok:
+                continue
+            pn  = (txn.get("player") or "").strip()
+            ts  = txn.get("ts") or 0
+            if not pn or not ts:
+                continue
+            action = (txn.get("action") or "").upper()
+            is_add  = any(k in action for k in ("ADDED", "WAIVER", "FREE_AGENT", "FREE AGENT"))
+            is_drop = any(k in action for k in ("DROPPED", "DROP"))
+            if not is_add and not is_drop:
+                continue
+            key = (ok, pn)
+            ev_map.setdefault(key, {"adds": [], "drops": []})
+            entry = _ensure(ok, pn)
+            if is_add:
+                ev_map[key]["adds"].append(ts)
+                entry["added"] += 1
+            else:
+                ev_map[key]["drops"].append(ts)
+                entry["dropped"] += 1
+
+        # Compute days on roster from paired add→drop events
+        for (ok, pn), evs in ev_map.items():
+            adds  = sorted(evs["adds"])
+            drops = sorted(evs["drops"])
+            days  = 0
+            dptr  = 0
+            for add_ts in adds:
+                while dptr < len(drops) and drops[dptr] < add_ts:
+                    dptr += 1
+                end_ts = drops[dptr] if dptr < len(drops) else season_end_ts
+                if dptr < len(drops):
+                    dptr += 1
+                days += max(0, (end_ts - add_ts) // 86400)
+            _ensure(ok, pn)["days"] += days
 
     player_ownership = {}
     for ok, pdict in raw_ownership.items():
         player_ownership[ok] = {
             "owner_id": ok,
             "label":    owner_display.get(ok, ok),
-            "players":  sorted(pdict.values(), key=lambda x: -x["seasons"]),
+            "players":  sorted(pdict.values(), key=lambda x: (-x["days"], -x["seasons"])),
         }
 
     return {
