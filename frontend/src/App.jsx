@@ -7620,14 +7620,14 @@ function LeagueHistory() {
 
   const needsRefresh = !data || data.needs_refresh || !data.seasons?.length
   const SUB_TABS = ['Seasons','H2H','All-Time','Trend','Players']
-  const tabKey   = subTab.replace(/[^a-z]/g,'')
+  const tabKey   = subTab.replace(/[^a-z0-9]/g,'')
 
   const headerRow = (
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 24px',borderBottom:'1px solid var(--border)'}}>
       <div style={{display:'flex',gap:6}}>
         {SUB_TABS.map(t => (
           <button key={t} className={'hist-mode-btn' + (tabKey===t.toLowerCase().replace(/[^a-z]/g,'') ? ' active' : '')}
-            onClick={() => setSubTab(t.toLowerCase().replace(/[^a-z]/g,''))}>
+            onClick={() => setSubTab(t.toLowerCase().replace(/[^a-z0-9]/g,''))}>
             {t}
           </button>
         ))}

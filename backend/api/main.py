@@ -6764,13 +6764,19 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         import json as _json2
         last_refreshed = max(r["fetched_at"] for r in rows) if rows else None
 
-        # Debug: peek at what owner_ids look like in the first cached season
+        # Debug: peek at cached data + player_ownership summary
         _debug_owner_ids = []
         if rows:
             try:
                 _s0 = _json2.loads(rows[0]["data"])
                 _debug_owner_ids = [
-                    {"team_id": t.get("team_id"), "owner_id": t.get("owner_id", "MISSING"), "team_name": t.get("team_name")}
+                    {
+                        "team_id":    t.get("team_id"),
+                        "owner_id":   t.get("owner_id", "MISSING"),
+                        "team_name":  t.get("team_name"),
+                        "roster_len": len(t.get("roster", [])),
+                        "draft_len":  len(t.get("draft_picks", [])),
+                    }
                     for t in _s0.get("teams", [])[:4]
                 ]
             except Exception:
@@ -6785,6 +6791,9 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         views["my_team_id"]      = my_team_id
         views["_debug_owners"]   = _debug_owner_ids
         views["_cached_years"]   = [r["year"] for r in rows]
+        # Debug: how many players does my player_ownership entry have?
+        _my_po = views.get("player_ownership", {}).get(my_owner_id) if my_owner_id else None
+        views["_debug_my_player_count"] = len(_my_po["players"]) if _my_po else -1
         return views
     finally:
         conn.close()
