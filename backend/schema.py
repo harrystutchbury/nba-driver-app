@@ -452,6 +452,18 @@ def init_db():
         WHERE game_date < (substr(season, 1, 4) || '-10-01')
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS league_history_seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            fetched_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(username, provider, year)
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

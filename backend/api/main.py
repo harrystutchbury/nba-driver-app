@@ -6192,6 +6192,400 @@ def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_cur
     return {"ok": True}
 
 
+# ── League History ─────────────────────────────────────────────────────────────
+
+def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: str):
+    """Fetch one ESPN season's data. Returns None if league didn't exist that year."""
+    import json as _json
+    try:
+        from espn_api.basketball import League as EspnLeague
+        league = EspnLeague(league_id=league_id, year=year, espn_s2=espn_s2, swid=swid)
+    except Exception:
+        return None
+
+    # Build draft lookup: team_id -> list of picks
+    draft_by_team = {}
+    try:
+        for pick in league.draft:
+            tid = pick.team.team_id
+            draft_by_team.setdefault(tid, []).append({
+                "round": pick.round_num,
+                "pick":  pick.pick_number,
+                "player": pick.playerName,
+            })
+    except Exception:
+        pass
+
+    teams = []
+    for team in league.teams:
+        owner = ""
+        if hasattr(team, "owners") and team.owners:
+            o = team.owners[0]
+            owner = o.get("displayName", o.get("firstName", "")) if isinstance(o, dict) else str(o)
+
+        # Schedule results
+        schedule_results = []
+        for matchup in team.schedule:
+            try:
+                am = getattr(matchup, "away_team", None)
+                hm = getattr(matchup, "home_team", None)
+                if am is None or hm is None:
+                    continue
+                is_away = (hasattr(am, "team_id") and am.team_id == team.team_id)
+                my_score  = getattr(matchup, "away_score",  0) if is_away else getattr(matchup, "home_score", 0)
+                opp_score = getattr(matchup, "home_score",  0) if is_away else getattr(matchup, "away_score", 0)
+                opp_team  = hm if is_away else am
+                opp_name  = getattr(opp_team, "team_name", str(opp_team))
+                schedule_results.append({
+                    "opponent": opp_name,
+                    "my_score":  round(float(my_score or 0), 2),
+                    "opp_score": round(float(opp_score or 0), 2),
+                    "win": (my_score or 0) > (opp_score or 0),
+                })
+            except Exception:
+                continue
+
+        teams.append({
+            "team_id":        team.team_id,
+            "team_name":      team.team_name,
+            "owner":          owner,
+            "wins":           team.wins,
+            "losses":         team.losses,
+            "ties":           team.ties,
+            "points_for":     round(float(team.points_for or 0), 2),
+            "points_against": round(float(team.points_against or 0), 2),
+            "standing":       team.standing,
+            "final_standing": team.final_standing,
+            "schedule_results": schedule_results,
+            "draft_picks":    draft_by_team.get(team.team_id, []),
+        })
+
+    # Champion = final_standing 1, else first in standings()
+    champion = None
+    for t in teams:
+        if t["final_standing"] == 1:
+            champion = t["team_name"]
+            break
+    if not champion:
+        try:
+            champion = league.standings()[0].team_name
+        except Exception:
+            champion = teams[0]["team_name"] if teams else ""
+
+    # Reg season winner = best record (standing = playoff seed 1)
+    reg_winner = None
+    seed1 = [t for t in teams if t["standing"] == 1]
+    if seed1:
+        reg_winner = seed1[0]["team_name"]
+
+    return {"year": year, "champion": champion, "reg_season_winner": reg_winner, "teams": teams}
+
+
+def _discover_yahoo_leagues(access_token: str) -> list:
+    """Return [{league_key, year}] for all NBA leagues the user has participated in."""
+    try:
+        data = _yahoo_api(access_token, "users;use_login=1/games;game_keys=nba/leagues")
+        fc   = data.get("fantasy_content", {})
+        users = fc.get("users", {})
+        user  = users.get("0", {}).get("user", [{}, {}])
+        games = user[1].get("games", {}) if len(user) > 1 else {}
+        count = games.get("count", 0)
+        leagues = []
+        for i in range(count):
+            game_data = games.get(str(i), {}).get("game", [])
+            if not game_data or len(game_data) < 2:
+                continue
+            game_meta   = game_data[0] if isinstance(game_data[0], dict) else {}
+            year        = int(game_meta.get("season", 0))
+            lg_container = game_data[1].get("leagues", {})
+            lg_count     = lg_container.get("count", 0)
+            for j in range(lg_count):
+                lg_data = lg_container.get(str(j), {}).get("league", [{}])
+                lg_meta = lg_data[0] if lg_data and isinstance(lg_data[0], dict) else {}
+                lk = lg_meta.get("league_key", "")
+                if lk and year:
+                    leagues.append({"league_key": lk, "year": year})
+        return leagues
+    except Exception:
+        return []
+
+
+def _fetch_yahoo_season_history(access_token: str, league_key: str, year: int):
+    """Fetch one Yahoo season's standings. Returns None on failure."""
+    try:
+        data = _yahoo_api(access_token, f"league/{league_key}/standings")
+        lg   = data.get("fantasy_content", {}).get("league", [{}, {}])
+        standings_raw = lg[1].get("standings", [{}])[0].get("teams", {})
+        count = standings_raw.get("count", 0)
+
+        teams = []
+        champion = None
+        reg_winner = None
+
+        for i in range(count):
+            t_data = standings_raw.get(str(i), {}).get("team", [{}])
+            meta   = t_data[0] if t_data and isinstance(t_data[0], list) else []
+            meta_d = {}
+            for item in meta:
+                if isinstance(item, dict):
+                    meta_d.update(item)
+
+            ts = {}
+            if len(t_data) > 2 and isinstance(t_data[2], dict):
+                ts = t_data[2].get("team_standings", {})
+
+            outcome = ts.get("outcome_totals", {})
+            rank    = int(ts.get("rank", 0))
+            name    = meta_d.get("name", f"Team {i+1}")
+            pf      = float(ts.get("points_for", 0) or 0)
+            pa      = float(ts.get("points_against", 0) or 0)
+
+            teams.append({
+                "team_id":        i,
+                "team_name":      name,
+                "owner":          meta_d.get("managers", [{}])[0].get("manager", {}).get("nickname", "") if meta_d.get("managers") else "",
+                "wins":           int(outcome.get("wins", 0)),
+                "losses":         int(outcome.get("losses", 0)),
+                "ties":           int(outcome.get("ties", 0)),
+                "points_for":     round(pf, 2),
+                "points_against": round(pa, 2),
+                "standing":       rank,
+                "final_standing": rank,
+                "schedule_results": [],
+                "draft_picks":    [],
+            })
+            if rank == 1:
+                champion = name
+                reg_winner = name
+
+        return {"year": year, "champion": champion, "reg_season_winner": reg_winner, "teams": teams}
+    except Exception:
+        return None
+
+
+def _compute_history_views(rows: list, my_team_name: str | None):
+    """Compute all 5 history views from cached season rows."""
+    import json as _json
+
+    seasons_data = [_json.loads(r["data"]) for r in rows]
+    seasons_data.sort(key=lambda s: s["year"], reverse=True)
+
+    # 1. Seasons list
+    seasons = []
+    for s in seasons_data:
+        seasons.append({
+            "year":              s["year"],
+            "champion":          s.get("champion"),
+            "reg_season_winner": s.get("reg_season_winner"),
+            "teams":             sorted(s["teams"], key=lambda t: t.get("final_standing") or 99),
+        })
+
+    # 2. H2H
+    h2h = {}
+    if my_team_name:
+        for s in seasons_data:
+            my_team = next((t for t in s["teams"] if t["team_name"] == my_team_name), None)
+            if not my_team:
+                continue
+            for result in my_team.get("schedule_results", []):
+                opp = result["opponent"]
+                if opp not in h2h:
+                    h2h[opp] = {"wins": 0, "losses": 0, "ties": 0}
+                if result["win"]:
+                    h2h[opp]["wins"] += 1
+                elif result["my_score"] == result["opp_score"]:
+                    h2h[opp]["ties"] += 1
+                else:
+                    h2h[opp]["losses"] += 1
+    for opp, rec in h2h.items():
+        total = rec["wins"] + rec["losses"] + rec["ties"]
+        rec["win_pct"] = round(rec["wins"] / total, 3) if total else 0
+
+    # 3. Aggregate
+    agg = {}
+    for s in seasons_data:
+        for t in s["teams"]:
+            tn = t["team_name"]
+            if tn not in agg:
+                agg[tn] = {"team_name": tn, "seasons": 0, "total_wins": 0, "total_losses": 0,
+                           "championships": 0, "standings": []}
+            agg[tn]["seasons"]       += 1
+            agg[tn]["total_wins"]    += t.get("wins", 0)
+            agg[tn]["total_losses"]  += t.get("losses", 0)
+            if t.get("final_standing") == 1:
+                agg[tn]["championships"] += 1
+            fs = t.get("final_standing") or t.get("standing") or 0
+            if fs:
+                agg[tn]["standings"].append(fs)
+    aggregate = []
+    for tn, a in agg.items():
+        total = a["total_wins"] + a["total_losses"]
+        avg_s = round(sum(a["standings"]) / len(a["standings"]), 1) if a["standings"] else 0
+        aggregate.append({
+            "team_name":     tn,
+            "seasons":       a["seasons"],
+            "total_wins":    a["total_wins"],
+            "total_losses":  a["total_losses"],
+            "win_pct":       round(a["total_wins"] / total, 3) if total else 0,
+            "championships": a["championships"],
+            "avg_standing":  avg_s,
+        })
+    aggregate.sort(key=lambda x: (-x["championships"], x["avg_standing"]))
+
+    # 4. Yearly standings per team
+    yearly = {}
+    for s in seasons_data:
+        for t in s["teams"]:
+            tn = t["team_name"]
+            yearly.setdefault(tn, []).append({
+                "year":     s["year"],
+                "standing": t.get("final_standing") or t.get("standing") or 0,
+            })
+
+    # 5. Player draft history
+    player_map = {}
+    for s in seasons_data:
+        for t in s["teams"]:
+            is_mine = my_team_name and t["team_name"] == my_team_name
+            for pick in t.get("draft_picks", []):
+                pn = pick["player"]
+                if pn not in player_map:
+                    player_map[pn] = {"player": pn, "times_drafted": 0, "years": [], "rounds": [], "by_you": 0}
+                player_map[pn]["times_drafted"] += 1
+                player_map[pn]["years"].append(s["year"])
+                player_map[pn]["rounds"].append(pick.get("round", 0))
+                if is_mine:
+                    player_map[pn]["by_you"] += 1
+    player_history = []
+    for pn, pd in player_map.items():
+        pd["avg_round"] = round(sum(pd["rounds"]) / len(pd["rounds"]), 1) if pd["rounds"] else 0
+        player_history.append(pd)
+    player_history.sort(key=lambda x: -x["times_drafted"])
+
+    return {
+        "seasons":        seasons,
+        "h2h":            h2h,
+        "aggregate":      aggregate,
+        "yearly_standings": yearly,
+        "player_history": player_history,
+    }
+
+
+@fantasy_router.get("/history")
+def get_league_history(current_user: str = Depends(get_current_user)):
+    import json as _json
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT provider, year, data, fetched_at FROM league_history_seasons WHERE username=? ORDER BY year DESC",
+            [current_user]
+        ).fetchall()
+        if not rows:
+            return {"seasons": [], "needs_refresh": True}
+
+        # Try to find user's team name from ESPN or Yahoo team_key
+        my_team_name = None
+        fc_rows = conn.execute(
+            "SELECT provider, team_key FROM fantasy_connections WHERE username=?", [current_user]
+        ).fetchall()
+        # team_key for ESPN is the numeric team_id, for Yahoo it's like "428.l.xxx.t.Y"
+        # We'll match by scanning seasons data
+        if fc_rows:
+            for fc in fc_rows:
+                provider = fc["provider"]
+                team_key = fc["team_key"]
+                for row in rows:
+                    if row["provider"] != provider:
+                        continue
+                    s = _json.loads(row["data"])
+                    for t in s.get("teams", []):
+                        if provider == "espn" and str(t.get("team_id", "")) == str(team_key):
+                            my_team_name = t["team_name"]
+                            break
+                        elif provider == "yahoo" and team_key and team_key.endswith(f".t.{t.get('team_id', '__')}"):
+                            my_team_name = t["team_name"]
+                            break
+                    if my_team_name:
+                        break
+                if my_team_name:
+                    break
+
+        last_refreshed = max(r["fetched_at"] for r in rows) if rows else None
+        views = _compute_history_views([{"data": r["data"]} for r in rows], my_team_name)
+        views["last_refreshed"] = last_refreshed
+        views["my_team_name"]   = my_team_name
+        return views
+    finally:
+        conn.close()
+
+
+@fantasy_router.post("/history/refresh")
+def refresh_league_history(current_user: str = Depends(get_current_user)):
+    import json as _json
+    conn = get_conn()
+    try:
+        fc_rows = conn.execute(
+            "SELECT provider, access_token, refresh_token, league_key FROM fantasy_connections WHERE username=?",
+            [current_user]
+        ).fetchall()
+        if not fc_rows:
+            raise HTTPException(status_code=400, detail="No fantasy leagues connected")
+
+        refreshed = []
+
+        for fc in fc_rows:
+            provider    = fc["provider"]
+            league_key  = fc["league_key"]
+            access_tok  = fc["access_token"]
+            refresh_tok = fc["refresh_token"]
+
+            if provider == "espn":
+                from espn_api.basketball import League as EspnLeague
+                lid = int(league_key)
+                failures = 0
+                for year in range(2026, 2009, -1):
+                    if failures >= 3:
+                        break
+                    data = _fetch_espn_season_history(lid, year, access_tok, refresh_tok)
+                    if data is None:
+                        failures += 1
+                        continue
+                    failures = 0
+                    conn.execute(
+                        "INSERT OR REPLACE INTO league_history_seasons (username, provider, year, data) VALUES (?,?,?,?)",
+                        [current_user, "espn", year, _json.dumps(data)]
+                    )
+                    refreshed.append({"provider": "espn", "year": year})
+
+            elif provider == "yahoo":
+                try:
+                    valid_token = _refresh_yahoo_token(conn, current_user)
+                except Exception:
+                    continue
+                leagues = _discover_yahoo_leagues(valid_token)
+                if not leagues:
+                    # Fall back to current league_key
+                    try:
+                        year = int(league_key.split(".")[0][:4]) if league_key else 2025
+                    except Exception:
+                        year = 2025
+                    leagues = [{"league_key": league_key, "year": year}]
+                for lg in leagues:
+                    data = _fetch_yahoo_season_history(valid_token, lg["league_key"], lg["year"])
+                    if data is None:
+                        continue
+                    conn.execute(
+                        "INSERT OR REPLACE INTO league_history_seasons (username, provider, year, data) VALUES (?,?,?,?)",
+                        [current_user, "yahoo", lg["year"], _json.dumps(data)]
+                    )
+                    refreshed.append({"provider": "yahoo", "year": lg["year"]})
+
+        conn.commit()
+        return {"refreshed": len(refreshed), "seasons": refreshed}
+    finally:
+        conn.close()
+
+
 @fantasy_router.get("/espn/scoring")
 def espn_scoring(current_user: str = Depends(get_current_user)):
     """Return the stored scoring settings for the user's ESPN league."""
