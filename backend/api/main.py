@@ -6761,13 +6761,30 @@ def get_league_history(current_user: str = Depends(get_current_user)):
                         if my_team_name:
                             break
 
+        import json as _json2
         last_refreshed = max(r["fetched_at"] for r in rows) if rows else None
+
+        # Debug: peek at what owner_ids look like in the first cached season
+        _debug_owner_ids = []
+        if rows:
+            try:
+                _s0 = _json2.loads(rows[0]["data"])
+                _debug_owner_ids = [
+                    {"team_id": t.get("team_id"), "owner_id": t.get("owner_id", "MISSING"), "team_name": t.get("team_name")}
+                    for t in _s0.get("teams", [])[:4]
+                ]
+            except Exception:
+                pass
+
         views = _compute_history_views(
             [{"data": r["data"]} for r in rows],
             my_owner_id, my_team_name, my_team_id
         )
-        views["last_refreshed"] = last_refreshed
-        views["my_owner_id"]    = my_owner_id
+        views["last_refreshed"]  = last_refreshed
+        views["my_owner_id"]     = my_owner_id
+        views["my_team_id"]      = my_team_id
+        views["_debug_owners"]   = _debug_owner_ids
+        views["_cached_years"]   = [r["year"] for r in rows]
         return views
     finally:
         conn.close()
