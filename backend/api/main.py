@@ -6216,14 +6216,23 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
     except Exception:
         pass
 
+    # Build team_id → owner_id map first so schedule results can reference it
+    team_owner_id = {}
+    for team in league.teams:
+        if hasattr(team, "owners") and team.owners:
+            o = team.owners[0]
+            oid = o.get("id", "") if isinstance(o, dict) else ""
+            team_owner_id[team.team_id] = oid.strip("{}")
+
     teams = []
     for team in league.teams:
         owner = ""
+        owner_id = team_owner_id.get(team.team_id, "")
         if hasattr(team, "owners") and team.owners:
             o = team.owners[0]
             owner = o.get("displayName", o.get("firstName", "")) if isinstance(o, dict) else str(o)
 
-        # Schedule results
+        # Schedule results — store opponent owner_id for stable H2H across renames
         schedule_results = []
         for matchup in team.schedule:
             try:
@@ -6235,11 +6244,12 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
                 my_score  = getattr(matchup, "away_score",  0) if is_away else getattr(matchup, "home_score", 0)
                 opp_score = getattr(matchup, "home_score",  0) if is_away else getattr(matchup, "away_score", 0)
                 opp_team  = hm if is_away else am
-                opp_name  = getattr(opp_team, "team_name", str(opp_team))
+                opp_tid   = getattr(opp_team, "team_id", None)
                 schedule_results.append({
-                    "opponent": opp_name,
-                    "my_score":  round(float(my_score or 0), 2),
-                    "opp_score": round(float(opp_score or 0), 2),
+                    "opponent":          getattr(opp_team, "team_name", str(opp_team)),
+                    "opponent_owner_id": team_owner_id.get(opp_tid, "") if opp_tid else "",
+                    "my_score":          round(float(my_score or 0), 2),
+                    "opp_score":         round(float(opp_score or 0), 2),
                     "win": (my_score or 0) > (opp_score or 0),
                 })
             except Exception:
@@ -6249,6 +6259,7 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
             "team_id":        team.team_id,
             "team_name":      team.team_name,
             "owner":          owner,
+            "owner_id":       owner_id,
             "wins":           team.wins,
             "losses":         team.losses,
             "ties":           team.ties,
@@ -6363,66 +6374,106 @@ def _fetch_yahoo_season_history(access_token: str, league_key: str, year: int):
         return None
 
 
-def _compute_history_views(rows: list, my_team_name: str | None):
-    """Compute all 5 history views from cached season rows."""
+def _compute_history_views(rows: list, my_owner_id: str | None, my_team_name_fallback: str | None = None):
+    """Compute all 5 history views from cached season rows.
+    Groups by owner_id (stable across team renames). Falls back to team_name for Yahoo.
+    """
     import json as _json
 
     seasons_data = [_json.loads(r["data"]) for r in rows]
     seasons_data.sort(key=lambda s: s["year"], reverse=True)
 
-    # 1. Seasons list
+    # Build owner_id → display name map (use most recent season's name)
+    owner_display = {}  # owner_id -> most recent owner display name
+    owner_team_names = {}  # owner_id -> most recent team name
+    for s in seasons_data:  # newest first
+        for t in s["teams"]:
+            oid = t.get("owner_id") or t.get("owner") or t["team_name"]
+            if oid not in owner_display:
+                owner_display[oid] = t.get("owner") or t["team_name"]
+                owner_team_names[oid] = t["team_name"]
+
+    def _owner_key(t):
+        """Stable key for a team across seasons."""
+        return t.get("owner_id") or t.get("owner") or t["team_name"]
+
+    def _is_mine(t):
+        if my_owner_id and t.get("owner_id"):
+            return t["owner_id"] == my_owner_id
+        # fallback for Yahoo (no owner_id)
+        return my_team_name_fallback and t["team_name"] == my_team_name_fallback
+
+    # 1. Seasons list — enrich teams with owner label
     seasons = []
     for s in seasons_data:
+        enriched = []
+        for t in s["teams"]:
+            enriched.append({**t, "owner_label": owner_display.get(_owner_key(t), t.get("owner", t["team_name"]))})
         seasons.append({
             "year":              s["year"],
             "champion":          s.get("champion"),
             "reg_season_winner": s.get("reg_season_winner"),
-            "teams":             sorted(s["teams"], key=lambda t: t.get("final_standing") or 99),
+            "teams":             sorted(enriched, key=lambda t: t.get("final_standing") or 99),
         })
 
-    # 2. H2H
+    # 2. H2H — keyed by opponent owner_id, labelled by their display name
     h2h = {}
-    if my_team_name:
-        for s in seasons_data:
-            my_team = next((t for t in s["teams"] if t["team_name"] == my_team_name), None)
-            if not my_team:
-                continue
-            for result in my_team.get("schedule_results", []):
-                opp = result["opponent"]
-                if opp not in h2h:
-                    h2h[opp] = {"wins": 0, "losses": 0, "ties": 0}
-                if result["win"]:
-                    h2h[opp]["wins"] += 1
-                elif result["my_score"] == result["opp_score"]:
-                    h2h[opp]["ties"] += 1
-                else:
-                    h2h[opp]["losses"] += 1
-    for opp, rec in h2h.items():
+    for s in seasons_data:
+        my_team = next((t for t in s["teams"] if _is_mine(t)), None)
+        if not my_team:
+            continue
+        # Build opponent owner_id → label for this season
+        opp_label = {_owner_key(t): owner_display.get(_owner_key(t), t.get("owner", t["team_name"]))
+                     for t in s["teams"] if not _is_mine(t)}
+        # Also build team_name → owner_key for resolving schedule results
+        name_to_okey = {t["team_name"]: _owner_key(t) for t in s["teams"]}
+
+        for result in my_team.get("schedule_results", []):
+            # Prefer stored opponent_owner_id, fall back to resolving via team name
+            opp_oid = result.get("opponent_owner_id") or name_to_okey.get(result["opponent"], result["opponent"])
+            opp_label_str = opp_label.get(opp_oid) or owner_display.get(opp_oid) or result["opponent"]
+            if opp_oid not in h2h:
+                h2h[opp_oid] = {"owner_id": opp_oid, "opponent": opp_label_str, "wins": 0, "losses": 0, "ties": 0}
+            if result["win"]:
+                h2h[opp_oid]["wins"] += 1
+            elif result["my_score"] == result["opp_score"]:
+                h2h[opp_oid]["ties"] += 1
+            else:
+                h2h[opp_oid]["losses"] += 1
+    h2h_list = []
+    for rec in h2h.values():
         total = rec["wins"] + rec["losses"] + rec["ties"]
         rec["win_pct"] = round(rec["wins"] / total, 3) if total else 0
+        h2h_list.append(rec)
+    h2h_list.sort(key=lambda x: -x["win_pct"])
 
-    # 3. Aggregate
+    # 3. Aggregate — grouped by owner_id
     agg = {}
     for s in seasons_data:
         for t in s["teams"]:
-            tn = t["team_name"]
-            if tn not in agg:
-                agg[tn] = {"team_name": tn, "seasons": 0, "total_wins": 0, "total_losses": 0,
+            ok = _owner_key(t)
+            if ok not in agg:
+                agg[ok] = {"owner_id": ok,
+                           "team_name": owner_team_names.get(ok, t["team_name"]),
+                           "owner": owner_display.get(ok, t.get("owner", t["team_name"])),
+                           "seasons": 0, "total_wins": 0, "total_losses": 0,
                            "championships": 0, "standings": []}
-            agg[tn]["seasons"]       += 1
-            agg[tn]["total_wins"]    += t.get("wins", 0)
-            agg[tn]["total_losses"]  += t.get("losses", 0)
+            agg[ok]["seasons"]      += 1
+            agg[ok]["total_wins"]   += t.get("wins", 0)
+            agg[ok]["total_losses"] += t.get("losses", 0)
             if t.get("final_standing") == 1:
-                agg[tn]["championships"] += 1
+                agg[ok]["championships"] += 1
             fs = t.get("final_standing") or t.get("standing") or 0
             if fs:
-                agg[tn]["standings"].append(fs)
+                agg[ok]["standings"].append(fs)
     aggregate = []
-    for tn, a in agg.items():
+    for ok, a in agg.items():
         total = a["total_wins"] + a["total_losses"]
         avg_s = round(sum(a["standings"]) / len(a["standings"]), 1) if a["standings"] else 0
         aggregate.append({
-            "team_name":     tn,
+            "owner_id":      ok,
+            "team_name":     a["team_name"],
+            "owner":         a["owner"],
             "seasons":       a["seasons"],
             "total_wins":    a["total_wins"],
             "total_losses":  a["total_losses"],
@@ -6432,21 +6483,25 @@ def _compute_history_views(rows: list, my_team_name: str | None):
         })
     aggregate.sort(key=lambda x: (-x["championships"], x["avg_standing"]))
 
-    # 4. Yearly standings per team
+    # 4. Yearly standings — grouped by owner_id
     yearly = {}
     for s in seasons_data:
         for t in s["teams"]:
-            tn = t["team_name"]
-            yearly.setdefault(tn, []).append({
-                "year":     s["year"],
-                "standing": t.get("final_standing") or t.get("standing") or 0,
+            ok = _owner_key(t)
+            label = owner_display.get(ok, t.get("owner", t["team_name"]))
+            yearly.setdefault(ok, {"owner_id": ok, "label": label, "data": []})
+            yearly[ok]["data"].append({
+                "year":      s["year"],
+                "standing":  t.get("final_standing") or t.get("standing") or 0,
+                "team_name": t["team_name"],
             })
 
-    # 5. Player draft history
+    # 5. Player draft history — grouped by owner_id
     player_map = {}
     for s in seasons_data:
         for t in s["teams"]:
-            is_mine = my_team_name and t["team_name"] == my_team_name
+            ok = _owner_key(t)
+            is_mine = _is_mine(t)
             for pick in t.get("draft_picks", []):
                 pn = pick["player"]
                 if pn not in player_map:
@@ -6488,32 +6543,35 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         fc_rows = conn.execute(
             "SELECT provider, team_key FROM fantasy_connections WHERE username=?", [current_user]
         ).fetchall()
-        # team_key for ESPN is the numeric team_id, for Yahoo it's like "428.l.xxx.t.Y"
-        # We'll match by scanning seasons data
+        # For ESPN: identify user by SWID (stored as refresh_token), strip braces
+        # For Yahoo: fall back to team_name match via team_key
+        my_owner_id = None
+        my_team_name = None
         if fc_rows:
             for fc in fc_rows:
                 provider = fc["provider"]
-                team_key = fc["team_key"]
-                for row in rows:
-                    if row["provider"] != provider:
-                        continue
-                    s = _json.loads(row["data"])
-                    for t in s.get("teams", []):
-                        if provider == "espn" and str(t.get("team_id", "")) == str(team_key):
-                            my_team_name = t["team_name"]
-                            break
-                        elif provider == "yahoo" and team_key and team_key.endswith(f".t.{t.get('team_id', '__')}"):
-                            my_team_name = t["team_name"]
-                            break
-                    if my_team_name:
+                if provider == "espn":
+                    swid = (fc["refresh_token"] or "").strip("{}")
+                    if swid:
+                        my_owner_id = swid
                         break
-                if my_team_name:
-                    break
+                elif provider == "yahoo":
+                    team_key = fc["team_key"]
+                    for row in rows:
+                        if row["provider"] != "yahoo":
+                            continue
+                        s = _json.loads(row["data"])
+                        for t in s.get("teams", []):
+                            if team_key and team_key.endswith(f".t.{t.get('team_id', '__')}"):
+                                my_team_name = t["team_name"]
+                                break
+                        if my_team_name:
+                            break
 
         last_refreshed = max(r["fetched_at"] for r in rows) if rows else None
-        views = _compute_history_views([{"data": r["data"]} for r in rows], my_team_name)
+        views = _compute_history_views([{"data": r["data"]} for r in rows], my_owner_id, my_team_name)
         views["last_refreshed"] = last_refreshed
-        views["my_team_name"]   = my_team_name
+        views["my_owner_id"]    = my_owner_id
         return views
     finally:
         conn.close()
