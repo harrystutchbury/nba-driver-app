@@ -6541,7 +6541,7 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         # Try to find user's team name from ESPN or Yahoo team_key
         my_team_name = None
         fc_rows = conn.execute(
-            "SELECT provider, team_key FROM fantasy_connections WHERE username=?", [current_user]
+            "SELECT provider, team_key, refresh_token FROM fantasy_connections WHERE username=?", [current_user]
         ).fetchall()
         # For ESPN: identify user by SWID (stored as refresh_token), strip braces
         # For Yahoo: fall back to team_name match via team_key
