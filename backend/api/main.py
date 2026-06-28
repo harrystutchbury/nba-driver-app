@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi import Request
@@ -30,7 +33,8 @@ import logging
 import threading
 from datetime import datetime
 
-from jose import JWTError, jwt
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 import hashlib
 import secrets as _secrets
 import smtplib
@@ -111,6 +115,10 @@ def _refresh_yahoo_token(conn, username: str) -> str:
 
 JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 30
+
+if JWT_SECRET == "dev-secret-change-in-production":
+    logger.warning("JWT_SECRET is using the insecure default — set JWT_SECRET env var in production")
 _http_bearer          = HTTPBearer()
 _http_bearer_optional = HTTPBearer(auto_error=False)
 
@@ -122,7 +130,7 @@ def get_optional_user(
     if not credentials:
         return None
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = _jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload["sub"]
     except (JWTError, KeyError):
         return None
@@ -174,7 +182,7 @@ def _send_reset_email(to_email: str, reset_link: str):
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)) -> str:
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = _jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload["sub"]
     except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -309,7 +317,11 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
+_limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="NBA Stat Driver API", lifespan=lifespan)
+app.state.limiter = _limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 router = APIRouter(prefix="/api")
 
 _SECURITY_HEADERS = {
@@ -345,9 +357,8 @@ app.add_middleware(
         "https://www.rotointel.com",
         "https://fantasy.espn.com",
     ],
-    allow_origin_regex=r"chrome-extension://.*",
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -3046,24 +3057,33 @@ def get_schedule_projection(
 @router.post("/admin/refresh-schedule")
 def admin_refresh_schedule(current_user: str = Depends(get_current_user)):
     """Fetch upcoming schedule from basketball-reference and store in DB."""
+    conn = get_conn()
     try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
         import refresh as refresh_mod
         from schema import init_db
         init_db()
         season_year = _current_season_end_year()
-        conn = get_conn()
         refresh_mod.refresh_schedule(conn, season_year)
         count = conn.execute("SELECT COUNT(*) FROM nba_schedule WHERE season=?", (season_year,)).fetchone()[0]
-        conn.close()
         return {"status": "ok", "games_stored": count}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("admin_refresh_schedule failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
 
 
 @router.get("/admin/debug-projections")
 def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15", current_user: str = Depends(get_current_user)):
     """Temporary debug: check what schedule and player data exists in prod."""
     conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
     season_year = _current_season_end_year()
     season = f"{season_year - 1}-{str(season_year)[2:]}"
     sched = conn.execute(
@@ -3089,10 +3109,12 @@ def debug_projections(start: str = "2026-05-09", end: str = "2026-05-15", curren
 @router.post("/admin/upload-schedule")
 def admin_upload_schedule(games: list = Body(...), current_user: str = Depends(get_current_user)):
     """Accept schedule JSON pushed from local machine and store in DB."""
+    conn = get_conn()
     try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
         from schema import init_db
         init_db()
-        conn = get_conn()
         conn.execute("DELETE FROM nba_schedule")
         conn.executemany(
             "INSERT OR IGNORE INTO nba_schedule (game_date, home_team, away_team, season) VALUES (?,?,?,?)",
@@ -3100,10 +3122,14 @@ def admin_upload_schedule(games: list = Body(...), current_user: str = Depends(g
         )
         conn.commit()
         count = conn.execute("SELECT COUNT(*) FROM nba_schedule").fetchone()[0]
-        conn.close()
         return {"status": "ok", "games_stored": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_upload_schedule failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
 
 
 # -----------------------------------------------------------------------
@@ -3588,23 +3614,32 @@ def get_projection_audit(
 @router.post("/admin/sync-injuries")
 def admin_sync_injuries(current_user: str = Depends(get_current_user)):
     """Trigger an immediate injury sync from Tank01. Requires RAPIDAPI_KEY on server."""
-    if not os.environ.get("RAPIDAPI_KEY"):
-        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    conn = get_conn()
     try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        if not os.environ.get("RAPIDAPI_KEY"):
+            raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
         import sync_injuries
         sync_injuries.sync()
-        conn = get_conn()
         count = conn.execute("SELECT COUNT(*) FROM injuries").fetchone()[0]
-        conn.close()
         return {"status": "ok", "injured_players": count}
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_sync_injuries failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
 
 
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
     """Return shot_logs row count, seasons present, and unmatched players per season."""
     conn = get_conn()
+    if not _is_admin(current_user, conn):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Admin only")
     total = conn.execute("SELECT COUNT(*) FROM shot_logs").fetchone()[0]
     seasons = [r[0] for r in conn.execute("SELECT DISTINCT season FROM shot_logs ORDER BY season").fetchall()]
     map_count = conn.execute("SELECT COUNT(*) FROM player_id_map").fetchone()[0]
@@ -3676,6 +3711,11 @@ _shot_refresh_running = False
 @router.post("/admin/init-shots")
 def admin_init_shots(current_user: str = Depends(get_current_user)):
     """Run map_players then refresh_shots in background. Use when shot_logs is empty."""
+    conn = get_conn()
+    is_admin = _is_admin(current_user, conn)
+    conn.close()
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
     global _shot_refresh_running
     if _shot_refresh_running:
         return {"status": "already_running", "message": "Shot init is already in progress"}
@@ -3703,6 +3743,11 @@ def admin_init_shots(current_user: str = Depends(get_current_user)):
 @router.post("/admin/refresh-shots")
 def admin_refresh_shots(current_user: str = Depends(get_current_user)):
     """Trigger shot data refresh in background. Takes 2-4 hours; safe to call once."""
+    conn = get_conn()
+    is_admin = _is_admin(current_user, conn)
+    conn.close()
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
     global _shot_refresh_running
     if _shot_refresh_running:
         return {"status": "already_running", "message": "Shot refresh is already in progress"}
@@ -4403,7 +4448,8 @@ def admin_build_player_map():
         conn.close()
         return {"status": "ok", "mapped_players": count}
     except Exception as e:
-        raise HTTPException(500, str(e))
+        logger.exception("admin_build_player_map failed")
+        raise HTTPException(500, "Internal server error")
 
 
 @admin_router.post("/refresh-stats")
@@ -4423,15 +4469,19 @@ def admin_refresh_stats():
         ).fetchone()[0]
         conn.close()
         return {"status": "ok", "rows_in_range": count}
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_refresh_stats failed")
+        raise HTTPException(500, "Internal server error")
 
 
 auth_router = APIRouter(prefix="/api/auth")
 
 
 @auth_router.post("/register")
-def register(body: dict = Body(...)):
+@_limiter.limit("10/hour")
+def register(request: Request, body: dict = Body(...)):
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     if not username or not password:
@@ -4447,7 +4497,7 @@ def register(body: dict = Body(...)):
     )
     conn.commit()
     conn.close()
-    token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    token = _jwt.encode({"sub": username, "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRY_DAYS)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
@@ -4513,12 +4563,13 @@ def update_me(body: dict = Body(...), current_user: str = Depends(get_current_us
 
     # Issue a fresh token (email may have changed)
     updated_email = new_email or current_user
-    token = jwt.encode({"sub": updated_email}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    token = _jwt.encode({"sub": updated_email, "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRY_DAYS)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
 @auth_router.post("/forgot-password")
-def forgot_password(body: dict = Body(...)):
+@_limiter.limit("5/hour")
+def forgot_password(request: Request, body: dict = Body(...)):
     email = (body.get("email") or "").strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
@@ -4543,7 +4594,8 @@ def forgot_password(body: dict = Body(...)):
 
 
 @auth_router.post("/reset-password")
-def reset_password(body: dict = Body(...)):
+@_limiter.limit("5/hour")
+def reset_password(request: Request, body: dict = Body(...)):
     token    = (body.get("token") or "").strip()
     new_pass = (body.get("password") or "").strip()
     if not token or not new_pass:
@@ -4568,12 +4620,13 @@ def reset_password(body: dict = Body(...)):
     conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", [token])
     conn.commit()
     conn.close()
-    jwt_token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    jwt_token = _jwt.encode({"sub": username, "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRY_DAYS)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": jwt_token}
 
 
 @auth_router.post("/login")
-def login(body: dict = Body(...)):
+@_limiter.limit("20/minute")
+def login(request: Request, body: dict = Body(...)):
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     if not username or not password:
@@ -4585,7 +4638,7 @@ def login(body: dict = Body(...)):
     conn.close()
     if not row or not _verify_password(password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt.encode({"sub": username}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    token = _jwt.encode({"sub": username, "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRY_DAYS)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
@@ -10642,8 +10695,8 @@ def mod_get_comments(
     except Exception as e:
         conn.close()
         tb = traceback.format_exc()
-        print(f"[moderation] ERROR: {e}\n{tb}", flush=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("[moderation] ERROR: %s\n%s", e, tb)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/admin/moderation/comments/{comment_id}/hide")
@@ -12005,7 +12058,7 @@ _sse_router = APIRouter(prefix="/api")
 @_sse_router.get("/box-score/stream")
 async def box_score_stream(token: str = Query(None)):
     try:
-        jwt.decode(token or "", JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _jwt.decode(token or "", JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except Exception:
         raise HTTPException(status_code=401, detail="invalid or missing token")
 

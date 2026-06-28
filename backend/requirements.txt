@@ -1,4 +1,4 @@
-fastapi==0.111.0
+fastapi>=0.115.0
 uvicorn==0.29.0
 python-multipart
 scikit-learn
@@ -6,11 +6,13 @@ numpy
 joblib
 pandas
 basketball_reference_web_scraper
-python-dotenv==1.0.1
+python-dotenv>=1.2.2
 rapidfuzz==3.9.3
 apscheduler==3.10.4
-python-jose[cryptography]==3.3.0
-requests==2.32.3
+PyJWT>=2.8.0
+requests>=2.33.0
+urllib3>=2.6.3
 espn-api
 xlrd
 stripe==10.5.0
+slowapi>=0.1.9
