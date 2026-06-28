@@ -7691,9 +7691,9 @@ function LeagueHistory() {
   const h2hEntries = Object.entries(h2h).sort((a,b) => (b[1].win_pct||0)-(a[1].win_pct||0))
   const h2hEl = tabKey === 'h2h' && (
     !my_owner_id
-      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your ESPN account to be identified. Try refreshing history.</div>
+      ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your ESPN account to be identified. Try refreshing history. [my_owner_id={String(my_owner_id)}]</div>
       : !h2hEntries.length
-        ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data yet. Hit Refresh Data to rebuild history with owner identifiers.</div>
+        ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data yet. [h2h_keys={Object.keys(h2h).length} backend_count={data?._debug_h2h_count}] Hit Refresh Data.</div>
         : <div style={{overflowX:'auto',padding:'0 0 24px'}}>
             <table className="audit-table">
               <thead><tr>
