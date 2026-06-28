@@ -6442,3 +6442,33 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .audit-comp.neu { color: var(--muted); }
 .audit-date { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--label); font-family: var(--sans); font-size: 13px; padding: 5px 8px; outline: none; color-scheme: dark; }
 .audit-date:focus { border-color: var(--accent); }
+
+/* ── Mobile layout ───────────────────────────────────────── */
+@media (max-width: 600px) {
+  .page-body {
+    padding: 0 12px 80px;
+  }
+
+  .metric-value {
+    font-size: 22px;
+  }
+
+  .metric-sub {
+    font-size: 11px;
+  }
+
+  /* Breakdown table: scroll instead of compress */
+  .z-breakdown-table td.zbd-val {
+    padding: 5px 6px;
+    font-size: 11px;
+  }
+
+  .z-breakdown-table thead th {
+    padding: 0 6px 8px;
+  }
+
+  /* Hide percentages on mobile — not readable at this width */
+  .z-breakdown-table .zbd-pct {
+    display: none;
+  }
+}

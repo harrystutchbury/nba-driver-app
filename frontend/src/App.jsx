@@ -9473,7 +9473,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { top: 24 } },
+    layout: { padding: { top: 24, right: 40 } },
     plugins: {
       datalabels: { display: false },
       legend: { display: false },
@@ -10219,7 +10219,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     </div>
                     {zBreakdown && (
                       <div id="z-breakdown-table-wrap" className="z-breakdown-wrap">
-                        <table className="z-breakdown-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+                        <table className="z-breakdown-table" style={{ tableLayout: 'fixed', width: '100%', minWidth: '520px' }}>
                           <colgroup>
                             <col style={{ width: 'var(--tbl-spacer, 120px)' }} />
                             {zResult.categories.map(c => (
