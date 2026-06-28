@@ -312,6 +312,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="NBA Stat Driver API", lifespan=lifespan)
 router = APIRouter(prefix="/api")
 
+_SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' https:; "
+        "connect-src 'self' https://api.anthropic.com"
+    ),
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+}
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.update(_SECURITY_HEADERS)
+    return response
+
 # Allow the React dev server to talk to this API
 app.add_middleware(
     CORSMiddleware,
