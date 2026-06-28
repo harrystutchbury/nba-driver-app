@@ -7694,29 +7694,54 @@ function LeagueHistory() {
       ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>H2H requires your ESPN account to be identified. Try refreshing history. [my_owner_id={String(my_owner_id)}]</div>
       : !h2hEntries.length
         ? <div style={{padding:32,color:'var(--muted)',textAlign:'center'}}>No H2H data yet. [h2h_keys={Object.keys(h2h).length} backend_count={data?._debug_h2h_count}] Hit Refresh Data.</div>
-        : <div style={{overflowX:'auto',padding:'0 0 24px'}}>
-            <table className="audit-table">
-              <thead><tr>
-                <th className="audit-th">Opponent</th>
-                <th className="audit-th">W</th>
-                <th className="audit-th">L</th>
-                <th className="audit-th">T</th>
-                <th className="audit-th">Win%</th>
-              </tr></thead>
-              <tbody>
-                {h2hEntries.map(([oid, rec]) => (
-                  <tr key={oid} className="audit-row">
-                    <td className="audit-name">{rec.opponent || oid}</td>
-                    <td className="audit-val" style={{color:'var(--accent)'}}>{rec.wins}</td>
-                    <td className="audit-val" style={{color:'var(--neg)'}}>{rec.losses}</td>
-                    <td className="audit-val">{rec.ties}</td>
-                    <td className="audit-val" style={{fontWeight:700,color:rec.win_pct>=0.5?'var(--accent)':'var(--neg)'}}>
-                      {(rec.win_pct*100).toFixed(0)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        : <div style={{padding:'0 0 24px'}}>
+            <div style={{overflowX:'auto'}}>
+              <table className="audit-table">
+                <thead><tr>
+                  <th className="audit-th">Opponent</th>
+                  <th className="audit-th">W</th>
+                  <th className="audit-th">L</th>
+                  <th className="audit-th">T</th>
+                  <th className="audit-th">Win%</th>
+                </tr></thead>
+                <tbody>
+                  {h2hEntries.map(([oid, rec]) => (
+                    <tr key={oid} className="audit-row">
+                      <td className="audit-name">{rec.opponent || oid}</td>
+                      <td className="audit-val" style={{color:'var(--accent)'}}>{rec.wins}</td>
+                      <td className="audit-val" style={{color:'var(--neg)'}}>{rec.losses}</td>
+                      <td className="audit-val">{rec.ties}</td>
+                      <td className="audit-val" style={{fontWeight:700,color:rec.win_pct>=0.5?'var(--accent)':'var(--neg)'}}>
+                        {(rec.win_pct*100).toFixed(0)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data._debug_schedule_sample?.length > 0 && (
+              <div style={{margin:'24px 0 0',padding:16,background:'var(--surface)',borderRadius:8,fontSize:11,fontFamily:'monospace'}}>
+                <div style={{fontWeight:700,marginBottom:8,color:'var(--muted)'}}>RAW ESPN MATCHUPS (most recent season, first 10)</div>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr style={{color:'var(--muted)'}}>
+                    <td style={{padding:'2px 8px'}}>Opponent</td>
+                    <td style={{padding:'2px 8px'}}>My Score</td>
+                    <td style={{padding:'2px 8px'}}>Opp Score</td>
+                    <td style={{padding:'2px 8px'}}>Win</td>
+                  </tr></thead>
+                  <tbody>
+                    {data._debug_schedule_sample.map((m,i) => (
+                      <tr key={i} style={{borderTop:'1px solid var(--border)'}}>
+                        <td style={{padding:'2px 8px'}}>{m.opponent}</td>
+                        <td style={{padding:'2px 8px'}}>{m.my_score}</td>
+                        <td style={{padding:'2px 8px'}}>{m.opp_score}</td>
+                        <td style={{padding:'2px 8px',color:m.win?'var(--accent)':'var(--neg)'}}>{m.win ? 'W' : 'L/T'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
   )
 
