@@ -6241,16 +6241,25 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
                 if am is None or hm is None:
                     continue
                 is_away = (hasattr(am, "team_id") and am.team_id == team.team_id)
-                my_score  = getattr(matchup, "away_score",  0) if is_away else getattr(matchup, "home_score", 0)
-                opp_score = getattr(matchup, "home_score",  0) if is_away else getattr(matchup, "away_score", 0)
+                # espn_api basketball uses away_final_score/home_final_score (not away_score/home_score)
+                my_score  = getattr(matchup, "away_final_score", 0) if is_away else getattr(matchup, "home_final_score", 0)
+                opp_score = getattr(matchup, "home_final_score", 0) if is_away else getattr(matchup, "away_final_score", 0)
                 opp_team  = hm if is_away else am
                 opp_tid   = getattr(opp_team, "team_id", None)
+                # Use winner field as primary (works for both points and category leagues)
+                winner = getattr(matchup, "winner", "UNDECIDED")
+                if winner == "HOME":
+                    win = not is_away
+                elif winner == "AWAY":
+                    win = is_away
+                else:
+                    win = bool(my_score and opp_score and my_score > opp_score)
                 schedule_results.append({
                     "opponent":          getattr(opp_team, "team_name", str(opp_team)),
                     "opponent_owner_id": team_owner_id.get(opp_tid, "") if opp_tid else "",
                     "my_score":          round(float(my_score or 0), 2),
                     "opp_score":         round(float(opp_score or 0), 2),
-                    "win": (my_score or 0) > (opp_score or 0),
+                    "win": win,
                 })
             except Exception:
                 continue
