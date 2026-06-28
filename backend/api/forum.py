@@ -9,7 +9,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 from pydantic import BaseModel
 
 from schema import get_conn
