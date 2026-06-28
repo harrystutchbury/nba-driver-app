@@ -6248,12 +6248,17 @@ def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: st
                 opp_tid   = getattr(opp_team, "team_id", None)
                 # Use winner field as primary (works for both points and category leagues)
                 winner = getattr(matchup, "winner", "UNDECIDED")
+                ms = float(my_score or 0)
+                os_ = float(opp_score or 0)
+                # Skip unplayed future weeks (UNDECIDED + no scores)
+                if winner == "UNDECIDED" and ms == 0 and os_ == 0:
+                    continue
                 if winner == "HOME":
                     win = not is_away
                 elif winner == "AWAY":
                     win = is_away
                 else:
-                    win = bool(my_score and opp_score and my_score > opp_score)
+                    win = ms > os_
                 schedule_results.append({
                     "opponent":          getattr(opp_team, "team_name", str(opp_team)),
                     "opponent_owner_id": team_owner_id.get(opp_tid, "") if opp_tid else "",
