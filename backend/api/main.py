@@ -6810,6 +6810,17 @@ def get_league_history(current_user: str = Depends(get_current_user)):
         _my_po = views.get("player_ownership", {}).get(my_owner_id) if my_owner_id else None
         views["_debug_my_player_count"] = len(_my_po["players"]) if _my_po else -1
         views["_debug_h2h_count"]       = len(views.get("h2h", {}))
+        # Show first 10 raw schedule_results for my team in the most recent season
+        try:
+            _s0_data = rows[0]["data"] if rows else {}
+            _my_team_debug = next(
+                (t for t in _s0_data.get("teams", []) if t.get("owner_id") == my_owner_id),
+                None
+            )
+            if _my_team_debug:
+                views["_debug_schedule_sample"] = _my_team_debug.get("schedule_results", [])[:10]
+        except Exception:
+            pass
         return views
     finally:
         conn.close()
