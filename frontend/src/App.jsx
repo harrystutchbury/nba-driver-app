@@ -9680,7 +9680,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'roster' })}>Roster Analysis</button>
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'trade' })}>Trade Analysis</button>
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'matchup' })}>Matchup Analysis</button>
-                    <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'history' })}>League History</button>
                     <button className="nav-drop-item" onClick={() => go('draft')}>Draft</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('adjustments')}>Adjustments</button>}
                   </div>
