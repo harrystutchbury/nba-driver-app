@@ -3677,6 +3677,7 @@ function ProjectionAuditPage() {
             {[7, 14, 30].map(d => (
               <button key={d} className={`audit-pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{d}D</button>
             ))}
+            <button className={`audit-pill${days === 365 ? ' active' : ''}`} onClick={() => setDays(365)}>Season</button>
           </div>
           <input
             type="date"
@@ -3690,7 +3691,7 @@ function ProjectionAuditPage() {
       </div>
 
       <p className="audit-sub">
-        Season baseline vs actual per-game averages · {days}d ending {endDate || 'today'}
+        Season baseline vs actual per-game averages · {days === 365 ? 'full season' : `${days}d ending ${endDate || 'today'}`}
         {!loading && !error && ` · ${filtered.length} players`}
       </p>
 
