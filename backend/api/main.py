@@ -3912,6 +3912,80 @@ def get_news():
     return {"articles": articles, "fetched_at": now}
 
 
+@router.get("/stat-variance")
+def get_stat_variance(min_games: int = Query(20, description="Minimum games to include a player")):
+    """
+    Game-to-game coefficient of variation per stat category, averaged across all qualifying players.
+    CV = (per-player SD / per-player mean), then averaged across players.
+    Returns both the mean CV and median CV so outliers are visible.
+    """
+    import math, statistics as _stats
+
+    conn = get_conn()
+    try:
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        rows = conn.execute("""
+            SELECT player_slug, pts, reb, ast, stl, blk, tov, fg3m,
+                   fgm, fga, ftm, fta
+            FROM game_logs
+            WHERE season = ? AND min >= 10
+            ORDER BY player_slug
+        """, (season,)).fetchall()
+    finally:
+        conn.close()
+
+    # Group by player
+    from itertools import groupby
+    players = {}
+    for row in rows:
+        slug = row["player_slug"]
+        if slug not in players:
+            players[slug] = []
+        players[slug].append(dict(row))
+
+    STATS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+
+    def cv(vals):
+        if len(vals) < 3:
+            return None
+        mu = _stats.mean(vals)
+        if mu < 0.05:
+            return None
+        sd = _stats.pstdev(vals)
+        return sd / mu
+
+    # Per-player CV for each stat
+    player_cvs = {s: [] for s in STATS}
+
+    for slug, games in players.items():
+        if len(games) < min_games:
+            continue
+        raw = {s: [g[s] for g in games if g.get(s) is not None] for s in ["pts","reb","ast","stl","blk","tov","fg3m"]}
+        raw["fg_pct"] = [g["fgm"]/g["fga"] for g in games if (g.get("fga") or 0) >= 2]
+        raw["ft_pct"] = [g["ftm"]/g["fta"] for g in games if (g.get("fta") or 0) >= 1]
+
+        for s in STATS:
+            v = cv(raw.get(s, []))
+            if v is not None:
+                player_cvs[s].append(v)
+
+    result = {}
+    for s in STATS:
+        vals = player_cvs[s]
+        if not vals:
+            result[s] = None
+            continue
+        result[s] = {
+            "mean_cv":   round(_stats.mean(vals) * 100, 1),
+            "median_cv": round(_stats.median(vals) * 100, 1),
+            "n_players": len(vals),
+        }
+
+    return result
+
+
 @router.get("/player-news")
 def get_player_news(slugs: str = Query(..., description="Comma-separated BR slugs")):
     """Return injuries + recent news for a given set of player slugs."""
