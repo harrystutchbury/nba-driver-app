@@ -3585,10 +3585,11 @@ def get_projection_audit(
                 for s, w in Z_WEIGHTS.items()
             )
 
+            raw_team = (b["team"] or "").upper()
             results.append({
                 "slug":       slug,
                 "name":       b["full_name"],
-                "team":       b["team"],
+                "team":       _TEAM_NAME_TO_ABBR.get(raw_team, raw_team),
                 "position":   b["position_group"],
                 "gp_season":  b["gp_season"],
                 "gp_period":  act["gp_period"],
@@ -4114,6 +4115,8 @@ _TEAM_ABBREV = {
     "SAC":"SACRAMENTO KINGS","TOR":"TORONTO RAPTORS","UTA":"UTAH JAZZ",
     "WAS":"WASHINGTON WIZARDS",
 }
+# Reverse: full name → preferred abbreviation (last write wins for dupes like GS/GSW → GSW)
+_TEAM_NAME_TO_ABBR = {v: k for k, v in _TEAM_ABBREV.items()}
 
 def _league_z_params(conn, season: str):
     """Compute league-wide mean + std for each stat from game_logs this season."""
