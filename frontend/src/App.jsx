@@ -3563,36 +3563,36 @@ class AuditErrorBoundary extends Component {
 // group → drivers. thresh = min absolute delta to show colour.
 const AUDIT_STAT_GROUPS = [
   { group: 'Role',        stats: [
-    { key: 'min_pg',   label: 'MIN',     thresh: 1.0 },
-    { key: 'usg_pct',  label: 'USG%',   thresh: 2.0 },
+    { key: 'min_pg',   label: 'MIN',     thresh: 5  },
+    { key: 'usg_pct',  label: 'USG%',   thresh: 8  },
   ]},
   { group: 'Shooting',   stats: [
-    { key: 'fg3a_p30', label: '3PA/30', thresh: 0.5 },
-    { key: 'fg3_pct',  label: '3P%',    thresh: 2.0 },
-    { key: 'fg2a_p30', label: '2PA/30', thresh: 0.5 },
-    { key: 'fg2_pct',  label: '2P%',    thresh: 2.0 },
-    { key: 'fta_p30',  label: 'FTA/30', thresh: 0.5 },
-    { key: 'ft_pct',   label: 'FT%',    thresh: 2.0 },
+    { key: 'fg3a_p30', label: '3PA/30', thresh: 15 },
+    { key: 'fg3_pct',  label: '3P%',    thresh: 8  },
+    { key: 'fg2a_p30', label: '2PA/30', thresh: 10 },
+    { key: 'fg2_pct',  label: '2P%',    thresh: 5  },
+    { key: 'fta_p30',  label: 'FTA/30', thresh: 15 },
+    { key: 'ft_pct',   label: 'FT%',    thresh: 5  },
   ]},
   { group: 'Playmaking', stats: [
-    { key: 'ast_p30',  label: 'AST/30', thresh: 0.5 },
-    { key: 'tov_p30',  label: 'TOV/30', thresh: 0.3, invert: true },
+    { key: 'ast_p30',  label: 'AST/30', thresh: 10 },
+    { key: 'tov_p30',  label: 'TOV/30', thresh: 10, invert: true },
   ]},
   { group: 'Reb & Def',  stats: [
-    { key: 'oreb_p30', label: 'ORB/30', thresh: 0.2 },
-    { key: 'dreb_p30', label: 'DRB/30', thresh: 0.3 },
-    { key: 'stl_p30',  label: 'STL/30', thresh: 0.2 },
-    { key: 'blk_p30',  label: 'BLK/30', thresh: 0.2 },
+    { key: 'oreb_p30', label: 'ORB/30', thresh: 15 },
+    { key: 'dreb_p30', label: 'DRB/30', thresh: 10 },
+    { key: 'stl_p30',  label: 'STL/30', thresh: 15 },
+    { key: 'blk_p30',  label: 'BLK/30', thresh: 15 },
   ]},
 ]
 const AUDIT_STATS = AUDIT_STAT_GROUPS.flatMap(g => g.stats)
 
-function AuditDeltaCell({ val, invert, thresh = 0.5 }) {
+function AuditDeltaCell({ val, invert, thresh = 10 }) {
   if (val == null) return <td className="audit-delta neu">—</td>
   const good = invert ? val < -thresh : val > thresh
   const bad  = invert ? val > thresh  : val < -thresh
   const cls  = good ? 'audit-delta pos' : bad ? 'audit-delta neg' : 'audit-delta neu'
-  return <td className={cls}>{val > 0 ? '+' : ''}{val}</td>
+  return <td className={cls}>{val > 0 ? '+' : ''}{val}%</td>
 }
 
 function AuditTh({ col, label, sortKey, sortDir, onSort, className }) {

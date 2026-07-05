@@ -3646,7 +3646,10 @@ def get_projection_audit(
             for k in _DRIVER_COLS:
                 pv = proj_vals.get(k)
                 av = act_vals.get(k)
-                delta[k] = round(av - pv, 2) if (av is not None and pv is not None) else None
+                if av is not None and pv is not None and pv != 0:
+                    delta[k] = round((av - pv) / abs(pv) * 100, 1)
+                else:
+                    delta[k] = None
 
             # Composite sort score from output-stat deltas (unchanged logic)
             act_out  = {s: act[s] or 0.0  for s in Z_WEIGHTS}
