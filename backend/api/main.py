@@ -328,11 +328,12 @@ _SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Content-Security-Policy": (
         "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://js.stripe.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data: https:; "
-        "font-src 'self' https:; "
-        "connect-src 'self' https://api.anthropic.com"
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.cloudinary.com https://api.anthropic.com https://js.stripe.com; "
+        "frame-src https://js.stripe.com"
     ),
     "X-Frame-Options": "SAMEORIGIN",
     "X-Content-Type-Options": "nosniff",
