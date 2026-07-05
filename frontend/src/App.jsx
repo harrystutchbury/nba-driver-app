@@ -3561,14 +3561,16 @@ class AuditErrorBoundary extends Component {
   }
 }
 const AUDIT_STATS = [
-  { key: 'pts',  label: 'PTS' },
-  { key: 'reb',  label: 'REB' },
-  { key: 'ast',  label: 'AST' },
-  { key: 'stl',  label: 'STL' },
-  { key: 'blk',  label: 'BLK' },
-  { key: 'tov',  label: 'TOV', invert: true },
-  { key: 'fg3m', label: '3PM' },
-  { key: 'min',  label: 'MIN' },
+  { key: 'pts',    label: 'PTS' },
+  { key: 'reb',    label: 'REB' },
+  { key: 'ast',    label: 'AST' },
+  { key: 'stl',    label: 'STL' },
+  { key: 'blk',    label: 'BLK' },
+  { key: 'tov',    label: 'TOV', invert: true },
+  { key: 'fg3m',   label: '3PM' },
+  { key: 'fg_pct', label: 'FG%' },
+  { key: 'ft_pct', label: 'FT%' },
+  { key: 'min',    label: 'MIN' },
 ]
 
 function AuditDeltaCell({ val, invert }) {
