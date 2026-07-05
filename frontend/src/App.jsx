@@ -3578,10 +3578,10 @@ function AuditDeltaCell({ val, invert }) {
   return <td className={cls}>{val > 0 ? '+' : ''}{val}</td>
 }
 
-function AuditTh({ col, label, sortKey, sortDir, onSort }) {
+function AuditTh({ col, label, sortKey, sortDir, onSort, className }) {
   const active = sortKey === col
   return (
-    <th className={`audit-th${active ? ' sorted' : ''}`} onClick={() => onSort(col)}>
+    <th className={`audit-th${active ? ' sorted' : ''}${className ? ' ' + className : ''}`} onClick={() => onSort(col)}>
       {label}{active ? (sortDir === -1 ? ' ↓' : ' ↑') : ''}
     </th>
   )
@@ -3691,7 +3691,7 @@ function ProjectionAuditPage() {
                 <th colSpan={4} />
                 {AUDIT_STATS.map(s => (
                   <Fragment key={s.key}>
-                    <AuditTh col={`proj_${s.key}`}  label="Proj" {...thProps} />
+                    <AuditTh col={`proj_${s.key}`}  label="Proj" {...thProps} className="audit-group-start" />
                     <AuditTh col={`act_${s.key}`}   label="Act"  {...thProps} />
                     <AuditTh col={`delta_${s.key}`} label="Δ"    {...thProps} />
                   </Fragment>
@@ -3711,7 +3711,7 @@ function ProjectionAuditPage() {
                   <td className="audit-gp">{row.gp_period}</td>
                   {AUDIT_STATS.map(s => (
                     <Fragment key={s.key}>
-                      <td className="audit-val">{row.proj?.[s.key] ?? '—'}</td>
+                      <td className="audit-val audit-group-start">{row.proj?.[s.key] ?? '—'}</td>
                       <td className="audit-val">{row.act?.[s.key] ?? '—'}</td>
                       <AuditDeltaCell val={row.delta?.[s.key] ?? 0} invert={s.invert} />
                     </Fragment>

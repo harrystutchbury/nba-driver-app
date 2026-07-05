@@ -6430,8 +6430,9 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .audit-pos  { color: var(--muted); padding: 8px 8px; font-size: 11px; }
 .audit-gp   { color: var(--label); padding: 8px 8px; text-align: right; font-family: var(--mono); }
 .audit-val  { color: var(--label); padding: 8px 6px; text-align: right; font-family: var(--mono); }
+.audit-group-start { border-left: 1px solid var(--border) !important; padding-left: 10px !important; }
 
-.audit-delta { padding: 8px 6px; text-align: right; font-family: var(--mono); font-weight: 700; border-left: 1px solid var(--border); }
+.audit-delta { padding: 8px 6px; text-align: right; font-family: var(--mono); font-weight: 700; }
 .audit-delta.pos { color: var(--accent); }
 .audit-delta.neg { color: #ff4d6a; }
 .audit-delta.neu { color: var(--muted); }
