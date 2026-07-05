@@ -3596,6 +3596,7 @@ function ProjectionAuditPage() {
   const [sortKey, setSortKey] = useState('comp_delta')
   const [sortDir, setSortDir] = useState(-1)
   const [search,  setSearch]  = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -3622,8 +3623,11 @@ function ProjectionAuditPage() {
     return 0
   }
 
+  const teams = [...new Set(rows.map(r => r.team).filter(Boolean))].sort()
+
   const filtered = rows
     .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || (r.team||'').toLowerCase().includes(search.toLowerCase()))
+    .filter(r => !teamFilter || r.team === teamFilter)
     .slice()
     .sort((a, b) => {
       const av = getSortVal(a), bv = getSortVal(b)
@@ -3644,6 +3648,14 @@ function ProjectionAuditPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <select
+            className="audit-team-select"
+            value={teamFilter}
+            onChange={e => setTeamFilter(e.target.value)}
+          >
+            <option value="">All teams</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
           <div className="audit-pills">
             {[7, 14, 30].map(d => (
               <button key={d} className={`audit-pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{d}D</button>

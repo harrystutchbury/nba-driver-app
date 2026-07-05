@@ -6441,6 +6441,8 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .audit-comp.pos { color: var(--accent); }
 .audit-comp.neg { color: #ff4d6a; }
 .audit-comp.neu { color: var(--muted); }
+.audit-team-select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--label); font-family: var(--sans); font-size: 13px; padding: 5px 8px; outline: none; color-scheme: dark; cursor: pointer; }
+.audit-team-select:focus { border-color: var(--accent); }
 .audit-date { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--label); font-family: var(--sans); font-size: 13px; padding: 5px 8px; outline: none; color-scheme: dark; }
 .audit-date:focus { border-color: var(--accent); }
 
