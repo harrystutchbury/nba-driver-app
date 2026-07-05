@@ -3474,15 +3474,51 @@ def get_projections(
 # GET /projection-audit
 # -----------------------------------------------------------------------
 
+def _audit_drivers(gp, sum_min, sum_fga, sum_fgm, sum_fg3a, sum_fg3m,
+                   sum_fta, sum_ftm, sum_ast, sum_tov,
+                   sum_oreb, sum_dreb, sum_stl, sum_blk,
+                   usg_num, usg_den):
+    """Convert game-log sums into the 14 driver metrics."""
+    if not sum_min or sum_min == 0:
+        return {}
+    p30 = lambda x: round((x or 0) / sum_min * 30, 2)
+    sum_fg2a = (sum_fga or 0) - (sum_fg3a or 0)
+    sum_fg2m = (sum_fgm or 0) - (sum_fg3m or 0)
+    return {
+        "min_pg":   round(sum_min / gp, 1),
+        "usg_pct":  round(usg_num / usg_den * 100, 1) if usg_den else None,
+        "fg3a_p30": p30(sum_fg3a),
+        "fg3_pct":  round((sum_fg3m or 0) / sum_fg3a * 100, 1) if sum_fg3a else None,
+        "fg2a_p30": p30(sum_fg2a),
+        "fg2_pct":  round(sum_fg2m / sum_fg2a * 100, 1) if sum_fg2a else None,
+        "fta_p30":  p30(sum_fta),
+        "ft_pct":   round((sum_ftm or 0) / sum_fta * 100, 1) if sum_fta else None,
+        "ast_p30":  p30(sum_ast),
+        "tov_p30":  p30(sum_tov),
+        "oreb_p30": p30(sum_oreb),
+        "dreb_p30": p30(sum_dreb),
+        "stl_p30":  p30(sum_stl),
+        "blk_p30":  p30(sum_blk),
+    }
+
+
+_DRIVER_COLS = (
+    "min_pg", "usg_pct",
+    "fg3a_p30", "fg3_pct", "fg2a_p30", "fg2_pct", "fta_p30", "ft_pct",
+    "ast_p30", "tov_p30",
+    "oreb_p30", "dreb_p30", "stl_p30", "blk_p30",
+)
+
+
 @router.get("/projection-audit")
 def get_projection_audit(
     days:     int = Query(14, ge=1, le=365),
     end_date: str = Query(None, description="YYYY-MM-DD — defaults to today"),
 ):
     """
-    Compare each player's season-baseline projection against their actual
-    per-game averages over the `days` days ending on `end_date` (default today).
-    Delta = actual - projected (positive = outperforming baseline).
+    Compare each player's season-baseline driver metrics against their actual
+    driver metrics over the `days` days ending on `end_date`.
+    Drivers: min_pg, usg_pct, shooting rates/pcts (per-30), playmaking, rebounding, defence.
     """
     from datetime import date, timedelta
 
@@ -3496,9 +3532,7 @@ def get_projection_audit(
         start    = start_dt.isoformat()
         end      = end_dt.isoformat()
 
-        STATS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "min"]
-
-        # ── Season baseline (full-season per-game averages) ──────────────────
+        # ── Season baseline (full-season driver sums) ────────────────────────
         baseline_rows = conn.execute("""
             SELECT g.player_slug,
                    p.full_name,
@@ -3509,49 +3543,73 @@ def get_projection_audit(
                        p.team
                    ) AS team,
                    b.position_group,
-                   COUNT(*)    AS gp_season,
-                   AVG(g.min)  AS min,
-                   AVG(g.pts)  AS pts,
-                   AVG(g.reb)  AS reb,
-                   AVG(g.ast)  AS ast,
-                   AVG(g.stl)  AS stl,
-                   AVG(g.blk)  AS blk,
-                   AVG(g.tov)  AS tov,
-                   AVG(g.fg3m) AS fg3m,
-                   SUM(g.fgm) * 100.0 / NULLIF(SUM(g.fga), 0) AS fg_pct,
-                   SUM(g.ftm) * 100.0 / NULLIF(SUM(g.fta), 0) AS ft_pct
+                   COUNT(*)         AS gp_season,
+                   SUM(g.min)       AS sum_min,
+                   SUM(g.fga)       AS sum_fga,
+                   SUM(g.fgm)       AS sum_fgm,
+                   SUM(g.fg3a)      AS sum_fg3a,
+                   SUM(g.fg3m)      AS sum_fg3m,
+                   SUM(g.fta)       AS sum_fta,
+                   SUM(g.ftm)       AS sum_ftm,
+                   SUM(g.ast)       AS sum_ast,
+                   SUM(g.tov)       AS sum_tov,
+                   SUM(g.oreb)      AS sum_oreb,
+                   SUM(g.dreb)      AS sum_dreb,
+                   SUM(g.stl)       AS sum_stl,
+                   SUM(g.blk)       AS sum_blk,
+                   -- USG% numerator/denominator (only games with team data)
+                   SUM(CASE WHEN tg.team_fga IS NOT NULL
+                       THEN (g.fga + 0.44*g.fta + g.tov) * 48.0 ELSE NULL END) AS usg_num,
+                   SUM(CASE WHEN tg.team_fga IS NOT NULL
+                       THEN g.min * (tg.team_fga + 0.44*tg.team_fta + tg.team_tov) ELSE NULL END) AS usg_den,
+                   -- output stats kept for composite sort score
+                   AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+                   AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+                   AVG(g.fg3m) AS fg3m
             FROM game_logs g
             JOIN players p ON p.slug = g.player_slug
                 AND p.season = (SELECT MAX(p2.season) FROM players p2 WHERE p2.slug = g.player_slug)
+            LEFT JOIN team_games tg ON tg.team = g.team AND tg.game_date = g.game_date
             LEFT JOIN player_bio b ON b.br_slug = g.player_slug
             WHERE g.season = ? AND g.min >= 5
             GROUP BY g.player_slug
             HAVING COUNT(*) >= 10
         """, (season,)).fetchall()
 
-        # ── Actual averages over the audit window ────────────────────────────
+        # ── Actual driver sums over the audit window ─────────────────────────
         actual_rows = conn.execute("""
-            SELECT player_slug,
-                   COUNT(*)    AS gp_period,
-                   AVG(min)    AS min,
-                   AVG(pts)    AS pts,
-                   AVG(reb)    AS reb,
-                   AVG(ast)    AS ast,
-                   AVG(stl)    AS stl,
-                   AVG(blk)    AS blk,
-                   AVG(tov)    AS tov,
-                   AVG(fg3m)   AS fg3m,
-                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
-                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
-            FROM game_logs
-            WHERE season = ? AND game_date >= ? AND game_date <= ? AND min >= 5
-            GROUP BY player_slug
+            SELECT g.player_slug,
+                   COUNT(*)         AS gp_period,
+                   SUM(g.min)       AS sum_min,
+                   SUM(g.fga)       AS sum_fga,
+                   SUM(g.fgm)       AS sum_fgm,
+                   SUM(g.fg3a)      AS sum_fg3a,
+                   SUM(g.fg3m)      AS sum_fg3m,
+                   SUM(g.fta)       AS sum_fta,
+                   SUM(g.ftm)       AS sum_ftm,
+                   SUM(g.ast)       AS sum_ast,
+                   SUM(g.tov)       AS sum_tov,
+                   SUM(g.oreb)      AS sum_oreb,
+                   SUM(g.dreb)      AS sum_dreb,
+                   SUM(g.stl)       AS sum_stl,
+                   SUM(g.blk)       AS sum_blk,
+                   SUM(CASE WHEN tg.team_fga IS NOT NULL
+                       THEN (g.fga + 0.44*g.fta + g.tov) * 48.0 ELSE NULL END) AS usg_num,
+                   SUM(CASE WHEN tg.team_fga IS NOT NULL
+                       THEN g.min * (tg.team_fga + 0.44*tg.team_fta + tg.team_tov) ELSE NULL END) AS usg_den,
+                   AVG(g.pts) AS pts, AVG(g.reb) AS reb, AVG(g.ast) AS ast,
+                   AVG(g.stl) AS stl, AVG(g.blk) AS blk, AVG(g.tov) AS tov,
+                   AVG(g.fg3m) AS fg3m
+            FROM game_logs g
+            LEFT JOIN team_games tg ON tg.team = g.team AND tg.game_date = g.game_date
+            WHERE g.season = ? AND g.game_date >= ? AND g.game_date <= ? AND g.min >= 5
+            GROUP BY g.player_slug
         """, (season, start, end)).fetchall()
 
         actual_map = {r["player_slug"]: dict(r) for r in actual_rows}
         injury_map = _get_injury_map(conn)
 
-        # League SDs for composite delta normalisation
+        # League SDs of output stats for composite sort score
         Z_WEIGHTS = {"pts": 1.0, "reb": 1.0, "ast": 1.0, "stl": 1.5,
                      "blk": 1.5, "tov": -1.0, "fg3m": 1.0}
         league_sds = {}
@@ -3571,17 +3629,30 @@ def get_projection_audit(
             if not act or act["gp_period"] == 0:
                 continue
 
-            proj_vals = {s: round(b[s] or 0.0, 1) for s in STATS}
-            act_vals  = {s: round(act[s] or 0.0, 1) for s in STATS}
-            delta     = {s: round(act_vals[s] - proj_vals[s], 1) for s in STATS}
+            proj_vals = _audit_drivers(
+                b["gp_season"], b["sum_min"], b["sum_fga"], b["sum_fgm"],
+                b["sum_fg3a"], b["sum_fg3m"], b["sum_fta"], b["sum_ftm"],
+                b["sum_ast"], b["sum_tov"], b["sum_oreb"], b["sum_dreb"],
+                b["sum_stl"], b["sum_blk"], b["usg_num"], b["usg_den"],
+            )
+            act_vals = _audit_drivers(
+                act["gp_period"], act["sum_min"], act["sum_fga"], act["sum_fgm"],
+                act["sum_fg3a"], act["sum_fg3m"], act["sum_fta"], act["sum_ftm"],
+                act["sum_ast"], act["sum_tov"], act["sum_oreb"], act["sum_dreb"],
+                act["sum_stl"], act["sum_blk"], act["usg_num"], act["usg_den"],
+            )
 
-            for p_stat in ("fg_pct", "ft_pct"):
-                proj_vals[p_stat] = round(b[p_stat] or 0.0, 1)
-                act_vals[p_stat]  = round(act[p_stat] or 0.0, 1)
-                delta[p_stat]     = round(act_vals[p_stat] - proj_vals[p_stat], 1)
+            delta = {}
+            for k in _DRIVER_COLS:
+                pv = proj_vals.get(k)
+                av = act_vals.get(k)
+                delta[k] = round(av - pv, 2) if (av is not None and pv is not None) else None
 
+            # Composite sort score from output-stat deltas (unchanged logic)
+            act_out  = {s: act[s] or 0.0  for s in Z_WEIGHTS}
+            proj_out = {s: b[s]   or 0.0  for s in Z_WEIGHTS}
             comp = sum(
-                (delta[s] / league_sds[s]) * w
+                ((act_out[s] - proj_out[s]) / league_sds[s]) * w
                 for s, w in Z_WEIGHTS.items()
             )
 

@@ -3560,22 +3560,37 @@ class AuditErrorBoundary extends Component {
     return this.props.children
   }
 }
-const AUDIT_STATS = [
-  { key: 'pts',    label: 'PTS' },
-  { key: 'reb',    label: 'REB' },
-  { key: 'ast',    label: 'AST' },
-  { key: 'stl',    label: 'STL' },
-  { key: 'blk',    label: 'BLK' },
-  { key: 'tov',    label: 'TOV', invert: true },
-  { key: 'fg3m',   label: '3PM' },
-  { key: 'fg_pct', label: 'FG%' },
-  { key: 'ft_pct', label: 'FT%' },
-  { key: 'min',    label: 'MIN' },
+// group → drivers. thresh = min absolute delta to show colour.
+const AUDIT_STAT_GROUPS = [
+  { group: 'Role',        stats: [
+    { key: 'min_pg',   label: 'MIN',     thresh: 1.0 },
+    { key: 'usg_pct',  label: 'USG%',   thresh: 2.0 },
+  ]},
+  { group: 'Shooting',   stats: [
+    { key: 'fg3a_p30', label: '3PA/30', thresh: 0.5 },
+    { key: 'fg3_pct',  label: '3P%',    thresh: 2.0 },
+    { key: 'fg2a_p30', label: '2PA/30', thresh: 0.5 },
+    { key: 'fg2_pct',  label: '2P%',    thresh: 2.0 },
+    { key: 'fta_p30',  label: 'FTA/30', thresh: 0.5 },
+    { key: 'ft_pct',   label: 'FT%',    thresh: 2.0 },
+  ]},
+  { group: 'Playmaking', stats: [
+    { key: 'ast_p30',  label: 'AST/30', thresh: 0.5 },
+    { key: 'tov_p30',  label: 'TOV/30', thresh: 0.3, invert: true },
+  ]},
+  { group: 'Reb & Def',  stats: [
+    { key: 'oreb_p30', label: 'ORB/30', thresh: 0.2 },
+    { key: 'dreb_p30', label: 'DRB/30', thresh: 0.3 },
+    { key: 'stl_p30',  label: 'STL/30', thresh: 0.2 },
+    { key: 'blk_p30',  label: 'BLK/30', thresh: 0.2 },
+  ]},
 ]
+const AUDIT_STATS = AUDIT_STAT_GROUPS.flatMap(g => g.stats)
 
-function AuditDeltaCell({ val, invert }) {
-  const good = invert ? val < -0.5 : val > 0.5
-  const bad  = invert ? val > 0.5  : val < -0.5
+function AuditDeltaCell({ val, invert, thresh = 0.5 }) {
+  if (val == null) return <td className="audit-delta neu">—</td>
+  const good = invert ? val < -thresh : val > thresh
+  const bad  = invert ? val > thresh  : val < -thresh
   const cls  = good ? 'audit-delta pos' : bad ? 'audit-delta neg' : 'audit-delta neu'
   return <td className={cls}>{val > 0 ? '+' : ''}{val}</td>
 }
@@ -3696,8 +3711,8 @@ function ProjectionAuditPage() {
                 <th className="audit-th">Team</th>
                 <th className="audit-th">Pos</th>
                 <AuditTh col="gp_period"  label="GP"      {...thProps} />
-                {AUDIT_STATS.map(s => (
-                  <th key={s.key} className="audit-th audit-stat-group" colSpan={3}>{s.label}</th>
+                {AUDIT_STAT_GROUPS.map(g => (
+                  <th key={g.group} className="audit-th audit-stat-group" colSpan={g.stats.length * 3}>{g.group}</th>
                 ))}
                 <AuditTh col="comp_delta" label="Σ Δ"     {...thProps} />
               </tr>
@@ -3705,9 +3720,9 @@ function ProjectionAuditPage() {
                 <th colSpan={4} />
                 {AUDIT_STATS.map(s => (
                   <Fragment key={s.key}>
-                    <AuditTh col={`proj_${s.key}`}  label="Proj" {...thProps} className="audit-group-start" />
-                    <AuditTh col={`act_${s.key}`}   label="Act"  {...thProps} />
-                    <AuditTh col={`delta_${s.key}`} label="Δ"    {...thProps} />
+                    <AuditTh col={`proj_${s.key}`}  label={s.label} {...thProps} className="audit-group-start" />
+                    <AuditTh col={`act_${s.key}`}   label="Act"     {...thProps} />
+                    <AuditTh col={`delta_${s.key}`} label="Δ"       {...thProps} />
                   </Fragment>
                 ))}
                 <th />
@@ -3727,7 +3742,7 @@ function ProjectionAuditPage() {
                     <Fragment key={s.key}>
                       <td className="audit-val audit-group-start">{row.proj?.[s.key] ?? '—'}</td>
                       <td className="audit-val">{row.act?.[s.key] ?? '—'}</td>
-                      <AuditDeltaCell val={row.delta?.[s.key] ?? 0} invert={s.invert} />
+                      <AuditDeltaCell val={row.delta?.[s.key]} invert={s.invert} thresh={s.thresh} />
                     </Fragment>
                   ))}
                   <td className={`audit-comp ${row.comp_delta > 0 ? 'pos' : row.comp_delta < 0 ? 'neg' : 'neu'}`}>
