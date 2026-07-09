@@ -469,14 +469,14 @@ const PROJ_STAT_OPTIONS = [
 
 const MA_STAT_OPTIONS = [
   { value: 'z_sum',  label: 'Sum of Z scores' },
+  { value: 'min',    label: 'Minutes' },
   { value: 'pts',    label: 'Points' },
+  { value: 'fg3m',   label: '3-Pointers' },
   { value: 'reb',    label: 'Rebounds' },
   { value: 'ast',    label: 'Assists' },
   { value: 'stl',    label: 'Steals' },
   { value: 'blk',    label: 'Blocks' },
   { value: 'tov',    label: 'Turnovers' },
-  { value: 'fg3m',   label: '3-Pointers' },
-  { value: 'min',    label: 'Minutes' },
   { value: 'fg_pct', label: 'FG%' },
   { value: 'ft_pct', label: 'FT%' },
 ]
@@ -8696,6 +8696,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
   const [maChartType, setMaChartType] = useState('line')
+  const [maPer30,     setMaPer30]     = useState(false)
   const [maRangeStart, setMaRangeStart] = useState(0)
   const [maRangeEnd,   setMaRangeEnd]   = useState(null) // null = last game
   const [maExpanded, setMaExpanded]   = useState(false)
@@ -9216,12 +9217,20 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const maIsZSum    = maStat === 'z_sum'
   // Z-scores computed over full career so the baseline doesn't shift with the slider
   const maAllZSums  = maIsZSum ? computeGameZSums(maAllGames) : null
+  const MA_PER30_STATS = new Set(['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m'])
+  const maCanPer30  = MA_PER30_STATS.has(maStat)
+  const maGamesScaled = (maPer30 && maCanPer30)
+    ? maGames.map(g => {
+        const scale = (g.min && g.min > 0) ? 30 / g.min : 1
+        return { ...g, [maStat]: g[maStat] != null ? +(g[maStat] * scale).toFixed(2) : null }
+      })
+    : maGames
   const maRawVals   = maIsZSum
     ? maAllZSums.slice(maRangeStart, maEffEnd + 1)
-    : maGames.map(g => g[maStat] ?? null)
-  const maSynthGames = maIsZSum ? maGames.map((g, i) => ({ ...g, z_sum: maRawVals[i] })) : maGames
+    : maGamesScaled.map(g => g[maStat] ?? null)
+  const maSynthGames = maIsZSum ? maGames.map((g, i) => ({ ...g, z_sum: maRawVals[i] })) : maGamesScaled
   const maVals      = rollingAverage(maSynthGames, maStat, maWindow)
-  const maStatLabel = MA_STAT_OPTIONS.find(o => o.value === maStat)?.label ?? maStat
+  const maStatLabel = (MA_STAT_OPTIONS.find(o => o.value === maStat)?.label ?? maStat) + (maPer30 && maCanPer30 ? ' / 30 min' : '')
   const maTrendVals = linReg(maRawVals)
 
   // Smart x-axis: DD MMM when window ≤ 60 days, MMM 'YY otherwise
@@ -9237,16 +9246,25 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       : `${MA_MONTHS[+m - 1]} '${y.slice(2)}`
   }
 
+  const MA_NO_DECIMAL  = new Set(['pts', 'fg3m', 'reb', 'ast', 'stl', 'blk', 'tov'])
+  const maFmtRaw  = v => v == null ? null : MA_NO_DECIMAL.has(maStat) ? ` ${Math.round(v)}` : (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(1)}`
+  const maFmtAvg  = v => v == null ? null : (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(1)}`
+  const maEaseColor = (ease, alpha = 0.65) =>
+    ease == null ? `rgba(150,150,255,${alpha})`
+    : ease > 1.5  ? `rgba(0,230,118,${alpha})`
+    : ease < -1.5 ? `rgba(255,107,107,${alpha})`
+    : `rgba(150,150,255,${alpha})`
+
   const maChartData = maGames.length > 0 ? {
     labels: maGames.map(g => g.game_date),
     datasets: [
       {
         label: maStatLabel,
         data: maRawVals,
-        borderColor: 'rgba(150,150,255,0.25)',
-        backgroundColor: 'rgba(150,150,255,0.25)',
-        pointRadius: 2,
-        pointHoverRadius: 4,
+        borderColor: maGames.map(g => maEaseColor(g.opp_ease, 0.8)),
+        backgroundColor: maGames.map(g => maEaseColor(g.opp_ease, 0.65)),
+        pointRadius: 3,
+        pointHoverRadius: 5,
         borderWidth: 0,
         showLine: false,
         spanGaps: false,
@@ -9287,7 +9305,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           label: (ctx) => {
             const val = ctx.parsed.y
             if (val === null) return null
-            return (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${val.toFixed(1)}%` : ` ${val.toFixed(2)}`
+            if (ctx.datasetIndex === 0) return maFmtRaw(val)
+            if (ctx.datasetIndex === 1) return maFmtAvg(val)
+            return null
           },
         },
         backgroundColor: '#1c1c1c',
@@ -11242,23 +11262,35 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
                 {maExpanded && (isPro ? <>
                 <div className="trend-controls">
-                  <span className="ctrl-label">Stat</span>
-                  <select className="ctrl-input" value={maStat} onChange={e => setMaStat(e.target.value)}>
-                    {MA_STAT_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  {maChartType === 'line' && <>
-                    <span className="ctrl-label" style={{ marginLeft: '1rem' }}>Weighted Average Period</span>
-                    <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
-                      {MA_WINDOW_OPTIONS.map(o => (
+                  <div className="trend-ctrl-col">
+                    <span className="ctrl-label">Stat</span>
+                    <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
+                      {MA_STAT_OPTIONS.map(o => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
                     </select>
-                  </>}
-                  <div className="rank-pills" style={{ marginLeft: 'auto' }}>
-                    <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
-                    <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                  </div>
+                  <div className="trend-ctrl-col">
+                    {maChartType === 'line' && <>
+                      <span className="ctrl-label">Weighted Average Period</span>
+                      <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
+                        {MA_WINDOW_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </>}
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                      {maCanPer30 && (
+                        <div className="rank-pills">
+                          <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
+                          <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
+                        </div>
+                      )}
+                      <div className="rank-pills">
+                        <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
+                        <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {maAllGames.length > 0 && (

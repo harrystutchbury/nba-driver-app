@@ -1658,10 +1658,20 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 }
 
 .trend-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.trend-ctrl-col {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  min-width: 0;
+}
+.trend-ctrl-col .ctrl-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .trend-chart-wrap {
