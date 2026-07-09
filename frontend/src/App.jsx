@@ -1596,7 +1596,7 @@ function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps, rankMap
               <td className="bs-ctr bs-muted">{p.ft}</td>
               <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
             </tr>
-            {adminProps && adminProps.openNoteSlug === p.slug && (
+            {adminProps && p.slug && adminProps.openNoteSlug === p.slug && (
               <tr className="bs-note-entry-row">
                 <td colSpan={COL_COUNT} className="bs-note-entry-td">
                   <textarea
