@@ -11306,7 +11306,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
                 {maExpanded && (isPro ? <>
                 <div className="trend-controls">
-                  <div className="trend-ctrl-col">
+                  <div className="trend-ctrl-item">
                     <span className="ctrl-label">Stat</span>
                     <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
                       {MA_STAT_OPTIONS.map(o => (
@@ -11314,57 +11314,55 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       ))}
                     </select>
                   </div>
-                  <div className="trend-ctrl-col">
-                    {maChartType === 'line' && <>
+                  {maChartType === 'line' && (
+                    <div className="trend-ctrl-item">
                       <span className="ctrl-label">Weighted Average Period</span>
                       <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
                         {MA_WINDOW_OPTIONS.map(o => (
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                       </select>
-                    </>}
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                      {maCanPer30 && (
-                        <div className="rank-pills">
-                          <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
-                          <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
-                        </div>
-                      )}
-                      <div className="rank-pills">
-                        <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
-                        <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
-                      </div>
                     </div>
+                  )}
+                  {maAllGames.length > 0 && (
+                    <div className="trend-ctrl-item trend-ctrl-period">
+                      <span className="ctrl-label">Period</span>
+                      <div className="dual-range-wrap">
+                        <input
+                          type="range" className="dual-range dual-range-start"
+                          min={0} max={maAllGames.length - 1} step={1}
+                          value={maRangeStart}
+                          onChange={e => { const v = +e.target.value; setMaRangeStart(Math.min(v, maEffEnd - 1)) }}
+                        />
+                        <input
+                          type="range" className="dual-range dual-range-end"
+                          min={0} max={maAllGames.length - 1} step={1}
+                          value={maEffEnd}
+                          onChange={e => { const v = +e.target.value; setMaRangeEnd(Math.max(v, maRangeStart + 1)) }}
+                        />
+                        <div className="dual-range-track">
+                          <div className="dual-range-fill" style={{
+                            left:  `${(maRangeStart / (maAllGames.length - 1)) * 100}%`,
+                            right: `${((maAllGames.length - 1 - maEffEnd) / (maAllGames.length - 1)) * 100}%`,
+                          }} />
+                        </div>
+                      </div>
+                      <span className="mpg-value">
+                        {maAllGames[maRangeStart]?.game_date?.slice(0,7)} → {maAllGames[maEffEnd]?.game_date?.slice(0,7)}
+                      </span>
+                    </div>
+                  )}
+                  {maCanPer30 && (
+                    <div className="rank-pills">
+                      <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
+                      <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
+                    </div>
+                  )}
+                  <div className="rank-pills">
+                    <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
+                    <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
                   </div>
                 </div>
-                {maAllGames.length > 0 && (
-                  <div className="mpg-slider-row">
-                    <span className="ctrl-label">Period</span>
-                    <div className="dual-range-wrap">
-                      <input
-                        type="range" className="dual-range dual-range-start"
-                        min={0} max={maAllGames.length - 1} step={1}
-                        value={maRangeStart}
-                        onChange={e => { const v = +e.target.value; setMaRangeStart(Math.min(v, maEffEnd - 1)) }}
-                      />
-                      <input
-                        type="range" className="dual-range dual-range-end"
-                        min={0} max={maAllGames.length - 1} step={1}
-                        value={maEffEnd}
-                        onChange={e => { const v = +e.target.value; setMaRangeEnd(Math.max(v, maRangeStart + 1)) }}
-                      />
-                      <div className="dual-range-track">
-                        <div className="dual-range-fill" style={{
-                          left:  `${(maRangeStart / (maAllGames.length - 1)) * 100}%`,
-                          right: `${((maAllGames.length - 1 - maEffEnd) / (maAllGames.length - 1)) * 100}%`,
-                        }} />
-                      </div>
-                    </div>
-                    <span className="mpg-value" style={{ minWidth: 120, fontSize: 12 }}>
-                      {maAllGames[maRangeStart]?.game_date?.slice(0,7)} → {maAllGames[maEffEnd]?.game_date?.slice(0,7)}
-                    </span>
-                  </div>
-                )}
                 <div className="trend-chart-wrap" style={{ height: '260px' }}>
                   {maChartType === 'line'
                     ? maChartData && <Line data={maChartData} options={maChartOptions} />

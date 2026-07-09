@@ -1649,27 +1649,31 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .mpg-value {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--skill);
-  width: 52px;
+  white-space: nowrap;
   flex-shrink: 0;
-  text-align: right;
 }
 
 .trend-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
   margin-bottom: 16px;
+  flex-wrap: nowrap;
 }
-.trend-ctrl-col {
+.trend-ctrl-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+.trend-ctrl-period {
+  flex: 1;
   min-width: 0;
 }
-.trend-ctrl-col .ctrl-input {
+.trend-ctrl-period .dual-range-wrap {
   flex: 1;
   min-width: 0;
 }
