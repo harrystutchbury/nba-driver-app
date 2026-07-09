@@ -3239,15 +3239,44 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-size: 10px; font-weight: 800; letter-spacing: .14em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
 }
-.bs-notes-player-group { margin-bottom: 12px; }
+.bs-notes-player-group { margin-bottom: 8px; }
 .bs-notes-player-group:last-child { margin-bottom: 0; }
 .bs-notes-player-name {
   font-size: 12px; font-weight: 700; color: var(--accent);
   letter-spacing: .04em; margin-bottom: 4px;
 }
-.bs-note-row { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; line-height: 1.4; }
+.bs-notes-player-toggle {
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; user-select: none; padding: 4px 0;
+}
+.bs-notes-player-toggle:hover { color: var(--text); }
+.bs-notes-toggle-icon { font-size: 10px; color: var(--muted); }
+.bs-note-row { display: flex; gap: 8px; padding: 3px 0 3px 8px; font-size: 13px; line-height: 1.4; }
 .bs-note-author { font-weight: 700; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .bs-note-body { color: var(--text); }
+
+/* ── Game nav ── */
+.bs-game-nav {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.bs-game-nav-row {
+  display: grid; grid-template-columns: 60px 1fr 60px 80px;
+  align-items: center; gap: 8px; padding: 8px 14px;
+  background: var(--card); text-decoration: none; color: var(--text);
+  border-bottom: 1px solid var(--border); transition: background 0.12s;
+}
+.bs-game-nav-row:last-child { border-bottom: none; }
+.bs-game-nav-row:hover { background: rgba(255,255,255,0.04); }
+.bs-nav-team { font-weight: 700; font-size: 13px; }
+.bs-nav-score { font-family: 'DM Mono', monospace; font-size: 13px; text-align: center; }
+.bs-nav-status { font-size: 11px; text-align: right; }
+.bs-nav-status.bs-final { color: var(--muted); }
+.bs-nav-status.bs-live  { color: #00e676; font-weight: 700; }
+
+/* ── Daily rank column ── */
+.bs-rank-head { color: #a78bfa !important; }
+.bs-rank { font-family: 'DM Mono', monospace; font-size: 11px; color: #a78bfa; text-align: center; }
 
 .bs-date-nav {
   display: flex;

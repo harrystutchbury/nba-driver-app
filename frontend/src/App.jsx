@@ -1512,35 +1512,38 @@ function InjuriesPage({ onSelectPlayer, ownership }) {
   )
 }
 
-function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps }) {
+function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps, rankMap }) {
   if (!players.length) return null
-  const COL_COUNT = 17
+  const COL_COUNT = 18
   return (
     <table className="bs-table">
       <colgroup>
         <col className="bs-col-name" />
         <col className="bs-col-pos" />
         <col className="bs-col-num" />
-        <col className="bs-col-num" />
-        <col className="bs-col-num" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-num" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-num bs-col-stat" />
-        <col className="bs-col-fg" />
-        <col className="bs-col-num" />
-        <col className="bs-col-fg" />
-        <col className="bs-col-num" />
         <col className="bs-col-z" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-num bs-col-stat" />
+        <col className="bs-col-fg" />
+        <col className="bs-col-num" />
+        <col className="bs-col-fg" />
+        <col className="bs-col-num" />
       </colgroup>
       <thead>
         <tr>
           <th className="bs-name">Player</th>
           <th className="bs-pos">Pos</th>
           <th className="bs-ctr">MIN</th>
+          <th className="bs-ctr bs-ztotal-head">Z</th>
+          <th className="bs-ctr bs-rank-head">#</th>
           <th className="bs-ctr">+/-</th>
           <th className="bs-ctr">PF</th>
           <th className="bs-ctr bs-stat-head">PTS</th>
@@ -1554,7 +1557,6 @@ function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps }) {
           <th className="bs-ctr">FG%</th>
           <th className="bs-ctr">FT</th>
           <th className="bs-ctr">FT%</th>
-          <th className="bs-ctr bs-ztotal-head">Z</th>
         </tr>
       </thead>
       <tbody>
@@ -1578,6 +1580,8 @@ function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps }) {
               </td>
               <td className="bs-pos">{posAbbr(p.pos) || '—'}</td>
               <td className="bs-ctr">{p.min}</td>
+              <td className={`bs-ctr bs-ztotal ${p.z_total > 0 ? 'z-pos' : p.z_total < 0 ? 'z-neg' : 'z-neu'}`}>{p.z_total > 0 ? '+' : ''}{p.z_total}</td>
+              <td className="bs-ctr bs-rank">{rankMap && p.slug && rankMap[p.slug] ? `#${rankMap[p.slug]}` : '—'}</td>
               <td className={`bs-ctr bs-pm ${p.plus_minus?.startsWith('+') ? 'z-pos' : p.plus_minus?.startsWith('-') ? 'z-neg' : ''}`}>{p.plus_minus}</td>
               <td className="bs-ctr bs-muted">{p.pf}</td>
               <ZCell value={p.pts} z={p.z_pts} isTov={false} />
@@ -1591,7 +1595,6 @@ function BoxScoreTable({ players, onSelectPlayer, ownership, adminProps }) {
               <ZCell value={p.fg_pct != null ? `${(p.fg_pct*100).toFixed(0)}%` : '—'} z={p.z_fg_pct} isTov={false} />
               <td className="bs-ctr bs-muted">{p.ft}</td>
               <ZCell value={p.ft_pct != null ? `${(p.ft_pct*100).toFixed(0)}%` : '—'} z={p.z_ft_pct} isTov={false} />
-              <td className={`bs-ctr bs-ztotal ${p.z_total > 0 ? 'z-pos' : p.z_total < 0 ? 'z-neg' : 'z-neu'}`}>{p.z_total > 0 ? '+' : ''}{p.z_total}</td>
             </tr>
             {adminProps && adminProps.openNoteSlug === p.slug && (
               <tr className="bs-note-entry-row">
@@ -1633,6 +1636,7 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
   const [openNoteSlug, setOpenSlug]   = useState(null)
   const [noteText, setNoteText]       = useState('')
   const [noteSubmitting, setNoteSubm] = useState(false)
+  const [openNoteGroups, setOpenNoteGroups] = useState(new Set())
 
   useEffect(() => {
     apiFetch('/api/today')
@@ -1734,6 +1738,18 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
     .filter(p => p.notes?.length > 0)
     .sort((a, b) => (a.player_name || '').localeCompare(b.player_name || ''))
 
+  // Daily z-score rank: rank all players on this day by z_total desc
+  const rankMap = useMemo(() => {
+    if (!data) return {}
+    const all = data.games
+      .flatMap(g => [...g.away_players, ...g.home_players])
+      .filter(p => p.min > 0 && p.z_total != null && p.slug)
+      .sort((a, b) => b.z_total - a.z_total)
+    const map = {}
+    all.forEach((p, i) => { map[p.slug] = i + 1 })
+    return map
+  }, [data])
+
   return (
     <div className="bs-page">
       <div className="bs-date-nav">
@@ -1755,8 +1771,23 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
         <div className="bs-empty">No games on this date.</div>
       )}
 
+      {data && data.games.length > 0 && (
+        <div className="bs-game-nav">
+          {data.games.map(game => (
+            <a key={game.game_id} href={`#game-${game.game_id}`} className="bs-game-nav-row">
+              <span className="bs-nav-team">{game.away_abbr}</span>
+              <span className="bs-nav-score">{game.away_pts ?? '–'} – {game.home_pts ?? '–'}</span>
+              <span className="bs-nav-team">{game.home_abbr}</span>
+              <span className={`bs-nav-status ${game.status === 'Completed' ? 'bs-final' : 'bs-live'}`}>
+                {game.status === 'Completed' ? 'Final' : game.game_clock || game.status}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+
       {data && data.games.map(game => (
-        <div key={game.game_id} className="bs-game">
+        <div key={game.game_id} id={`game-${game.game_id}`} className="bs-game">
           <div className="bs-game-header">
             <div className="bs-matchup">
               <span className={`bs-team ${game.away_pts < game.home_pts ? 'bs-loser' : ''}`}>
@@ -1780,11 +1811,11 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
           <div className="bs-teams-wrap">
             <div className="bs-team-section">
               <div className="bs-team-label">{game.away} <span className="bs-team-abbr">{game.away_abbr}</span></div>
-              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} />
+              <BoxScoreTable players={game.away_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} rankMap={rankMap} />
             </div>
             <div className="bs-team-section">
               <div className="bs-team-label">{game.home} <span className="bs-team-abbr">{game.home_abbr}</span></div>
-              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} />
+              <BoxScoreTable players={game.home_players} onSelectPlayer={onSelectPlayer} ownership={ownership} adminProps={adminProps} rankMap={rankMap} />
             </div>
           </div>
         </div>
@@ -1794,17 +1825,30 @@ function BoxScorePage({ onSelectPlayer, ownership, initialDate, isAdmin }) {
       {notesWithEntries.length > 0 && (
         <div className="bs-notes-panel">
           <div className="bs-notes-panel-title">Scouting Notes</div>
-          {notesWithEntries.map(p => (
-            <div key={p.slug} className="bs-notes-player-group">
-              <div className="bs-notes-player-name">{p.player_name}</div>
-              {p.notes.map(n => (
-                <div key={n.id} className="bs-note-row">
-                  <span className="bs-note-author">{n.author}</span>
-                  <span className="bs-note-body">{n.body}</span>
+          {notesWithEntries.map(p => {
+            const isOpen = openNoteGroups.has(p.slug)
+            return (
+              <div key={p.slug} className="bs-notes-player-group">
+                <div
+                  className="bs-notes-player-name bs-notes-player-toggle"
+                  onClick={() => setOpenNoteGroups(prev => {
+                    const next = new Set(prev)
+                    isOpen ? next.delete(p.slug) : next.add(p.slug)
+                    return next
+                  })}
+                >
+                  <span>{p.player_name}</span>
+                  <span className="bs-notes-toggle-icon">{isOpen ? '▾' : '▸'}</span>
                 </div>
-              ))}
-            </div>
-          ))}
+                {isOpen && p.notes.map(n => (
+                  <div key={n.id} className="bs-note-row">
+                    <span className="bs-note-author">{n.author}</span>
+                    <span className="bs-note-body">{n.body}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
