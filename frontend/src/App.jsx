@@ -9093,6 +9093,33 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     ft_pct: activeProjSrc.projection_p30.ft_pct ?? null,
   } : null
 
+  // Per-stat z-scores for the projection row
+  const projRowZ = useMemo(() => {
+    if (!projRowData || !playerStats?.z_params) return null
+    const zp = playerStats.z_params
+    const s0 = playerStats.seasons?.[0]
+    const fgaPg = s0?.fga_pg ?? 10
+    const ftaPg = s0?.fta_pg ?? 3
+    const zFor = (key, val) => {
+      const p = zp?.[key]
+      if (!p || !p.std) return null
+      if (key === 'fg_pct') return ((val - p.league_avg) * fgaPg - p.mean) / p.std
+      if (key === 'ft_pct') return ((val - p.league_avg) * ftaPg - p.mean) / p.std
+      return (val - p.mean) / p.std
+    }
+    return {
+      pts:    zFor('pts',    projRowData.pts),
+      reb:    zFor('reb',    projRowData.reb),
+      ast:    zFor('ast',    projRowData.ast),
+      stl:    zFor('stl',    projRowData.stl),
+      blk:    zFor('blk',    projRowData.blk),
+      tov:    zFor('tov',    projRowData.tov),
+      fg3m:   zFor('fg3m',   projRowData.fg3m),
+      fg_pct: projRowData.fg_pct != null ? zFor('fg_pct', projRowData.fg_pct) : null,
+      ft_pct: projRowData.ft_pct != null ? zFor('ft_pct', projRowData.ft_pct) : null,
+    }
+  }, [projRowData, playerStats])
+
   // Trend chart — historical seasons + all projected years
   const trendSeasons = playerStats ? [...playerStats.seasons].reverse() : []
   const Z_TREND_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct', 'ft_pct']
@@ -9677,7 +9704,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     )
   }
 
-  function ProjectionRow({ label, data, note, scenario, projRank, projRankN, currentMpg }) {
+  function ProjectionRow({ label, data, zScores, note, scenario, projRank, projRankN, currentMpg }) {
     if (!data) return null
     const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Forecast'
     const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#00e676' : '#0a7a36'
@@ -9707,10 +9734,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             return <Fragment key={c.key}><td className="num mono stat-cell">—</td>{!c.noZ && <td className="num mono z-cell">—</td>}</Fragment>
           }
           const display = (c.key === 'fg_pct' || c.key === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
+          const z = zScores?.[c.key] ?? null
+          const zDisplay = z != null ? (z >= 0 ? `+${z.toFixed(1)}` : z.toFixed(1)) : '—'
+          const zCol = z != null ? zColor(z, c.key) : ''
           return (
             <Fragment key={c.key}>
               <td className="num mono stat-cell" style={{ color: c.key === 'min_pg' ? undefined : scenarioColor }}>{display}</td>
-              {!c.noZ && <td className="num mono z-cell">—</td>}
+              {!c.noZ && <td className="num mono z-cell" style={{ color: zCol || undefined }}>{zDisplay}</td>}
             </Fragment>
           )
         })}
@@ -10009,6 +10039,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     : <ProjectionRow
                         label={activeProj ? activeProj.season : 'Projected'}
                         data={projRowData}
+                        zScores={projRowZ}
                         note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
                         scenario={projScenario}
                         projRank={activeProjSrc?.proj_rank}
