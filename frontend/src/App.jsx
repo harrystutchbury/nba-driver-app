@@ -9658,6 +9658,19 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     { key: 'ft_pct',  label: 'FT%' },
   ]
 
+  function rowZTotal(data) {
+    if (!data) return null
+    const keys = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m', 'fg_pct', 'ft_pct']
+    let total = 0, count = 0
+    for (const k of keys) {
+      const z = data[`z_${k}`]
+      if (z == null) continue
+      total += k === 'tov' ? -z : z
+      count++
+    }
+    return count > 0 ? +total.toFixed(2) : null
+  }
+
   function zColor(z, key) {
     if (z === null || z === undefined) return ''
     const v = key === 'tov' ? -z : z
@@ -9696,6 +9709,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         <td className="stats-period-cell">{label}</td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>{data.team ? teamAbbr(data.team) : '—'}</td>
         <td className="num mono stat-cell muted">{data.gp}</td>
+        {(() => { const zt = rowZTotal(data); return (
+          <td className={`num mono stats-ztotal-cell${zt > 0 ? ' z-pos' : zt < 0 ? ' z-neg' : ''}`}>
+            {zt != null ? `${zt > 0 ? '+' : ''}${zt.toFixed(1)}` : '—'}
+          </td>
+        )})()}
         <td className="num mono rank-cell" style={{ color: rankColor }} colSpan={2}>
           {data.rank ?? '—'}
         </td>
@@ -9726,6 +9744,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         </td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
         <td className="num mono stat-cell muted">—</td>
+        {(() => { const zt = zScores ? Object.entries(zScores).reduce((s, [k, v]) => s + (v != null ? (k === 'tov' ? -v : v) : 0), 0) : null; return (
+          <td className={`num mono stats-ztotal-cell${zt > 0 ? ' z-pos' : zt < 0 ? ' z-neg' : ''}`} style={{ color: scenarioColor }}>
+            {zt != null ? `${zt > 0 ? '+' : ''}${zt.toFixed(1)}` : '—'}
+          </td>
+        )})()}
         <td className="num mono rank-cell" colSpan={2} style={{ color: rankColor }}>
           {projRank ? projRank : '—'}
         </td>
@@ -10008,6 +10031,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <th className="stats-period-cell" rowSpan={2}>Period</th>
                     <th className="stats-period-cell" rowSpan={2}>Team</th>
                     <th className="num" rowSpan={2}>GP</th>
+                    <th className="num stats-ztotal-head" rowSpan={2}>Z</th>
                     <th className="num stat-group-header" colSpan={2} rowSpan={2} style={{verticalAlign:'middle'}}>Rank</th>
                     {STAT_COLS.map(c => (
                       <th key={c.key} className="num stat-group-header" colSpan={c.noZ ? 1 : 2}>{c.label}</th>

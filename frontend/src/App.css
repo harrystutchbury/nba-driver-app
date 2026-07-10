@@ -1312,9 +1312,10 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   padding-top: 2px !important;
   padding-bottom: 8px !important;
   color: #3a4060 !important;
+  border-left: 1px solid var(--border);
 }
 
-.z-header { color: #3a4060 !important; }
+.z-header { color: #3a4060 !important; border-left: none !important; }
 
 .z-cell {
   font-size: 10px !important;
@@ -1331,6 +1332,18 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .stat-cell {
   border-right: none !important;
+  border-left: 1px solid var(--border);
+}
+
+.stats-ztotal-head {
+  color: var(--accent) !important;
+  border-bottom: 1px solid var(--border);
+}
+.stats-ztotal-cell {
+  font-weight: 700;
+  font-size: 12px;
+  font-family: var(--mono);
+  border-right: 1px solid var(--border);
 }
 
 .stats-row-prev-season td {
