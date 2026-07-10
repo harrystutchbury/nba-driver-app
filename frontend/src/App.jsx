@@ -9708,9 +9708,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       <tr className={highlight ? `stats-row-${highlight}` : ''}>
         <td className="stats-period-cell">{label}</td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>{data.team ? teamAbbr(data.team) : '—'}</td>
-        <td className="num mono stat-cell muted">{data.gp}</td>
+        <td className="num mono stat-cell muted" style={{ borderLeft: 'none' }}>{data.gp}</td>
         {(() => { const zt = rowZTotal(data); return (
-          <td className={`num mono stats-ztotal-cell${zt > 0 ? ' z-pos' : zt < 0 ? ' z-neg' : ''}`}>
+          <td className="num mono stats-ztotal-cell">
             {zt != null ? `${zt > 0 ? '+' : ''}${zt.toFixed(1)}` : '—'}
           </td>
         )})()}
@@ -9743,9 +9743,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           <div><span className="forecast-badge" style={{ color: scenarioColor, borderColor: scenarioColor }}>{scenarioLabel}</span></div>
         </td>
         <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
-        <td className="num mono stat-cell muted">—</td>
+        <td className="num mono stat-cell muted" style={{ borderLeft: 'none' }}>—</td>
         {(() => { const zt = zScores ? Object.entries(zScores).reduce((s, [k, v]) => s + (v != null ? (k === 'tov' ? -v : v) : 0), 0) : null; return (
-          <td className={`num mono stats-ztotal-cell${zt > 0 ? ' z-pos' : zt < 0 ? ' z-neg' : ''}`} style={{ color: scenarioColor }}>
+          <td className="num mono stats-ztotal-cell" style={{ color: scenarioColor }}>
             {zt != null ? `${zt > 0 ? '+' : ''}${zt.toFixed(1)}` : '—'}
           </td>
         )})()}
@@ -10032,7 +10032,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <th className="stats-period-cell" rowSpan={2}>Team</th>
                     <th className="num" rowSpan={2}>GP</th>
                     <th className="num stats-ztotal-head" rowSpan={2}>Z</th>
-                    <th className="num stat-group-header" colSpan={2} rowSpan={2} style={{verticalAlign:'middle'}}>Rank</th>
+                    <th className="num stat-group-header stats-rank-head" colSpan={2} rowSpan={2} style={{verticalAlign:'middle'}}>Rank</th>
                     {STAT_COLS.map(c => (
                       <th key={c.key} className="num stat-group-header" colSpan={c.noZ ? 1 : 2}>{c.label}</th>
                     ))}

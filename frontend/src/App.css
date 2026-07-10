@@ -1337,13 +1337,15 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .stats-ztotal-head {
   color: var(--accent) !important;
-  border-bottom: 1px solid var(--border);
 }
 .stats-ztotal-cell {
-  font-weight: 700;
   font-size: 12px;
   font-family: var(--mono);
+  border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
+}
+.stats-rank-head {
+  border-bottom: 1px solid var(--border) !important;
 }
 
 .stats-row-prev-season td {
