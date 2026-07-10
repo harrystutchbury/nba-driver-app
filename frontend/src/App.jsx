@@ -11582,61 +11582,74 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <th>Season</th>
                             <th>Team</th>
                             <th className="num">G</th>
-                            <th className="num">Min</th>
-                            <th className="num">Pts</th>
-                            <th className="num">Reb</th>
-                            <th className="num">Ast</th>
-                            <th className="num">Stl</th>
-                            <th className="num">Blk</th>
-                            <th className="num">Tov</th>
+                            <th className="num">MIN</th>
+                            <th className="num">Z</th>
+                            <th className="num">PTS</th>
                             <th className="num">3PM</th>
-                            <th className="num">FGA</th>
+                            <th className="num">REB</th>
+                            <th className="num">AST</th>
+                            <th className="num">STL</th>
+                            <th className="num">BLK</th>
+                            <th className="num">TOV</th>
+                            <th className="num">FGA/M</th>
                             <th className="num">FG%</th>
-                            <th className="num">FTA</th>
+                            <th className="num">FTA/M</th>
                             <th className="num">FT%</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {seasons.map((s, i) => (
+                          {seasons.map((s, i) => {
+                            const szt = rowZTotal(s)
+                            return (
                             <tr key={s.period} className={i % 2 === 0 ? 'row-even' : ''}>
                               <td className="mono career-season-label">{s.period}</td>
                               <td className="career-team-label">{teamAbbr(s.team) || '—'}</td>
                               <td className="num mono">{fmt0(s.gp)}</td>
                               <td className="num mono">{fmt1(s.min_pg)}</td>
+                              <td className={`num mono bs-ztotal${szt != null ? (szt > 0 ? ' z-pos' : szt < 0 ? ' z-neg' : ' z-neu') : ''}`}>
+                                {szt != null ? (szt > 0 ? '+' : '') + szt.toFixed(1) : '—'}
+                              </td>
                               <td className="num mono">{fmt1(s.pts)}</td>
+                              <td className="num mono">{fmt1(s.fg3m)}</td>
                               <td className="num mono">{fmt1(s.reb)}</td>
                               <td className="num mono">{fmt1(s.ast)}</td>
                               <td className="num mono">{fmt1(s.stl)}</td>
                               <td className="num mono">{fmt1(s.blk)}</td>
                               <td className="num mono">{fmt1(s.tov)}</td>
-                              <td className="num mono">{fmt1(s.fg3m)}</td>
-                              <td className="num mono">{fmt1(s.fga_pg)}</td>
+                              <td className="num mono">{s.fga_pg != null && s.fg_pct != null ? `${Math.round(s.fga_pg * s.fg_pct / 100)}/${Math.round(s.fga_pg)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.fg_pct)}</td>
-                              <td className="num mono">{fmt1(s.fta_pg)}</td>
+                              <td className="num mono">{s.fta_pg != null && s.ft_pct != null ? `${Math.round(s.fta_pg * s.ft_pct / 100)}/${Math.round(s.fta_pg)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.ft_pct)}</td>
                             </tr>
-                          ))}
+                            )
+                          })}
                         </tbody>
-                        {career && (
+                        {career && (() => {
+                          const czt = rowZTotal(career)
+                          return (
                           <tfoot>
                             <tr className="career-log-footer">
                               <td colSpan={2} className="career-footer-label">Career avg</td>
                               <td className="num mono">{fmt0(career.gp)}</td>
                               <td className="num mono">{fmt1(career.min_pg)}</td>
+                              <td className={`num mono bs-ztotal${czt != null ? (czt > 0 ? ' z-pos' : czt < 0 ? ' z-neg' : ' z-neu') : ''}`}>
+                                {czt != null ? (czt > 0 ? '+' : '') + czt.toFixed(1) : '—'}
+                              </td>
                               <td className="num mono">{fmt1(career.pts)}</td>
+                              <td className="num mono">{fmt1(career.fg3m)}</td>
                               <td className="num mono">{fmt1(career.reb)}</td>
                               <td className="num mono">{fmt1(career.ast)}</td>
                               <td className="num mono">{fmt1(career.stl)}</td>
                               <td className="num mono">{fmt1(career.blk)}</td>
                               <td className="num mono">{fmt1(career.tov)}</td>
-                              <td className="num mono">{fmt1(career.fg3m)}</td>
-                              <td className="num mono">{fmt1(career.fga_pg)}</td>
+                              <td className="num mono">{career.fga_pg != null && career.fg_pct != null ? `${Math.round(career.fga_pg * career.fg_pct / 100)}/${Math.round(career.fga_pg)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.fg_pct)}</td>
-                              <td className="num mono">{fmt1(career.fta_pg)}</td>
+                              <td className="num mono">{career.fta_pg != null && career.ft_pct != null ? `${Math.round(career.fta_pg * career.ft_pct / 100)}/${Math.round(career.fta_pg)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.ft_pct)}</td>
                             </tr>
                           </tfoot>
-                        )}
+                          )
+                        })()}
                       </table>
                     </div>
                   )}
