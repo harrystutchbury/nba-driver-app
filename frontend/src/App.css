@@ -1336,7 +1336,6 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 }
 
 .stats-ztotal-head {
-  color: var(--accent) !important;
 }
 .stats-ztotal-cell {
   font-size: 12px;
