@@ -11487,21 +11487,21 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <th className="num">Score</th>
                             <th className="num">USG%</th>
                             <th className="num" title="Opponent pts allowed vs league avg">Ease</th>
-                            <th className="num">Min</th>
-                            <th className="num">+/-</th>
-                            <th className="num">Pts</th>
-                            <th className="num">Reb</th>
-                            <th className="num">Ast</th>
-                            <th className="num">Stl</th>
-                            <th className="num">Blk</th>
-                            <th className="num">Tov</th>
-                            <th className="num">FG</th>
-                            <th className="num">FG%</th>
-                            <th className="num">3P</th>
-                            <th className="num">3P%</th>
-                            <th className="num">FT</th>
-                            <th className="num">FT%</th>
+                            <th className="num">MIN</th>
+                            <th className="num">PF</th>
                             <th className="num">Z</th>
+                            <th className="num">+/-</th>
+                            <th className="num">PTS</th>
+                            <th className="num">3P</th>
+                            <th className="num">REB</th>
+                            <th className="num">AST</th>
+                            <th className="num">STL</th>
+                            <th className="num">BLK</th>
+                            <th className="num">TOV</th>
+                            <th className="num">FGA/M</th>
+                            <th className="num">FG%</th>
+                            <th className="num">FTA/M</th>
+                            <th className="num">FT%</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -11531,24 +11531,24 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                                 {g.opp_ease == null ? '—' : g.opp_ease > 1 ? 'High' : g.opp_ease < -1 ? 'Low' : 'Mid'}
                               </td>
                               <td className="num mono">{inj ? <span className="gl-dnp">DNP</span> : g.min}</td>
+                              <td className="num mono">{inj ? '—' : (g.pf ?? '—')}</td>
+                              <td className={`num mono bs-ztotal${z != null ? (z > 0 ? ' z-pos' : z < 0 ? ' z-neg' : ' z-neu') : ''}`}>
+                                {z != null ? (z > 0 ? '+' : '') + z : '—'}
+                              </td>
                               <td className={`num mono${pmNum != null ? (pmNum > 0 ? ' z-pos' : pmNum < 0 ? ' z-neg' : '') : ''}`}>
                                 {pmNum != null ? (pmNum > 0 ? '+' : '') + pmNum : '—'}
                               </td>
                               <td className="num mono">{g.pts}</td>
+                              <td className="num mono">{g.fg3m}-{g.fg3a}</td>
                               <td className="num mono">{g.reb}</td>
                               <td className="num mono">{g.ast}</td>
                               <td className="num mono">{g.stl}</td>
                               <td className="num mono">{g.blk}</td>
                               <td className="num mono">{g.tov}</td>
-                              <td className="num mono">{g.fgm}-{g.fga}</td>
-                              <td className="num mono">{g.fg_pct != null ? g.fg_pct + '%' : '—'}</td>
-                              <td className="num mono">{g.fg3m}-{g.fg3a}</td>
-                              <td className="num mono">{g.fg3a > 0 ? (g.fg3m / g.fg3a * 100).toFixed(0) + '%' : '—'}</td>
-                              <td className="num mono">{g.ftm}-{g.fta}</td>
-                              <td className="num mono">{g.ft_pct != null ? g.ft_pct + '%' : '—'}</td>
-                              <td className={`num mono bs-ztotal${z != null ? (z > 0 ? ' z-pos' : z < 0 ? ' z-neg' : ' z-neu') : ''}`}>
-                                {z != null ? (z > 0 ? '+' : '') + z : '—'}
-                              </td>
+                              <td className="num mono">{g.fgm}/{g.fga}</td>
+                              <td className="num mono">{g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(0) + '%' : '—'}</td>
+                              <td className="num mono">{g.ftm}/{g.fta}</td>
+                              <td className="num mono">{g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(0) + '%' : '—'}</td>
                             </tr>
                             )
                           })}
