@@ -9644,16 +9644,18 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const insights   = result ? generateInsights(result, statLabelShort) : []
 
   const STAT_COLS = [
-    { key: 'min_pg', label: 'MIN', noZ: true },
-    { key: 'pts',    label: 'PTS' },
-    { key: 'fg3m',   label: '3PM' },
-    { key: 'reb',    label: 'REB' },
-    { key: 'ast',    label: 'AST' },
-    { key: 'stl',    label: 'STL' },
-    { key: 'blk',    label: 'BLK' },
-    { key: 'tov',    label: 'TOV' },
-    { key: 'fg_pct', label: 'FG%' },
-    { key: 'ft_pct', label: 'FT%' },
+    { key: 'min_pg',  label: 'MIN',   noZ: true },
+    { key: 'pts',     label: 'PTS' },
+    { key: 'fg3m',    label: '3PM' },
+    { key: 'reb',     label: 'REB' },
+    { key: 'ast',     label: 'AST' },
+    { key: 'stl',     label: 'STL' },
+    { key: 'blk',     label: 'BLK' },
+    { key: 'tov',     label: 'TOV' },
+    { key: 'fga_pg',  label: 'FGA/M', noZ: true, fmt: d => (d?.fga_pg != null && d?.fg_pct != null) ? `${Math.round(d.fga_pg * d.fg_pct / 100)}/${Math.round(d.fga_pg)}` : '—' },
+    { key: 'fg_pct',  label: 'FG%' },
+    { key: 'fta_pg',  label: 'FTA/M', noZ: true, fmt: d => (d?.fta_pg != null && d?.ft_pct != null) ? `${Math.round(d.fta_pg * d.ft_pct / 100)}/${Math.round(d.fta_pg)}` : '—' },
+    { key: 'ft_pct',  label: 'FT%' },
   ]
 
   function zColor(z, key) {
@@ -9667,9 +9669,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     return '#555'
   }
 
-  function StatCell({ val, col, z, noZ }) {
-    if (val === null || val === undefined) return <><td className="num mono stat-cell">—</td>{!noZ && <td className="num mono z-cell">—</td>}</>
-    const display = (col === 'fg_pct' || col === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
+  function StatCell({ val, col, z, noZ, fmt, data }) {
+    const display = fmt ? fmt(data) : (val === null || val === undefined) ? '—' : (col === 'fg_pct' || col === 'ft_pct') ? `${val.toFixed(1)}%` : val.toFixed(1)
+    if (!fmt && (val === null || val === undefined)) return <><td className="num mono stat-cell">—</td>{!noZ && <td className="num mono z-cell">—</td>}</>
     const zDisplay = (z !== null && z !== undefined) ? `${z >= 0 ? '+' : ''}${z.toFixed(1)}` : '—'
     return (
       <>
@@ -9698,7 +9700,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           {data.rank ?? '—'}
         </td>
         {STAT_COLS.map(c => (
-          <StatCell key={c.key} val={highlight === 'p30' && c.key === 'min_pg' ? 30 : data[c.key]} col={c.key} z={data[`z_${c.key}`]} noZ={c.noZ} />
+          <StatCell key={c.key} val={highlight === 'p30' && c.key === 'min_pg' ? 30 : data[c.key]} col={c.key} z={data[`z_${c.key}`]} noZ={c.noZ} fmt={c.fmt} data={data} />
         ))}
       </tr>
     )
@@ -9729,6 +9731,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         </td>
         {STAT_COLS.map(c => {
           const rawVal = c.key === 'min_pg' && currentMpg != null ? currentMpg : data[c.key]
+          if (c.fmt) {
+            return (
+              <Fragment key={c.key}>
+                <td className="num mono stat-cell">{c.fmt(data)}</td>
+              </Fragment>
+            )
+          }
           const val = rawVal
           if (val === null || val === undefined) {
             return <Fragment key={c.key}><td className="num mono stat-cell">—</td>{!c.noZ && <td className="num mono z-cell">—</td>}</Fragment>
