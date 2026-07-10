@@ -3275,6 +3275,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .bs-nav-team { font-weight: 700; font-size: 13px; }
 .bs-nav-score { font-family: 'DM Mono', monospace; font-size: 13px; text-align: center; }
 .bs-nav-status { font-size: 11px; text-align: right; }
+.bs-nav-status { background: none !important; padding: 0; }
 .bs-nav-status.bs-final { color: var(--muted); }
 .bs-nav-status.bs-live  { color: #00e676; font-weight: 700; }
 
