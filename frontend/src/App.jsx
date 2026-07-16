@@ -9652,9 +9652,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     { key: 'stl',     label: 'STL' },
     { key: 'blk',     label: 'BLK' },
     { key: 'tov',     label: 'TOV' },
-    { key: 'fga_pg',  label: 'FGA/M', noZ: true, fmt: d => (d?.fga_pg != null && d?.fg_pct != null) ? `${Math.round(d.fga_pg * d.fg_pct / 100)}/${Math.round(d.fga_pg)}` : '—' },
+    { key: 'fga_pg',  label: 'FGA/M', noZ: true, fmt: d => (d?.fga_pg != null && d?.fg_pct != null) ? `${(d.fga_pg * d.fg_pct / 100).toFixed(1)}/${(+d.fga_pg).toFixed(1)}` : '—' },
     { key: 'fg_pct',  label: 'FG%' },
-    { key: 'fta_pg',  label: 'FTA/M', noZ: true, fmt: d => (d?.fta_pg != null && d?.ft_pct != null) ? `${Math.round(d.fta_pg * d.ft_pct / 100)}/${Math.round(d.fta_pg)}` : '—' },
+    { key: 'fta_pg',  label: 'FTA/M', noZ: true, fmt: d => (d?.fta_pg != null && d?.ft_pct != null) ? `${(d.fta_pg * d.ft_pct / 100).toFixed(1)}/${(+d.fta_pg).toFixed(1)}` : '—' },
     { key: 'ft_pct',  label: 'FT%' },
   ]
 
@@ -11616,9 +11616,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                               <td className="num mono">{fmt1(s.stl)}</td>
                               <td className="num mono">{fmt1(s.blk)}</td>
                               <td className="num mono">{fmt1(s.tov)}</td>
-                              <td className="num mono">{s.fga_pg != null && s.fg_pct != null ? `${Math.round(s.fga_pg * s.fg_pct / 100)}/${Math.round(s.fga_pg)}` : '—'}</td>
+                              <td className="num mono">{s.fga_pg != null && s.fg_pct != null ? `${(s.fga_pg * s.fg_pct / 100).toFixed(1)}/${(+s.fga_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.fg_pct)}</td>
-                              <td className="num mono">{s.fta_pg != null && s.ft_pct != null ? `${Math.round(s.fta_pg * s.ft_pct / 100)}/${Math.round(s.fta_pg)}` : '—'}</td>
+                              <td className="num mono">{s.fta_pg != null && s.ft_pct != null ? `${(s.fta_pg * s.ft_pct / 100).toFixed(1)}/${(+s.fta_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.ft_pct)}</td>
                             </tr>
                             )
@@ -11642,9 +11642,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                               <td className="num mono">{fmt1(career.stl)}</td>
                               <td className="num mono">{fmt1(career.blk)}</td>
                               <td className="num mono">{fmt1(career.tov)}</td>
-                              <td className="num mono">{career.fga_pg != null && career.fg_pct != null ? `${Math.round(career.fga_pg * career.fg_pct / 100)}/${Math.round(career.fga_pg)}` : '—'}</td>
+                              <td className="num mono">{career.fga_pg != null && career.fg_pct != null ? `${(career.fga_pg * career.fg_pct / 100).toFixed(1)}/${(+career.fga_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.fg_pct)}</td>
-                              <td className="num mono">{career.fta_pg != null && career.ft_pct != null ? `${Math.round(career.fta_pg * career.ft_pct / 100)}/${Math.round(career.fta_pg)}` : '—'}</td>
+                              <td className="num mono">{career.fta_pg != null && career.ft_pct != null ? `${(career.fta_pg * career.ft_pct / 100).toFixed(1)}/${(+career.fta_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.ft_pct)}</td>
                             </tr>
                           </tfoot>
