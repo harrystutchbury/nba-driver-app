@@ -11593,6 +11593,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <th className="num">TOV</th>
                             <th className="num">FGA/M</th>
                             <th className="num">FG%</th>
+                            <th className="num">2PA/M</th>
+                            <th className="num">2P%</th>
+                            <th className="num">3PA/M</th>
+                            <th className="num">3P%</th>
                             <th className="num">FTA/M</th>
                             <th className="num">FT%</th>
                           </tr>
@@ -11600,6 +11604,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         <tbody>
                           {seasons.map((s, i) => {
                             const szt = rowZTotal(s)
+                            const s2pa = s.fga_pg != null && s.fg3a_pg != null ? s.fga_pg - s.fg3a_pg : null
+                            const s2pm = s.fga_pg != null && s.fg_pct != null && s.fg3m != null ? s.fga_pg * s.fg_pct / 100 - s.fg3m : null
+                            const s2pct = s2pm != null && s2pa > 0 ? s2pm / s2pa * 100 : null
                             return (
                             <tr key={s.period} className={i % 2 === 0 ? 'row-even' : ''}>
                               <td className="mono career-season-label">{s.period}</td>
@@ -11618,6 +11625,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                               <td className="num mono">{fmt1(s.tov)}</td>
                               <td className="num mono">{s.fga_pg != null && s.fg_pct != null ? `${(s.fga_pg * s.fg_pct / 100).toFixed(1)}/${(+s.fga_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.fg_pct)}</td>
+                              <td className="num mono">{s2pm != null && s2pa != null ? `${s2pm.toFixed(1)}/${s2pa.toFixed(1)}` : '—'}</td>
+                              <td className="num mono">{s2pct != null ? s2pct.toFixed(1) + '%' : '—'}</td>
+                              <td className="num mono">{s.fg3m != null && s.fg3a_pg != null ? `${(+s.fg3m).toFixed(1)}/${(+s.fg3a_pg).toFixed(1)}` : '—'}</td>
+                              <td className="num mono">{s.fg3_pct != null ? (s.fg3_pct).toFixed(1) + '%' : '—'}</td>
                               <td className="num mono">{s.fta_pg != null && s.ft_pct != null ? `${(s.fta_pg * s.ft_pct / 100).toFixed(1)}/${(+s.fta_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(s.ft_pct)}</td>
                             </tr>
@@ -11626,6 +11637,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         </tbody>
                         {career && (() => {
                           const czt = rowZTotal(career)
+                          const c2pa = career.fga_pg != null && career.fg3a_pg != null ? career.fga_pg - career.fg3a_pg : null
+                          const c2pm = career.fga_pg != null && career.fg_pct != null && career.fg3m != null ? career.fga_pg * career.fg_pct / 100 - career.fg3m : null
+                          const c2pct = c2pm != null && c2pa > 0 ? c2pm / c2pa * 100 : null
                           return (
                           <tfoot>
                             <tr className="career-log-footer">
@@ -11644,6 +11658,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                               <td className="num mono">{fmt1(career.tov)}</td>
                               <td className="num mono">{career.fga_pg != null && career.fg_pct != null ? `${(career.fga_pg * career.fg_pct / 100).toFixed(1)}/${(+career.fga_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.fg_pct)}</td>
+                              <td className="num mono">{c2pm != null && c2pa != null ? `${c2pm.toFixed(1)}/${c2pa.toFixed(1)}` : '—'}</td>
+                              <td className="num mono">{c2pct != null ? c2pct.toFixed(1) + '%' : '—'}</td>
+                              <td className="num mono">{career.fg3m != null && career.fg3a_pg != null ? `${(+career.fg3m).toFixed(1)}/${(+career.fg3a_pg).toFixed(1)}` : '—'}</td>
+                              <td className="num mono">{career.fg3_pct != null ? (career.fg3_pct).toFixed(1) + '%' : '—'}</td>
                               <td className="num mono">{career.fta_pg != null && career.ft_pct != null ? `${(career.fta_pg * career.ft_pct / 100).toFixed(1)}/${(+career.fta_pg).toFixed(1)}` : '—'}</td>
                               <td className="num mono">{fmtPct(career.ft_pct)}</td>
                             </tr>
