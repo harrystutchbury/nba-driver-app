@@ -8645,6 +8645,45 @@ function TransformationPage() {
 }
 
 
+const FORM_ZONES = [
+  { key: 'restricted_area', label: 'RA',    title: 'Restricted Area' },
+  { key: 'paint_non_ra',    label: 'Paint', title: 'Paint (non-RA)' },
+  { key: 'mid_range',       label: 'Mid',   title: 'Mid-Range' },
+  { key: 'corner_3',        label: 'C3',    title: 'Corner 3' },
+  { key: 'above_break_3',   label: 'AB3',   title: 'Above Break 3' },
+]
+
+function maBucketKey(dateStr, period) {
+  const y  = +dateStr.slice(0, 4)
+  const mo = +dateStr.slice(5, 7)
+  const d  = +dateStr.slice(8, 10)
+  if (period === 'month') return dateStr.slice(0, 7)
+  if (period === 'quarter') {
+    if (mo >= 10) return `${y}-Q1`
+    if (mo <= 3)  return `${y}-Q2`
+    return `${y}-Q3`
+  }
+  const dt = new Date(Date.UTC(y, mo - 1, d))
+  const dow = dt.getUTCDay()
+  dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow))
+  return dt.toISOString().slice(0, 10)
+}
+
+function maBucketLabel(key, period) {
+  if (period === 'month') {
+    return new Date(key + '-01T00:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+  }
+  if (period === 'quarter') {
+    const [y, q] = key.split('-')
+    return `${q} ${y}`
+  }
+  const start = new Date(key + 'T00:00:00Z')
+  const end   = new Date(start); end.setUTCDate(end.getUTCDate() + 6)
+  const smo = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  const emo = end.toLocaleDateString('en-US',   { month: 'short', timeZone: 'UTC' })
+  return `${smo} ${start.getUTCDate()}–${smo !== emo ? emo + ' ' : ''}${end.getUTCDate()}`
+}
+
 function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const yahooConnected = new URLSearchParams(window.location.search).get('yahoo_connected')
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
@@ -9728,45 +9767,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     : 0
   const maxContrib = result ? Math.max(...result.drivers.map(d => Math.abs(d.contribution)), 0.001) : 0.001
   const insights   = result ? generateInsights(result, statLabelShort) : []
-
-  const FORM_ZONES = [
-    { key: 'restricted_area', label: 'RA',    title: 'Restricted Area' },
-    { key: 'paint_non_ra',    label: 'Paint', title: 'Paint (non-RA)' },
-    { key: 'mid_range',       label: 'Mid',   title: 'Mid-Range' },
-    { key: 'corner_3',        label: 'C3',    title: 'Corner 3' },
-    { key: 'above_break_3',   label: 'AB3',   title: 'Above Break 3' },
-  ]
-
-  function maBucketKey(dateStr, period) {
-    const y  = +dateStr.slice(0, 4)
-    const mo = +dateStr.slice(5, 7)
-    const d  = +dateStr.slice(8, 10)
-    if (period === 'month') return dateStr.slice(0, 7)
-    if (period === 'quarter') {
-      if (mo >= 10) return `${y}-Q1`
-      if (mo <= 3)  return `${y}-Q2`
-      return `${y}-Q3`
-    }
-    const dt = new Date(Date.UTC(y, mo - 1, d))
-    const dow = dt.getUTCDay()
-    dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow))
-    return dt.toISOString().slice(0, 10)
-  }
-
-  function maBucketLabel(key, period) {
-    if (period === 'month') {
-      return new Date(key + '-01T00:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
-    }
-    if (period === 'quarter') {
-      const [y, q] = key.split('-')
-      return `${q} ${y}`
-    }
-    const start = new Date(key + 'T00:00:00Z')
-    const end   = new Date(start); end.setUTCDate(end.getUTCDate() + 6)
-    const smo = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
-    const emo = end.toLocaleDateString('en-US',   { month: 'short', timeZone: 'UTC' })
-    return `${smo} ${start.getUTCDate()}–${smo !== emo ? emo + ' ' : ''}${end.getUTCDate()}`
-  }
 
   const STAT_COLS = [
     { key: 'min_pg',  label: 'MIN',   noZ: true },
