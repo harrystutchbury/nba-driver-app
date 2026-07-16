@@ -8740,6 +8740,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [maStat, setMaStat]           = useState('pts')
   const [maWindow, setMaWindow]       = useState(10)
   const [maChartType, setMaChartType] = useState('line')
+  const [maTablePeriod, setMaTablePeriod] = useState('month')
+  const [maZoneGames, setMaZoneGames]     = useState(null)
+  const [maZoneSlug,  setMaZoneSlug]      = useState(null)
   const [maPer30,     setMaPer30]     = useState(false)
   const [maRangeStart, setMaRangeStart] = useState(0)
   const [maRangeEnd,   setMaRangeEnd]   = useState(null) // null = last game
@@ -8866,6 +8869,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setProjLoading(true)
     setPlayerGames(null)
     setMaRangeStart(0); setMaRangeEnd(null)
+    setMaZoneGames(null); setMaZoneSlug(null)
     setSchedProj(null)
     setProjYear(1)
     setProjScenario('baseline')
@@ -8961,6 +8965,16 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
   // Clear WW companion when player changes
   useEffect(() => { setWwCompanion(null); setWwTeammates([]) }, [selectedPlayer])
+
+  // Lazy-fetch zone data when Table view is active
+  useEffect(() => {
+    const slug = selectedPlayer?.slug
+    if (maChartType !== 'table' || !slug || maZoneSlug === slug) return
+    apiFetch(`/api/zone-game-log?player=${encodeURIComponent(slug)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { setMaZoneGames(d); setMaZoneSlug(slug) } })
+      .catch(() => {})
+  }, [maChartType, selectedPlayer?.slug, maZoneSlug])
 
   const handleAnalyse = async () => {
     // ── With/Without mode ───────────────────────────────────────────────
@@ -9285,6 +9299,78 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const maAllGames  = playerGames ?? []
   const maEffEnd    = maRangeEnd   ?? (maAllGames.length - 1)
   const maGames     = maAllGames.slice(maRangeStart, maEffEnd + 1)
+
+  const maTableBuckets = useMemo(() => {
+    if (!maGames.length || !playerStats?.z_params) return []
+    const zp = playerStats.z_params
+    const bucketMap = Object.create(null)
+    for (const g of maGames) {
+      const bk = maBucketKey(g.game_date, maTablePeriod)
+      ;(bucketMap[bk] = bucketMap[bk] || []).push(g)
+    }
+    return Object.entries(bucketMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, games]) => {
+        const played = games.filter(g => !g.injured && (g.min || 0) > 0)
+        const gp = played.length
+        if (!gp) return null
+        const sum = k => played.reduce((s, g) => s + (g[k] || 0), 0)
+        const avg = k => sum(k) / gp
+        const totalFga = sum('fga'), totalFgm = sum('fgm')
+        const totalFta = sum('fta'), totalFtm = sum('ftm')
+        const totalFg3a = sum('fg3a'), totalFg3m_v = sum('fg3m')
+        const fg_pct  = totalFga > 0 ? totalFgm / totalFga * 100 : null
+        const ft_pct  = totalFta > 0 ? totalFtm / totalFta * 100 : null
+        const fg3_pct = totalFg3a > 0 ? totalFg3m_v / totalFg3a * 100 : null
+        const zs = (k, v) => { const p = zp[k]; return p ? (v - p.mean) / p.std : null }
+        const fga_pg = totalFga / gp, fgm_pg = totalFgm / gp
+        const fta_pg = totalFta / gp, ftm_pg = totalFtm / gp
+        const fg_z = totalFga > 0 && zp.fg_pct
+          ? ((fgm_pg / fga_pg - zp.fg_pct.league_avg) * fga_pg - zp.fg_pct.mean) / zp.fg_pct.std : 0
+        const ft_z = totalFta > 0 && zp.ft_pct
+          ? ((ftm_pg / fta_pg - zp.ft_pct.league_avg) * fta_pg - zp.ft_pct.mean) / zp.ft_pct.std : 0
+        const z_pts = zs('pts', avg('pts')), z_reb = zs('reb', avg('reb'))
+        const z_ast = zs('ast', avg('ast')), z_stl = zs('stl', avg('stl'))
+        const z_blk = zs('blk', avg('blk')), z_tov = zs('tov', avg('tov'))
+        const z_fg3m = zs('fg3m', avg('fg3m'))
+        const z_total = (z_pts||0)+(z_reb||0)+(z_ast||0)+(z_stl||0)+(z_blk||0)-(z_tov||0)+(z_fg3m||0)+fg_z+ft_z
+        const gameDates = new Set(played.map(g => g.game_date))
+        const zoneRows = (maZoneGames || []).filter(z => gameDates.has(z.game_date))
+        const zoneMap = {}
+        for (const zr of zoneRows) {
+          zoneMap[zr.zone] = zoneMap[zr.zone] || { fga: 0, fgm: 0 }
+          zoneMap[zr.zone].fga += zr.fga; zoneMap[zr.zone].fgm += zr.fgm
+        }
+        const zones = FORM_ZONES.map(({ key: zk }) => {
+          const zd = zoneMap[zk]
+          return {
+            zone: zk,
+            fga: zd ? zd.fga : 0,
+            fga_pg: zd ? +(zd.fga / gp).toFixed(1) : 0,
+            fgm_pg: zd ? +(zd.fgm / gp).toFixed(1) : 0,
+            fg_pct: zd?.fga > 0 ? +(zd.fgm / zd.fga * 100).toFixed(1) : null,
+          }
+        })
+        return {
+          key, label: maBucketLabel(key, maTablePeriod), gp,
+          min: +avg('min').toFixed(1),
+          pts: +avg('pts').toFixed(1), reb: +avg('reb').toFixed(1),
+          ast: +avg('ast').toFixed(1), stl: +avg('stl').toFixed(1),
+          blk: +avg('blk').toFixed(1), tov: +avg('tov').toFixed(1),
+          fg3m: +avg('fg3m').toFixed(1), fg3a: +avg('fg3a').toFixed(1),
+          fga: +fga_pg.toFixed(1), fgm: +fgm_pg.toFixed(1),
+          fta: +fta_pg.toFixed(1), ftm: +ftm_pg.toFixed(1),
+          fg_pct: fg_pct != null ? +fg_pct.toFixed(1) : null,
+          ft_pct: ft_pct != null ? +ft_pct.toFixed(1) : null,
+          fg3_pct: fg3_pct != null ? +fg3_pct.toFixed(1) : null,
+          z_total: +z_total.toFixed(2), z_pts, z_reb, z_ast, z_stl, z_blk, z_tov, z_fg3m,
+          z_fg_pct: +fg_z.toFixed(2), z_ft_pct: +ft_z.toFixed(2),
+          zones,
+        }
+      })
+      .filter(Boolean)
+  }, [maGames, maTablePeriod, maZoneGames, playerStats])
+
   const maIsZSum    = maStat === 'z_sum'
   // Z-scores computed over full career so the baseline doesn't shift with the slider
   const maAllZSums  = maIsZSum ? computeGameZSums(maAllGames) : null
@@ -9642,6 +9728,45 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     : 0
   const maxContrib = result ? Math.max(...result.drivers.map(d => Math.abs(d.contribution)), 0.001) : 0.001
   const insights   = result ? generateInsights(result, statLabelShort) : []
+
+  const FORM_ZONES = [
+    { key: 'restricted_area', label: 'RA',    title: 'Restricted Area' },
+    { key: 'paint_non_ra',    label: 'Paint', title: 'Paint (non-RA)' },
+    { key: 'mid_range',       label: 'Mid',   title: 'Mid-Range' },
+    { key: 'corner_3',        label: 'C3',    title: 'Corner 3' },
+    { key: 'above_break_3',   label: 'AB3',   title: 'Above Break 3' },
+  ]
+
+  function maBucketKey(dateStr, period) {
+    const y  = +dateStr.slice(0, 4)
+    const mo = +dateStr.slice(5, 7)
+    const d  = +dateStr.slice(8, 10)
+    if (period === 'month') return dateStr.slice(0, 7)
+    if (period === 'quarter') {
+      if (mo >= 10) return `${y}-Q1`
+      if (mo <= 3)  return `${y}-Q2`
+      return `${y}-Q3`
+    }
+    const dt = new Date(Date.UTC(y, mo - 1, d))
+    const dow = dt.getUTCDay()
+    dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow))
+    return dt.toISOString().slice(0, 10)
+  }
+
+  function maBucketLabel(key, period) {
+    if (period === 'month') {
+      return new Date(key + '-01T00:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+    }
+    if (period === 'quarter') {
+      const [y, q] = key.split('-')
+      return `${q} ${y}`
+    }
+    const start = new Date(key + 'T00:00:00Z')
+    const end   = new Date(start); end.setUTCDate(end.getUTCDate() + 6)
+    const smo = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+    const emo = end.toLocaleDateString('en-US',   { month: 'short', timeZone: 'UTC' })
+    return `${smo} ${start.getUTCDate()}–${smo !== emo ? emo + ' ' : ''}${end.getUTCDate()}`
+  }
 
   const STAT_COLS = [
     { key: 'min_pg',  label: 'MIN',   noZ: true },
@@ -11384,14 +11509,16 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
                 {maExpanded && (isPro ? <>
                 <div className="trend-controls">
-                  <div className="trend-ctrl-item">
-                    <span className="ctrl-label">Stat</span>
-                    <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
-                      {MA_STAT_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {maChartType !== 'table' && (
+                    <div className="trend-ctrl-item">
+                      <span className="ctrl-label">Stat</span>
+                      <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
+                        {MA_STAT_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   {maChartType === 'line' && (
                     <div className="trend-ctrl-item">
                       <span className="ctrl-label">Weighted Average Period</span>
@@ -11430,28 +11557,117 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       </span>
                     </div>
                   )}
-                  {maCanPer30 && (
+                  {maChartType === 'table' && (
+                    <div className="rank-pills">
+                      {[['week','Weeks'],['month','Months'],['quarter','Quarters']].map(([v, l]) => (
+                        <button key={v} className={`rank-pill${maTablePeriod === v ? ' active' : ''}`} onClick={() => setMaTablePeriod(v)}>{l}</button>
+                      ))}
+                    </div>
+                  )}
+                  {maCanPer30 && maChartType !== 'table' && (
                     <div className="rank-pills">
                       <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
                       <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
                     </div>
                   )}
                   <div className="rank-pills">
-                    <button className={`rank-pill${maChartType === 'line' ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
-                    <button className={`rank-pill${maChartType === 'bar'  ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                    <button className={`rank-pill${maChartType === 'line'  ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
+                    <button className={`rank-pill${maChartType === 'bar'   ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                    <button className={`rank-pill${maChartType === 'table' ? ' active' : ''}`} onClick={() => setMaChartType('table')}>Table</button>
                   </div>
                 </div>
-                <div className="trend-chart-wrap" style={{ height: '260px' }}>
-                  {maChartType === 'line'
-                    ? maChartData && <Line data={maChartData} options={maChartOptions} />
-                    : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
-                </div>
-                {maChartType === 'bar' && (
-                  <div className="ease-legend">
-                    <span className="ease-legend-item ease-legend-easy">Easy matchup</span>
-                    <span className="ease-legend-item ease-legend-mid">Neutral</span>
-                    <span className="ease-legend-item ease-legend-hard">Hard matchup</span>
+                {maChartType === 'table' ? (
+                  <div className="table-scroll" style={{ marginTop: 12 }}>
+                    <table className="gamelog-table form-period-table">
+                      <thead>
+                        <tr>
+                          <th>Period</th>
+                          <th className="num">G</th>
+                          <th className="num">MIN</th>
+                          <th className="num">Z</th>
+                          <th className="num form-driver-head" title="Points z-score">zPTS</th>
+                          <th className="num form-driver-head" title="Rebounds z-score">zREB</th>
+                          <th className="num form-driver-head" title="Assists z-score">zAST</th>
+                          <th className="num form-driver-head" title="Steals z-score">zSTL</th>
+                          <th className="num form-driver-head" title="Blocks z-score">zBLK</th>
+                          <th className="num form-driver-head" title="Turnovers z-score">zTOV</th>
+                          <th className="num form-driver-head" title="3PM z-score">z3PM</th>
+                          <th className="num form-driver-head" title="FG% z-score">zFG%</th>
+                          <th className="num form-driver-head" title="FT% z-score">zFT%</th>
+                          <th className="num">PTS</th>
+                          <th className="num">3PM</th>
+                          <th className="num">REB</th>
+                          <th className="num">AST</th>
+                          <th className="num">STL</th>
+                          <th className="num">BLK</th>
+                          <th className="num">TOV</th>
+                          <th className="num">FGA/M</th>
+                          <th className="num">FG%</th>
+                          {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
+                          <th className="num">FTA/M</th>
+                          <th className="num">FT%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {maTableBuckets.map(b => {
+                          const ztCls = b.z_total > 0 ? ' z-pos' : b.z_total < 0 ? ' z-neg' : ''
+                          const dCls = (z, inv) => z == null ? '' : ((inv ? -z : z) > 0 ? ' z-pos' : (inv ? -z : z) < 0 ? ' z-neg' : '')
+                          const fz = z => z != null ? (z > 0 ? '+' : '') + z.toFixed(1) : '—'
+                          return (
+                            <tr key={b.key}>
+                              <td className="mono">{b.label}</td>
+                              <td className="num mono">{b.gp}</td>
+                              <td className="num mono">{b.min}</td>
+                              <td className={`num mono bs-ztotal${ztCls}`}>{b.z_total != null ? (b.z_total > 0 ? '+' : '') + b.z_total.toFixed(1) : '—'}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_pts,    false)}`}>{fz(b.z_pts)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_reb,    false)}`}>{fz(b.z_reb)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_ast,    false)}`}>{fz(b.z_ast)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_stl,    false)}`}>{fz(b.z_stl)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_blk,    false)}`}>{fz(b.z_blk)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_tov,    true)}`}>{fz(b.z_tov)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_fg3m,   false)}`}>{fz(b.z_fg3m)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
+                              <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
+                              <td className="num mono">{b.pts}</td>
+                              <td className="num mono">{b.fg3m}</td>
+                              <td className="num mono">{b.reb}</td>
+                              <td className="num mono">{b.ast}</td>
+                              <td className="num mono">{b.stl}</td>
+                              <td className="num mono">{b.blk}</td>
+                              <td className="num mono">{b.tov}</td>
+                              <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
+                              <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
+                              {b.zones.map(z => (
+                                <td key={z.zone} className="num mono form-zone-cell">
+                                  {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
+                                </td>
+                              ))}
+                              <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
+                              <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {!maZoneGames && maZoneSlug !== selectedPlayer?.slug && (
+                      <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Loading zone data…</p>
+                    )}
                   </div>
+                ) : (
+                  <>
+                  <div className="trend-chart-wrap" style={{ height: '260px' }}>
+                    {maChartType === 'line'
+                      ? maChartData && <Line data={maChartData} options={maChartOptions} />
+                      : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
+                  </div>
+                  {maChartType === 'bar' && (
+                    <div className="ease-legend">
+                      <span className="ease-legend-item ease-legend-easy">Easy matchup</span>
+                      <span className="ease-legend-item ease-legend-mid">Neutral</span>
+                      <span className="ease-legend-item ease-legend-hard">Hard matchup</span>
+                    </div>
+                  )}
+                  </>
                 )}
                 </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>

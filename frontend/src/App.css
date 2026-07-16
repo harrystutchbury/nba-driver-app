@@ -6533,3 +6533,27 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
     display: none;
   }
 }
+
+/* Form Table view */
+.form-period-table th,
+.form-period-table td {
+  white-space: nowrap;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.form-driver-head {
+  color: var(--muted);
+  font-size: 10px !important;
+}
+.form-driver-cell {
+  font-size: 11px;
+  opacity: 0.9;
+}
+.form-zone-head {
+  color: #8892a4;
+  font-size: 10px !important;
+}
+.form-zone-cell {
+  font-size: 11px;
+  white-space: nowrap;
+}

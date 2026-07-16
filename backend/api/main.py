@@ -2175,6 +2175,30 @@ def get_game_log(
 
 
 # -----------------------------------------------------------------------
+# GET /zone-game-log
+# -----------------------------------------------------------------------
+
+@router.get("/zone-game-log")
+def get_zone_game_log(
+    player: str = Query(..., description="Player slug"),
+):
+    """Return per-game zone shot counts for a player for the current season."""
+    conn = get_conn()
+    season_end = _current_season_end_year()
+    season = f"{season_end - 1}-{str(season_end)[2:]}"
+    rows = conn.execute("""
+        SELECT s.game_date, s.zone, COUNT(*) AS fga, SUM(s.made) AS fgm
+        FROM shot_logs s
+        INNER JOIN player_id_map m ON m.nba_id = s.nba_id
+        WHERE m.br_slug = ? AND s.season = ?
+        GROUP BY s.game_date, s.zone
+        ORDER BY s.game_date
+    """, (player, season)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# -----------------------------------------------------------------------
 # GET /player-games
 # -----------------------------------------------------------------------
 
