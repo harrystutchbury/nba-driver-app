@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 api.py — FastAPI router for NBA.com tracking/hustle stat endpoints.
 
