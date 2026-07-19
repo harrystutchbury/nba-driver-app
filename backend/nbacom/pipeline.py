@@ -37,7 +37,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-MAX_MEASURE_FAILURES = 3   # abort the run if this many measure types fail
+MAX_MEASURE_FAILURES = 6   # abort the date if this many measure types fail
 MIN_PLAYER_ROW_COUNT = 100  # flag a warning if fewer rows returned on a game night
 
 

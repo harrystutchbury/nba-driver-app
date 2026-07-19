@@ -13,6 +13,25 @@ import time
 import logging
 from datetime import date as _date
 
+from nba_api.stats.library.http import NBAStatsHTTP
+
+# Spoof a real browser — stats.nba.com blocks/throttles the default python-requests UA
+NBAStatsHTTP.headers = {
+    "Host":               "stats.nba.com",
+    "User-Agent":         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept":             "application/json, text/plain, */*",
+    "Accept-Language":    "en-AU,en;q=0.9",
+    "Accept-Encoding":    "gzip, deflate, br",
+    "x-nba-stats-origin": "stats",
+    "x-nba-stats-token":  "true",
+    "Referer":            "https://www.nba.com/",
+    "Origin":             "https://www.nba.com",
+    "Connection":         "keep-alive",
+    "Sec-Fetch-Dest":     "empty",
+    "Sec-Fetch-Mode":     "cors",
+    "Sec-Fetch-Site":     "same-site",
+}
+
 log = logging.getLogger(__name__)
 
 INTER_CALL_DELAY = 2.0   # seconds between every API call
