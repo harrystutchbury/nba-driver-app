@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 pipeline.py — Nightly NBA.com tracking/hustle stats pipeline.
 

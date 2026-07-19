@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 client.py — Thin wrapper around nba_api's LeagueDashPtStats endpoint.
 

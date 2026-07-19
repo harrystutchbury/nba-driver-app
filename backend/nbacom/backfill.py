@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 backfill.py — Populate the full 2025-26 season history from NBA.com.
 
