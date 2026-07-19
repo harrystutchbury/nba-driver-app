@@ -2016,12 +2016,25 @@ def get_shot_diet(
 
     percentiles_a = _compute_zone_percentiles(conn, player, pa_start, pa_end)
     percentiles_b = _compute_zone_percentiles(conn, player, pb_start, pb_end)
+
+    def _gl_fg_pct(start, end):
+        row = conn.execute("""
+            SELECT SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0) AS fg_pct
+            FROM game_logs
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
+        """, (player, start, end)).fetchone()
+        return round(row["fg_pct"], 3) if row and row["fg_pct"] is not None else None
+
+    gl_fg_pct_a = _gl_fg_pct(pa_start, pa_end)
+    gl_fg_pct_b = _gl_fg_pct(pb_start, pb_end)
+    gl_delta = round(gl_fg_pct_b - gl_fg_pct_a, 4) if gl_fg_pct_a is not None and gl_fg_pct_b is not None else None
+
     conn.close()
 
     return {
-        "fg_pct_a":         result.fg_pct_a,
-        "fg_pct_b":         result.fg_pct_b,
-        "delta":            result.delta,
+        "fg_pct_a":         gl_fg_pct_a if gl_fg_pct_a is not None else result.fg_pct_a,
+        "fg_pct_b":         gl_fg_pct_b if gl_fg_pct_b is not None else result.fg_pct_b,
+        "delta":            gl_delta if gl_delta is not None else result.delta,
         "diet_total":       result.diet_total,
         "efficiency_total": result.efficiency_total,
         "percentiles_a":    percentiles_a,
