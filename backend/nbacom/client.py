@@ -221,7 +221,7 @@ def fetch_measure(
         _rate_limited_sleep()
         try:
             result = leaguedashptstats.LeagueDashPtStats(
-                player_or_team_abbreviation="P",
+                player_or_team="Player",
                 per_mode_simple=per_mode,
                 pt_measure_type=measure_type,
                 season=CURRENT_SEASON,
