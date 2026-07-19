@@ -229,7 +229,13 @@ def fetch_measure(
                 date_to_nullable=date_to_str,
                 timeout=timeout,
             )
-            df = result.get_data_frames()[0]
+            # Find the player-level result set (has PLAYER_ID column).
+            # Some measure types return a team/league summary as frame 0.
+            all_frames = result.get_data_frames()
+            df = next(
+                (f for f in all_frames if "PLAYER_ID" in f.columns),
+                all_frames[0],  # fall back to first frame so error is descriptive
+            )
             break
         except Exception as exc:
             last_exc = exc
@@ -246,6 +252,10 @@ def fetch_measure(
         ) from last_exc
 
     # Normalise to dicts with our DB column names
+    if "PLAYER_ID" not in df.columns:
+        log.warning("fetch_measure %s: no PLAYER_ID column in response (columns: %s)", measure_type, list(df.columns))
+        return []
+
     rows = []
     for _, api_row in df.iterrows():
         row: dict = {
