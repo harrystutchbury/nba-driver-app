@@ -16,3 +16,4 @@ espn-api
 xlrd
 stripe==10.5.0
 slowapi>=0.1.9
+nba_api==1.5.2

@@ -12272,6 +12272,9 @@ app.include_router(ctw_router)
 from api.forum import forum_router
 app.include_router(forum_router)
 
+from nbacom.api import router as nbacom_router
+app.include_router(nbacom_router)
+
 
 # Must come AFTER all API routes so /api/* is never caught here.
 # -----------------------------------------------------------------------
