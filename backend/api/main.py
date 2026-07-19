@@ -1555,7 +1555,7 @@ def get_z_score_comparison(
                    SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
                    COUNT(*) as gp
             FROM game_logs
-            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
         """, (player, start, end)).fetchone()
         return dict(row) if row and row["gp"] and row["gp"] > 0 else None
 
@@ -1778,7 +1778,7 @@ def get_transformation(
                    SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
                    COUNT(*) as gp
             FROM game_logs
-            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min >= 5
+            WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
         """, (player, start, end)).fetchone()
         return dict(row) if row and row["gp"] and row["gp"] > 0 else None
 
