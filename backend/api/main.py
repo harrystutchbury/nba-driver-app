@@ -55,7 +55,8 @@ from engine.shots import decompose_shots, ALL_ZONES
 from engine.training_data import build_dataset
 from engine.archetypes import assign_archetypes, ARCHETYPES, _assign_row
 from engine.regress import REG_FEATURES, REG_TARGETS, predict as regress_predict, load_model
-from engine.aging import build_aging_curves, aging_ratio as _aging_ratio, aging_ratio_std as _aging_ratio_std, RATIO_FLOOR, RATIO_CAP
+from engine.aging import build_aging_curves, aging_ratio as _aging_ratio, aging_ratio_std as _aging_ratio_std
+RATIO_FLOOR, RATIO_CAP = 0.88, 1.08
 
 logger = logging.getLogger(__name__)
 
@@ -2834,6 +2835,14 @@ def get_rankings(
 
 SCHED_STATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m']
 
+# Home/away multipliers relative to season average (which blends both).
+# Derived from 4-season league splits: home_factor = home_avg / ((home+away)/2).
+# Applied to short-term projections when game location is known.
+_HOME_FACTORS = {'pts': 1.0071, 'reb': 1.0060, 'ast': 1.0130, 'stl': 1.0,
+                 'blk': 1.0210, 'tov': 0.9902, 'fg3m': 1.0150,
+                 'fg_pct': 1.0072, 'ft_pct': 1.0036}
+_AWAY_FACTORS = {k: 2.0 - v for k, v in _HOME_FACTORS.items()}
+
 @router.get("/schedule-projection")
 def get_schedule_projection(
     player:     str = Query(...,    description="Player slug"),
@@ -3425,13 +3434,17 @@ def get_projections(
             if adj:
                 r = _apply_player_adjustment(r, adj)
 
-            # Apply factor to baseline (counting stats only; pcts unadjusted)
+            # Home/away multiplier
+            is_home  = team_game_info.get(team, {}).get("is_home", True)
+            ha_factor = _HOME_FACTORS if is_home else _AWAY_FACTORS
+
+            # Apply opponent factor + home/away factor to baseline
             proj = {
-                stat: round((r[stat] or 0.0) * avg_factor[stat], 1)
+                stat: round((r[stat] or 0.0) * avg_factor[stat] * ha_factor.get(stat, 1.0), 1)
                 for stat in SCHED_STATS
             }
-            proj["fg_pct"] = round(r["fg_pct"], 1) if r["fg_pct"] is not None else None
-            proj["ft_pct"] = round(r["ft_pct"], 1) if r["ft_pct"] is not None else None
+            proj["fg_pct"] = round(r["fg_pct"] * ha_factor["fg_pct"], 1) if r["fg_pct"] is not None else None
+            proj["ft_pct"] = round(r["ft_pct"] * ha_factor["ft_pct"], 1) if r["ft_pct"] is not None else None
             proj["fga_pg"] = r["fga_pg"] or 0.0
             proj["fta_pg"] = r["fta_pg"] or 0.0
             proj["min_pg"] = round(r["min_pg"], 1) if r["min_pg"] is not None else None
