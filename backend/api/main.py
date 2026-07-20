@@ -12289,6 +12289,29 @@ from nbacom.api import router as nbacom_router
 app.include_router(nbacom_router)
 
 
+# -----------------------------------------------------------------------
+# Temporary: nbacom data import endpoint (DELETE after backfill)
+# -----------------------------------------------------------------------
+import gzip as _gzip
+from fastapi import Header as _Header
+
+@router.post("/admin/import-nbacom")
+async def import_nbacom(
+    request: Request,
+    x_admin_token: str = _Header(...),
+):
+    expected = os.environ.get("ADMIN_IMPORT_TOKEN", "")
+    if not expected or x_admin_token != expected:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    body = await request.body()
+    sql = _gzip.decompress(body).decode("utf-8")
+    conn = get_conn()
+    conn.executescript(sql)
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "bytes_sql": len(sql)}
+
+
 # Must come AFTER all API routes so /api/* is never caught here.
 # -----------------------------------------------------------------------
 
