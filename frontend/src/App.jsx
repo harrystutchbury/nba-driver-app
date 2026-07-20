@@ -11509,16 +11509,14 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
                 {maExpanded && (isPro ? <>
                 <div className="trend-controls">
-                  {maChartType !== 'table' && (
-                    <div className="trend-ctrl-item">
-                      <span className="ctrl-label">Stat</span>
-                      <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
-                        {MA_STAT_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  <div className="trend-ctrl-item">
+                    <span className="ctrl-label">Stat</span>
+                    <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
+                      {MA_STAT_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   {maChartType === 'line' && (
                     <div className="trend-ctrl-item">
                       <span className="ctrl-label">Weighted Average Period</span>
@@ -11585,27 +11583,44 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                           <th className="num">G</th>
                           <th className="num">MIN</th>
                           <th className="num">Z</th>
-                          <th className="num form-driver-head" title="Points z-score">zPTS</th>
-                          <th className="num form-driver-head" title="Rebounds z-score">zREB</th>
-                          <th className="num form-driver-head" title="Assists z-score">zAST</th>
-                          <th className="num form-driver-head" title="Steals z-score">zSTL</th>
-                          <th className="num form-driver-head" title="Blocks z-score">zBLK</th>
-                          <th className="num form-driver-head" title="Turnovers z-score">zTOV</th>
-                          <th className="num form-driver-head" title="3PM z-score">z3PM</th>
-                          <th className="num form-driver-head" title="FG% z-score">zFG%</th>
-                          <th className="num form-driver-head" title="FT% z-score">zFT%</th>
-                          <th className="num">PTS</th>
-                          <th className="num">3PM</th>
-                          <th className="num">REB</th>
-                          <th className="num">AST</th>
-                          <th className="num">STL</th>
-                          <th className="num">BLK</th>
-                          <th className="num">TOV</th>
-                          <th className="num">FGA/M</th>
-                          <th className="num">FG%</th>
-                          {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
-                          <th className="num">FTA/M</th>
-                          <th className="num">FT%</th>
+                          {maStat === 'z_sum' || maStat === 'min' ? (<>
+                            <th className="num form-driver-head" title="Points z-score">zPTS</th>
+                            <th className="num form-driver-head" title="Rebounds z-score">zREB</th>
+                            <th className="num form-driver-head" title="Assists z-score">zAST</th>
+                            <th className="num form-driver-head" title="Steals z-score">zSTL</th>
+                            <th className="num form-driver-head" title="Blocks z-score">zBLK</th>
+                            <th className="num form-driver-head" title="Turnovers z-score">zTOV</th>
+                            <th className="num form-driver-head" title="3PM z-score">z3PM</th>
+                            <th className="num form-driver-head" title="FG% z-score">zFG%</th>
+                            <th className="num form-driver-head" title="FT% z-score">zFT%</th>
+                            <th className="num">PTS</th>
+                            <th className="num">3PM</th>
+                            <th className="num">REB</th>
+                            <th className="num">AST</th>
+                            <th className="num">STL</th>
+                            <th className="num">BLK</th>
+                            <th className="num">TOV</th>
+                            <th className="num">FGA/M</th>
+                            <th className="num">FG%</th>
+                            {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
+                            <th className="num">FTA/M</th>
+                            <th className="num">FT%</th>
+                          </>) : maStat === 'fg_pct' ? (<>
+                            <th className="num form-driver-head">zFG%</th>
+                            <th className="num">FGA/M</th>
+                            <th className="num">FG%</th>
+                            {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
+                          </>) : maStat === 'ft_pct' ? (<>
+                            <th className="num form-driver-head">zFT%</th>
+                            <th className="num">FTA/M</th>
+                            <th className="num">FT%</th>
+                          </>) : maStat === 'fg3m' ? (<>
+                            <th className="num form-driver-head">z3PM</th>
+                            <th className="num">3PM</th>
+                          </>) : (<>
+                            <th className="num form-driver-head">z{maStat.toUpperCase()}</th>
+                            <th className="num">{maStat.toUpperCase()}</th>
+                          </>)}
                         </tr>
                       </thead>
                       <tbody>
@@ -11619,31 +11634,52 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                               <td className="num mono">{b.gp}</td>
                               <td className="num mono">{b.min}</td>
                               <td className={`num mono bs-ztotal${ztCls}`}>{b.z_total != null ? (b.z_total > 0 ? '+' : '') + b.z_total.toFixed(1) : '—'}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_pts,    false)}`}>{fz(b.z_pts)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_reb,    false)}`}>{fz(b.z_reb)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_ast,    false)}`}>{fz(b.z_ast)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_stl,    false)}`}>{fz(b.z_stl)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_blk,    false)}`}>{fz(b.z_blk)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_tov,    true)}`}>{fz(b.z_tov)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_fg3m,   false)}`}>{fz(b.z_fg3m)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
-                              <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
-                              <td className="num mono">{b.pts}</td>
-                              <td className="num mono">{b.fg3m}</td>
-                              <td className="num mono">{b.reb}</td>
-                              <td className="num mono">{b.ast}</td>
-                              <td className="num mono">{b.stl}</td>
-                              <td className="num mono">{b.blk}</td>
-                              <td className="num mono">{b.tov}</td>
-                              <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
-                              <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
-                              {b.zones.map(z => (
-                                <td key={z.zone} className="num mono form-zone-cell">
-                                  {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
-                                </td>
-                              ))}
-                              <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
-                              <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
+                              {maStat === 'z_sum' || maStat === 'min' ? (<>
+                                <td className={`num mono form-driver-cell${dCls(b.z_pts,    false)}`}>{fz(b.z_pts)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_reb,    false)}`}>{fz(b.z_reb)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_ast,    false)}`}>{fz(b.z_ast)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_stl,    false)}`}>{fz(b.z_stl)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_blk,    false)}`}>{fz(b.z_blk)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_tov,    true)}`}>{fz(b.z_tov)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_fg3m,   false)}`}>{fz(b.z_fg3m)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
+                                <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
+                                <td className="num mono">{b.pts}</td>
+                                <td className="num mono">{b.fg3m}</td>
+                                <td className="num mono">{b.reb}</td>
+                                <td className="num mono">{b.ast}</td>
+                                <td className="num mono">{b.stl}</td>
+                                <td className="num mono">{b.blk}</td>
+                                <td className="num mono">{b.tov}</td>
+                                <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
+                                <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
+                                {b.zones.map(z => (
+                                  <td key={z.zone} className="num mono form-zone-cell">
+                                    {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
+                                  </td>
+                                ))}
+                                <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
+                                <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
+                              </>) : maStat === 'fg_pct' ? (<>
+                                <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
+                                <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
+                                <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
+                                {b.zones.map(z => (
+                                  <td key={z.zone} className="num mono form-zone-cell">
+                                    {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
+                                  </td>
+                                ))}
+                              </>) : maStat === 'ft_pct' ? (<>
+                                <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
+                                <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
+                                <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
+                              </>) : maStat === 'fg3m' ? (<>
+                                <td className={`num mono form-driver-cell${dCls(b.z_fg3m, false)}`}>{fz(b.z_fg3m)}</td>
+                                <td className="num mono">{b.fg3m}</td>
+                              </>) : (<>
+                                <td className={`num mono form-driver-cell${dCls(b[`z_${maStat}`], maStat === 'tov')}`}>{fz(b[`z_${maStat}`])}</td>
+                                <td className="num mono">{b[maStat]}</td>
+                              </>)}
                             </tr>
                           )
                         })}
