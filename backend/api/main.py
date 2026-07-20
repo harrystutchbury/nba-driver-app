@@ -12303,13 +12303,39 @@ async def import_nbacom(
     expected = os.environ.get("ADMIN_IMPORT_TOKEN", "")
     if not expected or x_admin_token != expected:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Write compressed body to disk — avoids loading 176MB into memory
+    gz_path  = "/data/nbacom_import.sql.gz"
+    sql_path = "/data/nbacom_import.sql"
     body = await request.body()
-    sql = _gzip.decompress(body).decode("utf-8")
+    with open(gz_path, "wb") as f:
+        f.write(body)
+
+    # Decompress to disk in 1MB chunks
+    with _gzip.open(gz_path, "rb") as gz, open(sql_path, "wb") as out:
+        while chunk := gz.read(1024 * 1024):
+            out.write(chunk)
+
+    # Execute line-by-line (iterdump produces one statement per line)
     conn = get_conn()
-    conn.executescript(sql)
+    stmt_count = 0
+    with open(sql_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("--") and not line.upper().startswith("BEGIN") and not line.upper().startswith("COMMIT"):
+                try:
+                    conn.execute(line)
+                    stmt_count += 1
+                    if stmt_count % 500 == 0:
+                        conn.commit()
+                except Exception:
+                    pass  # skip duplicates / CREATE IF NOT EXISTS conflicts
     conn.commit()
     conn.close()
-    return {"status": "ok", "bytes_sql": len(sql)}
+
+    os.unlink(gz_path)
+    os.unlink(sql_path)
+    return {"status": "ok", "statements": stmt_count}
 
 
 # Must come AFTER all API routes so /api/* is never caught here.
