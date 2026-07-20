@@ -9921,6 +9921,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
   return (
     <>
+      {/* ── Beta banner ─────────────────────────────────────── */}
+      <div className="beta-banner">
+        🚧 RotoIntel is in beta — we'd love your feedback at <a href="mailto:rotointel@gmail.com">rotointel@gmail.com</a>
+      </div>
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="site-header">
         <div className="site-header-inner">
