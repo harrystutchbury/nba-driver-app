@@ -11809,6 +11809,108 @@ def adj_league_benchmarks(team: str = Query(None), current_user: str = Depends(g
         conn.close()
 
 
+@adjust_router.post("/injury-redistribute/{slug}")
+def adj_injury_redistribute(slug: str, current_user: str = Depends(get_current_user)):
+    """
+    Redistribute the injured player's minutes and FGA to teammates and write
+    player_adjustments rows for each beneficiary.
+    """
+    from engine.injury import redistribute, normalise_position as _np
+
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+
+        season_year = _current_season_end_year()
+        season = f"{season_year - 1}-{str(season_year)[2:]}"
+
+        # Injured player baseline
+        inj_row = conn.execute("""
+            SELECT g.player_slug, p.full_name, g.team,
+                   COALESCE(tpm.position, b.position_group, 'SF') AS position,
+                   AVG(g.min) AS avg_min, AVG(g.fga) AS avg_fga
+            FROM game_logs g
+            JOIN players p ON p.slug = g.player_slug AND p.season = g.season
+            LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            LEFT JOIN tank01_player_map tpm ON tpm.br_slug = g.player_slug
+            WHERE g.player_slug = ? AND g.season = ? AND g.min > 0
+            GROUP BY g.player_slug
+        """, [slug, season]).fetchone()
+
+        if not inj_row:
+            raise HTTPException(status_code=404, detail=f"No current-season data for '{slug}'")
+
+        team = inj_row["team"]
+
+        # All active teammates
+        roster_rows = conn.execute("""
+            SELECT g.player_slug AS slug,
+                   COALESCE(tpm.position, b.position_group, 'SF') AS position,
+                   AVG(g.min) AS avg_min, AVG(g.fga) AS avg_fga
+            FROM game_logs g
+            LEFT JOIN player_bio b ON b.br_slug = g.player_slug
+            LEFT JOIN tank01_player_map tpm ON tpm.br_slug = g.player_slug
+            WHERE g.team = ? AND g.season = ? AND g.min > 0
+            GROUP BY g.player_slug
+            HAVING COUNT(*) >= 5 AND AVG(g.min) >= 5
+        """, [team, season]).fetchall()
+
+        roster = [dict(r) for r in roster_rows]
+        if not any(r['slug'] == slug for r in roster):
+            roster.append(dict(inj_row))
+
+        # Build depth order sorted by avg_min desc within each position
+        slug_to_min = {r['slug']: r['avg_min'] for r in roster}
+        pos_groups: dict = {}
+        for r in roster:
+            if r['slug'] == slug:
+                continue
+            pos = _np(r['position'])
+            pos_groups.setdefault(pos, [])
+            pos_groups[pos].append(r['slug'])
+        for pos in pos_groups:
+            pos_groups[pos].sort(key=lambda s: slug_to_min.get(s, 0), reverse=True)
+
+        result = redistribute(slug, roster, pos_groups)
+        if not result:
+            return {"message": "No minutes to redistribute", "adjustments": []}
+
+        written = []
+        for beneficiary_slug, adj in result.items():
+            conn.execute("""
+                UPDATE player_adjustments SET is_active=0, updated_at=datetime('now')
+                WHERE player_slug=? AND is_active=1 AND start_date IS NULL AND end_date IS NULL
+            """, [beneficiary_slug])
+
+            cols = ["player_slug", "min_pg", "fga_pg", "notes", "is_active"]
+            vals = [
+                beneficiary_slug,
+                adj['new_min'],
+                adj['new_fga'],
+                f"Auto: {inj_row['full_name']} out (+{adj['delta_min']}m +{adj['delta_fga']:.1f}fga)",
+                1,
+            ]
+            ph = ",".join("?" * len(cols))
+            cur = conn.execute(
+                f"INSERT INTO player_adjustments ({','.join(cols)}) VALUES ({ph})", vals
+            )
+            written.append({"slug": beneficiary_slug, "adj_id": cur.lastrowid, **adj})
+
+        conn.commit()
+        _proj_cache.clear()
+
+        return {
+            "injured_player": slug,
+            "team": team,
+            "mins_redistributed": round(inj_row["avg_min"], 1),
+            "fga_redistributed": round(inj_row["avg_fga"], 1),
+            "adjustments": written,
+        }
+    finally:
+        conn.close()
+
+
 app.include_router(adjust_router)
 
 
