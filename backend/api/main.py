@@ -12289,6 +12289,26 @@ from nbacom.api import router as nbacom_router
 app.include_router(nbacom_router)
 
 
+# -----------------------------------------------------------------------
+# Nightly NBA.com tracking stats pipeline — 6am ET (10:00 UTC)
+# -----------------------------------------------------------------------
+from apscheduler.schedulers.background import BackgroundScheduler as _BGScheduler
+from nbacom.pipeline import run_nightly as _run_nbacom_nightly
+
+_scheduler = _BGScheduler(timezone="UTC")
+
+def _nbacom_nightly_job():
+    import logging
+    log = logging.getLogger("nbacom.scheduler")
+    log.info("Nightly NBA.com pipeline starting ...")
+    try:
+        success = _run_nbacom_nightly()
+        log.info("Nightly NBA.com pipeline finished — success=%s", success)
+    except Exception as e:
+        log.error("Nightly NBA.com pipeline crashed: %s", e)
+
+_scheduler.add_job(_nbacom_nightly_job, "cron", hour=10, minute=0)
+_scheduler.start()
 
 
 # Must come AFTER all API routes so /api/* is never caught here.
