@@ -12289,53 +12289,6 @@ from nbacom.api import router as nbacom_router
 app.include_router(nbacom_router)
 
 
-# -----------------------------------------------------------------------
-# Temporary: nbacom data import endpoint (DELETE after backfill)
-# -----------------------------------------------------------------------
-import gzip as _gzip
-from fastapi import Header as _Header
-
-@router.post("/admin/import-nbacom")
-async def import_nbacom(
-    request: Request,
-    x_admin_token: str = _Header(...),
-):
-    expected = os.environ.get("ADMIN_IMPORT_TOKEN", "")
-    if not expected or x_admin_token != expected:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    # Write compressed body to disk — avoids loading 176MB into memory
-    gz_path  = "/data/nbacom_import.sql.gz"
-    sql_path = "/data/nbacom_import.sql"
-    body = await request.body()
-    with open(gz_path, "wb") as f:
-        f.write(body)
-
-    # Decompress to disk in 1MB chunks
-    with _gzip.open(gz_path, "rb") as gz, open(sql_path, "wb") as out:
-        while chunk := gz.read(1024 * 1024):
-            out.write(chunk)
-
-    # Execute line-by-line (iterdump produces one statement per line)
-    conn = get_conn()
-    stmt_count = 0
-    with open(sql_path, "r") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("--") and not line.upper().startswith("BEGIN") and not line.upper().startswith("COMMIT"):
-                try:
-                    conn.execute(line)
-                    stmt_count += 1
-                    if stmt_count % 500 == 0:
-                        conn.commit()
-                except Exception:
-                    pass  # skip duplicates / CREATE IF NOT EXISTS conflicts
-    conn.commit()
-    conn.close()
-
-    os.unlink(gz_path)
-    os.unlink(sql_path)
-    return {"status": "ok", "statements": stmt_count}
 
 
 # Must come AFTER all API routes so /api/* is never caught here.
