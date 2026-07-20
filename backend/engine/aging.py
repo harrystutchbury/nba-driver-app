@@ -1,136 +1,67 @@
 """
-aging.py — Data-driven aging curves from within-player year-over-year ratios.
+aging.py — Manual smooth aging curves per stat.
 
-For each consecutive player-season pair in the training data, compute:
-    ratio = next_season_per30 / current_season_per30
+Each stat is defined by a piecewise linear curve:
+  - Before peak_age: linearly tapers from growth_at_20 -> 0
+  - After peak_age:  linearly increases from 0 -> decline_at_40
 
-Average those ratios by age bucket, then fit a smooth quadratic. This avoids
-the selection-bias problem of comparing different players at different ages —
-instead we track the same players across time.
+Values are year-over-year % change (positive = improvement, negative = decline).
+For tov, positive means MORE turnovers (worse).
 
-The resulting curve(age) returns the expected year-over-year multiplier for
-a player of that age, e.g. 1.03 at age 23 means players of that age typically
-improve ~3% per year in that stat.
+Curve params: (peak_age, yoy_pct_at_age_20, yoy_pct_at_age_40)
 """
 
-import numpy as np
-
-MIN_OBS    = 5     # minimum player-seasons per age bucket
-AGE_RANGE  = range(18, 42)
-
-# Max year-over-year ratio change attributable to aging alone
-RATIO_FLOOR = 0.88
-RATIO_CAP   = 1.08
-
-# Mapping: stat label → (current_col, next_col) in build_dataset() output
-_STAT_PAIRS = {
-    'pts':    ('p30_pts',  'next_pts'),
-    'reb':    ('p30_reb',  'next_reb'),
-    'ast':    ('p30_ast',  'next_ast'),
-    'stl':    ('p30_stl',  'next_stl'),
-    'blk':    ('p30_blk',  'next_blk'),
-    'tov':    ('p30_tov',  'next_tov'),
-    'fg3m':   ('p30_fg3m', 'next_fg3m'),
-    'fg_pct': ('fg_pct',   'next_fg_pct'),
+# (peak_age, growth_pct_at_20, decline_pct_at_40)
+_CURVE_PARAMS = {
+    'pts':    (27,  +6.0,  -5.5),
+    'reb':    (28,  +3.0,  -2.5),
+    'ast':    (29,  +7.0,  -2.5),
+    'stl':    (25,  +3.0,  -3.0),
+    'blk':    (26,  +4.0,  -3.0),
+    'tov':    (28,  +2.0,  -1.5),
+    'fg3m':   (27,  +7.0,  -4.0),
+    'fg_pct': (27,  +2.0,  -2.0),
+    'ft_pct': (27,  +0.5,  -0.5),
 }
 
+_STATS = list(_CURVE_PARAMS.keys())
 
-def build_aging_curves(df):
+
+def _smooth_yoy(stat, age):
+    """Return the year-over-year % change for a stat at a given age."""
+    peak, g20, d40 = _CURVE_PARAMS[stat]
+    if age <= peak:
+        return g20 * (peak - age) / (peak - 20)
+    else:
+        return d40 * (age - peak) / (40 - peak)
+
+
+def build_aging_curves(df=None):
     """
-    Build per-stat aging curves from within-player year-over-year ratios.
-
-    Parameters
-    ----------
-    df : DataFrame from build_dataset() — must include p30_* and next_* columns.
-
-    Returns
-    -------
-    dict  { stat_label: callable(age) -> expected_ratio }
+    Return the aging curves dict. The df argument is accepted for
+    backwards compatibility but is not used — curves are hardcoded.
     """
-    df = df.copy()
-    df = df.dropna(subset=['age'])
-    df['age'] = df['age'].astype(int)
-
-    curves = {}
-    for stat, (cur_col, nxt_col) in _STAT_PAIRS.items():
-        if cur_col not in df.columns or nxt_col not in df.columns:
-            continue
-
-        # Keep only rows where both this season and next season exist
-        sub = df.dropna(subset=[cur_col, nxt_col]).copy()
-        # Avoid division by near-zero
-        sub = sub[sub[cur_col].abs() > 0.1]
-        sub['ratio'] = sub[nxt_col] / sub[cur_col]
-        # Filter extreme outliers (injuries, role explosions, sample noise)
-        sub = sub[(sub['ratio'] >= 0.5) & (sub['ratio'] <= 2.0)]
-
-        obs_ages, obs_ratios, obs_stds = [], [], []
-        for age in AGE_RANGE:
-            bucket = sub[sub['age'] == age]['ratio']
-            if len(bucket) >= MIN_OBS:
-                obs_ages.append(age)
-                obs_ratios.append(float(bucket.mean()))
-                obs_stds.append(float(bucket.std()) if len(bucket) > 1 else 0.05)
-
-        if len(obs_ages) < 4:
-            continue
-
-        # Fit quadratics to mean and std of ratios by age
-        mean_coeffs = np.polyfit(obs_ages, obs_ratios, 2)
-        std_coeffs  = np.polyfit(obs_ages, obs_stds,  2)
-        curves[stat] = {
-            'mean': np.poly1d(mean_coeffs),
-            'std':  np.poly1d(std_coeffs),
-        }
-
-    return curves
+    return {stat: None for stat in _STATS}
 
 
-# Stats with survivorship-bias artefacts that need a shape ceiling applied.
-# These show increasing ratios with age in the raw data (e.g. only elite
-# defenders/shooters survive to 34+), which is not a real aging signal.
-_SHAPE_CORRECTED = {'stl', 'blk', 'fg3m'}
-
-
-def _peak_shape_ceiling(age):
+def aging_ratio(curves, archetype, stat, current_age, next_age=None):
     """
-    Shape ceiling for survivorship-biased stats.
-    Enforces: improvement up to ~27, flat through 28-29, decline from 30.
+    Return the year-over-year multiplier (e.g. 1.03 = +3%) for a player
+    of current_age in the given stat.
     """
-    if age <= 26:
-        return RATIO_CAP
-    if age == 27:
-        return 1.015
-    if age <= 29:
-        return 1.005
-    return max(RATIO_FLOOR, 1.0 - 0.008 * (age - 29))
-
-
-def aging_ratio(curves, archetype, stat, current_age, next_age):
-    """
-    Return the expected year-over-year multiplier for a player aging from
-    current_age to next_age.
-
-    For stats in _SHAPE_CORRECTED the ratio is capped by a peak-shape ceiling
-    to remove survivorship bias. All other stats use their natural fitted curve
-    clamped only to [RATIO_FLOOR, RATIO_CAP].
-    """
-    curve_obj = curves.get(stat)
-    if curve_obj is None:
+    if stat not in _CURVE_PARAMS:
         return 1.0
-    curve = curve_obj['mean'] if isinstance(curve_obj, dict) else curve_obj
-    ratio = float(curve(current_age))
-    ceiling = _peak_shape_ceiling(current_age) if stat in _SHAPE_CORRECTED else RATIO_CAP
-    return float(np.clip(ratio, RATIO_FLOOR, ceiling))
+    pct = _smooth_yoy(stat, int(current_age))
+    return 1.0 + pct / 100.0
 
 
 def aging_ratio_std(curves, stat, current_age):
     """
-    Return the historical SD of year-over-year ratios at the given age.
-    Used to generate optimistic/pessimistic projection scenarios.
+    Return a fixed uncertainty band per stat for optimistic/pessimistic scenarios.
     """
-    curve_obj = curves.get(stat)
-    if not isinstance(curve_obj, dict):
-        return 0.05  # sensible fallback
-    std_val = float(curve_obj['std'](current_age))
-    return max(0.02, std_val)  # floor at 2% to avoid zero-width bands
+    _STAT_SD = {
+        'pts': 0.06, 'reb': 0.04, 'ast': 0.05,
+        'stl': 0.04, 'blk': 0.04, 'tov': 0.03,
+        'fg3m': 0.06, 'fg_pct': 0.03, 'ft_pct': 0.02,
+    }
+    return _STAT_SD.get(stat, 0.04)
