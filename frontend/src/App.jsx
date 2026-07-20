@@ -8681,7 +8681,8 @@ function maBucketLabel(key, period) {
   const end   = new Date(start); end.setUTCDate(end.getUTCDate() + 6)
   const smo = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
   const emo = end.toLocaleDateString('en-US',   { month: 'short', timeZone: 'UTC' })
-  return `${smo} ${start.getUTCDate()}–${smo !== emo ? emo + ' ' : ''}${end.getUTCDate()}`
+  const yr  = `'${String(end.getUTCFullYear()).slice(2)}`
+  return `${smo} ${start.getUTCDate()}–${smo !== emo ? emo + ' ' : ''}${end.getUTCDate()} ${yr}`
 }
 
 function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
