@@ -52,6 +52,7 @@ MEASURE_TYPES = [
     "PostTouch",
     "PaintTouch",
     "Efficiency",
+    "Hustle",
 ]
 
 # Maps each NBA.com column name to our snake_case DB column name.
