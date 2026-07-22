@@ -28,6 +28,7 @@ from nbacom.client import (  # noqa: E402
     ALL_STAT_DB_COLS,
     CURRENT_SEASON,
     fetch_measure,
+    fetch_hustle,
 )
 
 logging.basicConfig(
@@ -298,7 +299,10 @@ def run_nightly(game_date: date | None = None, skip_avgs: bool = False):
         t_start = time.monotonic()
         log.info("Pulling %s ...", measure_type)
         try:
-            api_rows = fetch_measure(measure_type, game_date, game_date)
+            if measure_type == "Hustle":
+                api_rows = fetch_hustle(game_date, game_date)
+            else:
+                api_rows = fetch_measure(measure_type, game_date, game_date)
 
             if len(api_rows) < MIN_PLAYER_ROW_COUNT:
                 log.warning(

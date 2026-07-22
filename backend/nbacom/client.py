@@ -103,7 +103,8 @@ MEASURE_COL_MAP: dict[str, dict[str, str]] = {
         "PULL_UP_PTS":     "pull_up_pts",
         "PULL_UP_EFG_PCT": "pull_up_efg_pct",
     },
-    "Defense": {
+    "Defense": {},
+    "Hustle": {
         "CONTESTED_SHOTS":      "contested_shots",
         "CONTESTED_SHOTS_2PT":  "contested_shots_2pt",
         "CONTESTED_SHOTS_3PT":  "contested_shots_3pt",
@@ -268,6 +269,85 @@ def fetch_measure(
             "min":               float(api_row.get("MIN", 0) or 0),
         }
         for api_col, db_col in col_map.items():
+            val = api_row.get(api_col)
+            row[db_col] = float(val) if val is not None and str(val) != "nan" else None
+        rows.append(row)
+
+    return rows
+
+
+_HUSTLE_COL_MAP = {
+    "CONTESTED_SHOTS":      "contested_shots",
+    "CONTESTED_SHOTS_2PT":  "contested_shots_2pt",
+    "CONTESTED_SHOTS_3PT":  "contested_shots_3pt",
+    "DEFLECTIONS":          "deflections",
+    "CHARGES_DRAWN":        "charges_drawn",
+    "LOOSE_BALLS_RECOVERED":"loose_balls_recovered",
+    "SCREEN_ASSISTS":       "screen_assists",
+}
+
+
+def fetch_hustle(
+    date_from: _date,
+    date_to: _date,
+    per_mode: str = "PerGame",
+    timeout: int = 60,
+) -> list[dict]:
+    """
+    Fetch LeagueHustleStatsPlayer for a date range.
+    Uses a dedicated endpoint (leaguehustlestatsplayer) — not LeagueDashPtStats.
+    """
+    from nba_api.stats.endpoints import leaguehustlestatsplayer
+
+    date_from_str = _fmt_date(date_from)
+    date_to_str   = _fmt_date(date_to)
+
+    last_exc: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        _rate_limited_sleep()
+        try:
+            result = leaguehustlestatsplayer.LeagueHustleStatsPlayer(
+                per_mode_time=per_mode,
+                season=CURRENT_SEASON,
+                season_type_all_star="Regular Season",
+                date_from_nullable=date_from_str,
+                date_to_nullable=date_to_str,
+                timeout=timeout,
+            )
+            all_frames = result.get_data_frames()
+            df = next(
+                (f for f in all_frames if "PLAYER_ID" in f.columns),
+                all_frames[0],
+            )
+            break
+        except Exception as exc:
+            last_exc = exc
+            backoff = 2 ** attempt
+            log.warning(
+                "fetch_hustle attempt %d/%d failed: %s — retrying in %ds",
+                attempt, MAX_RETRIES, exc, backoff,
+            )
+            if attempt < MAX_RETRIES:
+                time.sleep(backoff)
+    else:
+        raise RuntimeError(
+            f"fetch_hustle failed after {MAX_RETRIES} attempts: {last_exc}"
+        ) from last_exc
+
+    if "PLAYER_ID" not in df.columns:
+        log.warning("fetch_hustle: no PLAYER_ID column (columns: %s)", list(df.columns))
+        return []
+
+    rows = []
+    for _, api_row in df.iterrows():
+        row: dict = {
+            "nba_com_player_id": int(api_row["PLAYER_ID"]),
+            "player_name":       str(api_row["PLAYER_NAME"]),
+            "team_abbreviation": str(api_row.get("TEAM_ABBREVIATION", "")),
+            "gp":                int(api_row.get("G", 0) or 0),   # hustle uses "G" not "GP"
+            "min":               float(api_row.get("MIN", 0) or 0),
+        }
+        for api_col, db_col in _HUSTLE_COL_MAP.items():
             val = api_row.get(api_col)
             row[db_col] = float(val) if val is not None and str(val) != "nan" else None
         rows.append(row)
