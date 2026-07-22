@@ -17,6 +17,46 @@ def get_conn():
     return conn
 
 
+# ── Age curve seeding ───────────────────────────────────────────────────────
+# Piecewise linear YoY % change: at age 20 → peak, growth fades to 0;
+# post-peak → decline grows linearly to d40 at age 40.
+_AGE_CURVE_PARAMS = {
+    'PTS':    (27,  +6.0,  -5.5),
+    'REB':    (28,  +3.0,  -2.5),
+    'AST':    (29,  +7.0,  -2.5),
+    'STL':    (25,  +3.0,  -3.0),
+    'BLK':    (26,  +4.0,  -3.0),
+    'TOV':    (28,  +2.0,  -1.5),
+    '3PM':    (27,  +7.0,  -4.0),
+    'FG_PCT': (27,  +2.0,  -2.0),
+    'FT_PCT': (27,  +0.5,  -0.5),
+}
+
+
+def _smooth_yoy(stat: str, age: int) -> float:
+    peak, g20, d40 = _AGE_CURVE_PARAMS[stat]
+    if age <= peak:
+        return g20 * (peak - age) / (peak - 20)
+    return d40 * (age - peak) / (40 - peak)
+
+
+def _seed_age_curves(conn) -> None:
+    existing = conn.execute("SELECT COUNT(*) FROM age_curve_lookup").fetchone()[0]
+    if existing:
+        return
+    rows = [
+        (age, stat, round(1.0 + _smooth_yoy(stat, age) / 100.0, 6), None, None)
+        for stat in _AGE_CURVE_PARAMS
+        for age in range(18, 43)
+    ]
+    conn.executemany(
+        "INSERT OR IGNORE INTO age_curve_lookup "
+        "(age, stat, base_case_multiplier, optimistic_multiplier, pessimistic_multiplier) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_conn()
@@ -463,6 +503,59 @@ def init_db():
             UNIQUE(username, provider, year)
         )
     """)
+
+    # ── Projection calibration system ──────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projection_inputs (
+            player_id          TEXT NOT NULL,
+            season             TEXT NOT NULL,
+            base_year          TEXT,
+            scenario           TEXT NOT NULL DEFAULT 'base_case',
+            minutes_per_game   REAL,
+            usage_rate         REAL,
+            steal_rate         REAL,
+            block_rate         REAL,
+            ast_rate           REAL,
+            reb_rate           REAL,
+            three_pa_rate      REAL,
+            three_p_pct        REAL,
+            two_pa_rate        REAL,
+            two_p_pct          REAL,
+            fta_rate           REAL,
+            ft_pct             REAL,
+            tov_rate           REAL,
+            last_updated       TEXT,
+            updated_by         TEXT,
+            PRIMARY KEY (player_id, season)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projection_edit_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id    TEXT NOT NULL,
+            field_edited TEXT NOT NULL,
+            old_value    REAL,
+            new_value    REAL,
+            edited_at    TEXT DEFAULT (datetime('now')),
+            edited_by    TEXT,
+            source_view  TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS age_curve_lookup (
+            age                    INTEGER NOT NULL,
+            stat                   TEXT NOT NULL,
+            base_case_multiplier   REAL NOT NULL,
+            optimistic_multiplier  REAL,
+            pessimistic_multiplier REAL,
+            PRIMARY KEY (age, stat)
+        )
+    """)
+
+    # Seed age curves from piecewise linear params if table is empty
+    _seed_age_curves(conn)
 
     conn.commit()
     conn.close()

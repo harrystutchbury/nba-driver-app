@@ -12403,6 +12403,9 @@ app.include_router(forum_router)
 from nbacom.api import router as nbacom_router
 app.include_router(nbacom_router)
 
+from api.proj_router import proj_router
+app.include_router(proj_router)
+
 
 # -----------------------------------------------------------------------
 # Nightly NBA.com tracking stats pipeline — 6am ET (10:00 UTC)
