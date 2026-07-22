@@ -26,7 +26,7 @@ from schema import get_conn
 # Auth
 # ---------------------------------------------------------------------------
 
-JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret")
+JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 _bearer       = HTTPBearer()
 
@@ -544,7 +544,7 @@ def get_team_calibration(
         f"SELECT br_slug, birthdate, position FROM player_bio WHERE br_slug IN ({placeholders})",
         slugs,
     ).fetchall()
-    bio_map = {r["br_slug"]: r for r in bio_rows}
+    bio_map = {r["br_slug"]: dict(r) for r in bio_rows}
 
     pace = get_team_pace(conn, team, season)
 
@@ -712,7 +712,7 @@ def get_audit(
 
     # Player name + team lookup
     player_meta = {
-        r["slug"]: r for r in conn.execute(
+        r["slug"]: dict(r) for r in conn.execute(
             "SELECT slug, full_name, team FROM players WHERE season=?", [season]
         ).fetchall()
     }
