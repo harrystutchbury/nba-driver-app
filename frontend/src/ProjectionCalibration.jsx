@@ -303,12 +303,12 @@ export default function ProjectionCalibrationPage() {
     const inp = localInputs[player.player_id] || player.inputs
     const season = data?.season || '2025-26'
 
-    if (action === 'reset') {
-      handleBaseYearChange(player.player_id, inp.base_year || '2024-25', season)
+    if (action === 'no_change') {
+      handleBaseYearChange(player.player_id, inp.base_year || '2025-26', season)
       return
     }
 
-    const multiplierKey = action === 'base' ? 'base_case_multiplier'
+    const multiplierKey = action === 'base_change' ? 'base_case_multiplier'
       : action === 'optimistic' ? 'optimistic_multiplier'
       : 'pessimistic_multiplier'
 
@@ -316,7 +316,7 @@ export default function ProjectionCalibrationPage() {
 
     const mult = curveRow[multiplierKey]
     const fields = AGE_CURVE_FIELDS[stat] || []
-    const updated = {}
+    const updated = { scenario: action }
     fields.forEach(f => {
       if (inp[f] != null) updated[f] = +(inp[f] * mult).toFixed(5)
     })
@@ -371,8 +371,8 @@ export default function ProjectionCalibrationPage() {
           </select>
         </div>
 
-        {/* Minutes status bar — always shown (useful context for all stat views) */}
-        {data && stat !== 'GP' && (
+        {/* Minutes bar — only on MIN view */}
+        {data && stat === 'MIN' && (
           <div className="pcal-minutes-bar">
             <span className="pcal-minutes-label">Season minutes: {Math.round(minutesTotal).toLocaleString()} / 19,680</span>
             <div className="pcal-minutes-track">
@@ -383,6 +383,52 @@ export default function ProjectionCalibrationPage() {
             </span>
           </div>
         )}
+
+        {/* League position bar — all stats except MIN and GP */}
+        {data && stat !== 'MIN' && stat !== 'GP' && data.league_min != null && data.league_max != null && (() => {
+          const lo = data.league_min
+          const hi = data.league_max
+          const range = hi - lo || 1
+          const pct  = v => Math.max(0, Math.min(100, ((v - lo) / range) * 100))
+          const proj = teamProjectedTotal
+          const projPct = proj != null ? pct(proj) : null
+          const projColor = (() => {
+            if (proj == null) return '#64748b'
+            if (proj < data.league_p25 || proj > data.league_p75) return '#ef4444'
+            if (Math.abs(proj - (data.league_median || data.league_avg)) / (data.league_median || data.league_avg || 1) > 0.08) return '#f59e0b'
+            return '#22c55e'
+          })()
+          return (
+            <div className="pcal-minutes-bar">
+              <span className="pcal-minutes-label">
+                Team {stat}: {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(proj / (data.players?.length || 1)) : fmt(proj)}
+                {data.last_season_team_total != null && <> · Last yr: {fmt(data.last_season_team_total)}</>}
+              </span>
+              <div className="pcal-minutes-track" style={{ position: 'relative' }}>
+                {/* Filled bar up to projection */}
+                {projPct != null && <div className="pcal-minutes-fill" style={{ width: `${projPct}%`, background: projColor }} />}
+                {/* Threshold markers */}
+                {[
+                  { v: data.league_p25,    label: 'P25' },
+                  { v: data.league_median, label: 'Med' },
+                  { v: data.league_p75,    label: 'P75' },
+                ].filter(m => m.v != null).map(m => (
+                  <div key={m.label} style={{
+                    position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`,
+                    width: '2px', background: '#475569', transform: 'translateX(-50%)',
+                  }} title={`${m.label}: ${fmt(m.v)}`} />
+                ))}
+              </div>
+              <span className="pcal-minutes-badge" style={{ color: projColor, background: '#1e293b', minWidth: 90 }}>
+                {proj != null && data.league_p25 != null && data.league_p75 != null
+                  ? proj < data.league_p25 ? 'Below P25'
+                  : proj > data.league_p75 ? 'Above P75'
+                  : 'In IQR'
+                  : '—'}
+              </span>
+            </div>
+          )
+        })()}
 
         {loading && <div className="pcal-loading">Loading…</div>}
 
@@ -417,8 +463,7 @@ export default function ProjectionCalibrationPage() {
                         <th>Actual {stat}</th>
                         <th>Δ%</th>
                         <th>Base year</th>
-                        <th>Scenario</th>
-                        <th>Age curve</th>
+                        <th>Age adjustment</th>
                       </>
                     )}
                   </tr>
@@ -581,33 +626,19 @@ export default function ProjectionCalibrationPage() {
                             </td>
 
                             {/* Scenario dropdown */}
+                            {/* Single age adjustment dropdown — persists selection and applies curve */}
                             <td>
                               <select
                                 className="pcal-mini-select"
-                                value={inp.scenario || 'base_case'}
-                                onChange={e => saveField(p.player_id, 'scenario', e.target.value, inp.scenario, season)}
-                              >
-                                <option value="base_case">Base case</option>
-                                <option value="optimistic">Optimistic</option>
-                                <option value="pessimistic">Pessimistic</option>
-                              </select>
-                            </td>
-
-                            {/* Age curve action dropdown */}
-                            <td>
-                              <select
-                                className="pcal-mini-select"
-                                value=""
+                                value={inp.scenario || 'no_change'}
                                 onChange={e => {
                                   if (e.target.value) handleAgeCurveAction(p, e.target.value)
-                                  e.target.value = ''
                                 }}
                               >
-                                <option value="">Apply curve…</option>
-                                <option value="base">Apply base curve</option>
-                                <option value="optimistic">Apply optimistic</option>
-                                <option value="pessimistic">Apply pessimistic</option>
-                                <option value="reset">Reset to base year</option>
+                                <option value="no_change">No change</option>
+                                <option value="base_change">Base change</option>
+                                <option value="pessimistic">Pessimistic</option>
+                                <option value="optimistic">Optimistic</option>
                               </select>
                             </td>
                           </>

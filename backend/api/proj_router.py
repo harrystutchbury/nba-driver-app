@@ -56,7 +56,7 @@ proj_router = APIRouter(prefix="/api/admin/projections")
 # ---------------------------------------------------------------------------
 
 CURRENT_SEASON   = "2025-26"
-PREV_SEASON      = "2024-25"
+PREV_SEASON      = "2025-26"
 
 _UPDATABLE_FIELDS = {
     "projected_gp", "minutes_per_game", "usage_rate", "steal_rate", "block_rate",
