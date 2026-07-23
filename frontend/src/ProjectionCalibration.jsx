@@ -384,7 +384,7 @@ export default function ProjectionCalibrationPage() {
           </div>
         )}
 
-        {/* League position bar — all stats except MIN and GP */}
+        {/* League position bar + rank box — all stats except MIN and GP */}
         {data && stat !== 'MIN' && stat !== 'GP' && data.league_min != null && data.league_max != null && (() => {
           const lo = data.league_min
           const hi = data.league_max
@@ -398,34 +398,62 @@ export default function ProjectionCalibrationPage() {
             if (Math.abs(proj - (data.league_median || data.league_avg)) / (data.league_median || data.league_avg || 1) > 0.08) return '#f59e0b'
             return '#22c55e'
           })()
+          const ticks = [
+            { v: data.league_min,    label: 'Min',  val: fmt(data.league_min) },
+            { v: data.league_p25,    label: 'P25',  val: fmt(data.league_p25) },
+            { v: data.league_median, label: 'Med',  val: fmt(data.league_median) },
+            { v: data.league_p75,    label: 'P75',  val: fmt(data.league_p75) },
+            { v: data.league_max,    label: 'Max',  val: fmt(data.league_max) },
+          ].filter(m => m.v != null)
+          const rank = data.team_rank
+          const count = data.team_count || 30
           return (
-            <div className="pcal-minutes-bar">
-              <span className="pcal-minutes-label">
-                Team {stat}: {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(proj / (data.players?.length || 1)) : fmt(proj)}
-                {data.last_season_team_total != null && <> · Last yr: {fmt(data.last_season_team_total)}</>}
-              </span>
-              <div className="pcal-minutes-track" style={{ position: 'relative' }}>
-                {/* Filled bar up to projection */}
-                {projPct != null && <div className="pcal-minutes-fill" style={{ width: `${projPct}%`, background: projColor }} />}
-                {/* Threshold markers */}
-                {[
-                  { v: data.league_p25,    label: 'P25' },
-                  { v: data.league_median, label: 'Med' },
-                  { v: data.league_p75,    label: 'P75' },
-                ].filter(m => m.v != null).map(m => (
-                  <div key={m.label} style={{
-                    position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`,
-                    width: '2px', background: '#475569', transform: 'translateX(-50%)',
-                  }} title={`${m.label}: ${fmt(m.v)}`} />
-                ))}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
+              {/* Rank box */}
+              {rank != null && (
+                <div style={{
+                  background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
+                  padding: '10px 18px', textAlign: 'center', minWidth: 80, flexShrink: 0,
+                }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: projColor, lineHeight: 1 }}>
+                    #{rank}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                    of {count} teams
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>{stat}</div>
+                </div>
+              )}
+              {/* Bar */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span className="pcal-minutes-label" style={{ margin: 0 }}>
+                    Proj: {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(proj / (data.players?.length || 1)) : fmt(proj)}
+                    {data.last_season_team_total != null && <> · Last yr: {fmt(data.last_season_team_total)}</>}
+                  </span>
+                </div>
+                <div className="pcal-minutes-track" style={{ position: 'relative', marginBottom: 20 }}>
+                  {projPct != null && <div className="pcal-minutes-fill" style={{ width: `${projPct}%`, background: projColor }} />}
+                  {ticks.map(m => (
+                    <div key={m.label}>
+                      {/* Tick line */}
+                      <div style={{
+                        position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`,
+                        width: '2px', background: '#475569', transform: 'translateX(-50%)',
+                      }} />
+                      {/* Tick label below bar */}
+                      <div style={{
+                        position: 'absolute', top: '100%', left: `${pct(m.v)}%`,
+                        transform: 'translateX(-50%)', marginTop: 4,
+                        textAlign: 'center', whiteSpace: 'nowrap',
+                      }}>
+                        <div style={{ fontSize: 10, color: '#64748b' }}>{m.label}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{m.val}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span className="pcal-minutes-badge" style={{ color: projColor, background: '#1e293b', minWidth: 90 }}>
-                {proj != null && data.league_p25 != null && data.league_p75 != null
-                  ? proj < data.league_p25 ? 'Below P25'
-                  : proj > data.league_p75 ? 'Above P75'
-                  : 'In IQR'
-                  : '—'}
-              </span>
             </div>
           )
         })()}
@@ -650,52 +678,6 @@ export default function ProjectionCalibrationPage() {
               </table>
             </div>
 
-            {/* Team stat validation panel */}
-            {valStatus && (
-              <div className="pcal-validation-panel">
-                <p className="pcal-validation-title">Team {stat} audit</p>
-                <div className="pcal-validation-grid">
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">Projected total:</span>
-                    <span className="pcal-validation-value">
-                      {projKey === 'fg_pct' || projKey === 'ft_pct'
-                        ? fmtPct(teamProjectedTotal / (data.players?.length || 1))
-                        : fmt(teamProjectedTotal)}
-                    </span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">Last season:</span>
-                    <span className="pcal-validation-value">{fmt(data.last_season_team_total)}</span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">League median:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_median)}</span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">League max:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_max)}</span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">League min:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_min)}</span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">75th pct:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_p75)}</span>
-                  </div>
-                  <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">25th pct:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_p25)}</span>
-                  </div>
-                </div>
-                <span
-                  className="pcal-status-badge"
-                  style={{ color: valStatus.color, background: valStatus.bg }}
-                >
-                  {valStatus.label}
-                </span>
-              </div>
-            )}
           </>
         )}
 

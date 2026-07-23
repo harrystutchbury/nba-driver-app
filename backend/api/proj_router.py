@@ -747,6 +747,11 @@ def get_team_calibration(
     league_p25    = round(league_totals_sorted[n // 4], 1) if n >= 4 else None
     league_p75    = round(league_totals_sorted[3 * n // 4], 1) if n >= 4 else None
 
+    # Rank: 1 = highest projected total (best for counting stats; user can interpret for TOV)
+    team_rank = None
+    if team_proj_total is not None and league_totals:
+        team_rank = sum(1 for t in league_totals if t > team_proj_total) + 1
+
     conn.close()
     return {
         "team":                 team,
@@ -762,6 +767,8 @@ def get_team_calibration(
         "league_max":           league_max,
         "league_p25":           league_p25,
         "league_p75":           league_p75,
+        "team_rank":            team_rank,
+        "team_count":           len(league_totals),
     }
 
 
