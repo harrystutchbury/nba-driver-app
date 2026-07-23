@@ -64,6 +64,23 @@ _UPDATABLE_FIELDS = {
     "two_p_pct", "fta_rate", "ft_pct", "tov_rate", "base_year", "scenario",
 }
 
+# Age curve: which rate fields each display stat affects
+_AGE_CURVE_STAT = {
+    "PTS": "PTS", "REB": "REB", "AST": "AST", "STL": "STL", "BLK": "BLK",
+    "TOV": "TOV", "3PM": "3PM", "FG%": "FG_PCT", "FT%": "FT_PCT",
+}
+_AGE_CURVE_FIELDS = {
+    "PTS":  ["two_pa_rate", "two_p_pct", "three_pa_rate", "three_p_pct", "fta_rate", "ft_pct"],
+    "REB":  ["oreb_rate", "dreb_rate"],
+    "AST":  ["ast_rate"],
+    "STL":  ["steal_rate"],
+    "BLK":  ["block_rate"],
+    "TOV":  ["tov_rate"],
+    "3PM":  ["three_pa_rate"],
+    "FG%":  ["two_p_pct", "three_p_pct"],
+    "FT%":  ["ft_pct"],
+}
+
 # Map API stat name → game_logs column (for counting stats)
 _STAT_COL = {
     "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
@@ -1106,6 +1123,98 @@ def get_age_curves(current_user: str = Depends(_get_user)):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# POST /player/{player_id}/apply-curve
+# ---------------------------------------------------------------------------
+
+@proj_router.post("/player/{player_id}/apply-curve")
+def apply_age_curve(
+    player_id:    str,
+    body:         dict,
+    current_user: str = Depends(_get_user),
+):
+    """
+    Apply (or reset) an age curve to a player's projection inputs.
+    Body: { season, stat, action }
+      action: "no_change" = reset rates to base_year actuals
+              "base_change" = reset rates then apply base_case_multiplier
+    """
+    conn   = get_conn()
+    _require_admin(current_user, conn)
+    season = body.get("season", _current_season(conn))
+    stat   = (body.get("stat") or "PTS").upper()
+    action = body.get("action", "no_change")
+
+    meta = conn.execute(
+        "SELECT team FROM players WHERE slug=? AND season=?", [player_id, season]
+    ).fetchone()
+    team = meta["team"] if meta else "UNK"
+
+    existing = get_or_init_inputs(conn, player_id, season, team)
+    base_year = existing.get("base_year") or PREV_SEASON
+
+    # Always start by re-deriving rates from base_year actuals
+    avgs  = get_player_season_avgs(conn, player_id, base_year)
+    pace  = get_team_pace(conn, team, base_year)
+    if not avgs:
+        conn.close()
+        raise HTTPException(404, f"No game log data for {player_id} in {base_year}")
+
+    derived = derive_rates(avgs, pace)
+
+    if action == "base_change":
+        # Look up player age
+        bio = conn.execute(
+            "SELECT birthdate FROM player_bio WHERE br_slug=?", [player_id]
+        ).fetchone()
+        age = _player_age(bio["birthdate"] if bio else None)
+        if age is None:
+            conn.close()
+            raise HTTPException(404, f"No birthdate for {player_id}")
+
+        # Map display stat → age_curve_lookup stat name
+        curve_stat = _AGE_CURVE_STAT.get(stat)
+        if not curve_stat:
+            conn.close()
+            raise HTTPException(400, f"No age curve for stat {stat}")
+
+        curve_row = conn.execute(
+            "SELECT base_case_multiplier FROM age_curve_lookup WHERE age=? AND stat=?",
+            [age, curve_stat],
+        ).fetchone()
+        if not curve_row or curve_row["base_case_multiplier"] is None:
+            conn.close()
+            raise HTTPException(404, f"No base_case_multiplier for age={age}, stat={curve_stat}")
+
+        multiplier   = curve_row["base_case_multiplier"]
+        fields       = _AGE_CURVE_FIELDS.get(stat, [])
+        for field in fields:
+            if field in derived and derived[field] is not None:
+                derived[field] = round(derived[field] * multiplier, 6)
+
+    # Merge and upsert
+    now    = datetime.utcnow().isoformat()
+    merged = {**existing, **derived, "last_updated": now, "updated_by": current_user}
+
+    all_cols     = list(merged.keys())
+    placeholders = ", ".join("?" * len(all_cols))
+    set_clause   = ", ".join(f"{c}=excluded.{c}" for c in all_cols)
+
+    conn.execute(f"""
+        INSERT INTO projection_inputs ({", ".join(all_cols)})
+        VALUES ({placeholders})
+        ON CONFLICT(player_id, season) DO UPDATE SET {set_clause}
+    """, [merged[c] for c in all_cols])
+    conn.commit()
+
+    updated = conn.execute(
+        "SELECT * FROM projection_inputs WHERE player_id=? AND season=?",
+        [player_id, season],
+    ).fetchone()
+    conn.close()
+    return {"ok": True, "player_id": player_id, "updated": dict(updated) if updated else merged}
 
 
 # ---------------------------------------------------------------------------

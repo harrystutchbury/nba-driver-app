@@ -77,24 +77,6 @@ const STAT_PROJ_KEY = {
   TOV: 'tov', '3PM': 'fg3m', 'FG%': 'fg_pct', 'FT%': 'ft_pct',
 }
 
-// Age curve stat mapping: display stat → age_curve_lookup stat name
-const AGE_CURVE_STAT = {
-  PTS: 'PTS', REB: 'REB', AST: 'AST', STL: 'STL', BLK: 'BLK',
-  TOV: 'TOV', '3PM': '3PM', 'FG%': 'FG_PCT', 'FT%': 'FT_PCT',
-}
-
-// Rate fields affected by each age curve stat
-const AGE_CURVE_FIELDS = {
-  PTS:  ['two_pa_rate', 'two_p_pct', 'three_pa_rate', 'three_p_pct', 'fta_rate', 'ft_pct'],
-  REB:  ['oreb_rate', 'dreb_rate'],
-  AST:  ['ast_rate'],
-  STL:  ['steal_rate'],
-  BLK:  ['block_rate'],
-  TOV:  ['tov_rate'],
-  '3PM': ['three_pa_rate'],
-  'FG%': ['two_p_pct', 'three_p_pct'],
-  'FT%': ['ft_pct'],
-}
 
 function authFetch(url, opts = {}) {
   const token = localStorage.getItem('nba_token')
@@ -181,22 +163,14 @@ export default function ProjectionCalibrationPage() {
   const [loading, setLoading]       = useState(false)
   const [saving, setSaving]         = useState({})
   const [errors, setErrors]         = useState({})
-  const [ageCurves, setAgeCurves]   = useState([])
   const [localInputs, setLocalInputs] = useState({})
-  // Store previous values for revert on error
-  const prevInputsRef = { current: {} }
 
-  // Load teams + age curves on mount
+  // Load teams on mount
   useEffect(() => {
     authFetch('/api/admin/projections/teams')
       .then(r => r.ok ? r.json() : [])
       .then(ts => { setTeams(ts); if (ts.length) setTeam(ts[0]) })
       .catch(() => {})
-
-    authFetch('/api/admin/projections/age-curves')
-      .then(r => r.ok ? r.json() : (console.warn('age-curves fetch failed', r.status), []))
-      .then(d => { console.log('ageCurves loaded', d?.length, d?.[0]); setAgeCurves(d) })
-      .catch(e => console.error('age-curves error', e))
   }, [])
 
   // Load team data when team or stat changes
@@ -305,33 +279,25 @@ export default function ProjectionCalibrationPage() {
     }
   }
 
-  function handleAgeCurveAction(player, action) {
-    const curveStatKey = AGE_CURVE_STAT[stat]
-    const age = player.age
-    const curveRow = ageCurves.find(c => c.age === age && c.stat === curveStatKey)
-    console.log('ageCurve lookup', { age, curveStatKey, curveRow, ageCurvesLen: ageCurves.length })
-    const inp = localInputs[player.player_id] || player.inputs
+  async function handleAgeCurveAction(player, action) {
     const season = data?.season || '2025-26'
-
-    if (action === 'no_change') {
-      handleBaseYearChange(player.player_id, inp.base_year || '2025-26', season)
-      return
+    setSaving(s => ({ ...s, [player.player_id]: true }))
+    setErrors(e => ({ ...e, [player.player_id]: null }))
+    try {
+      const res = await authFetch(`/api/admin/projections/player/${player.player_id}/apply-curve`, {
+        method: 'POST',
+        body: JSON.stringify({ season, stat, action }),
+      })
+      if (!res.ok) throw new Error(`Apply curve failed (${res.status})`)
+      const body = await res.json()
+      if (body.updated) {
+        setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...prev[player.player_id], ...body.updated } }))
+      }
+    } catch (err) {
+      setErrors(e => ({ ...e, [player.player_id]: err.message }))
+    } finally {
+      setSaving(s => ({ ...s, [player.player_id]: false }))
     }
-
-    const multiplierKey = action === 'base_change' ? 'base_case_multiplier'
-      : action === 'optimistic' ? 'optimistic_multiplier'
-      : 'pessimistic_multiplier'
-
-    if (!curveRow || curveRow[multiplierKey] == null) return
-
-    const mult = curveRow[multiplierKey]
-    const fields = AGE_CURVE_FIELDS[stat] || []
-    const updated = { scenario: action }
-    fields.forEach(f => {
-      if (inp[f] != null) updated[f] = +(inp[f] * mult).toFixed(5)
-    })
-    setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...prev[player.player_id], ...updated } }))
-    saveMultipleFields(player.player_id, updated, season)
   }
 
   // Team projected total for selected stat (from localInputs) — GP-weighted season totals
@@ -804,8 +770,7 @@ export default function ProjectionCalibrationPage() {
                               </select>
                             </td>
 
-                            {/* Scenario dropdown */}
-                            {/* Single age adjustment dropdown — persists selection and applies curve */}
+                            {/* Age adjustment dropdown */}
                             <td>
                               <select
                                 className="pcal-mini-select"
@@ -816,8 +781,6 @@ export default function ProjectionCalibrationPage() {
                               >
                                 <option value="no_change">No change</option>
                                 <option value="base_change">Base change</option>
-                                <option value="pessimistic">Pessimistic</option>
-                                <option value="optimistic">Optimistic</option>
                               </select>
                             </td>
                           </>
