@@ -44,7 +44,7 @@ const STYLES = `
 .pcal-rate-label { font-size: 11px; color: #64748b; white-space: nowrap; }
 `
 
-const STATS = ['MIN', 'GP', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
+const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
 
 const STAT_RATE_FIELDS = {
   MIN:  [],
@@ -160,7 +160,7 @@ function fmtPct(val) {
 export default function ProjectionCalibrationPage() {
   const [teams, setTeams]           = useState([])
   const [team, setTeam]             = useState('')
-  const [stat, setStat]             = useState('PTS')
+  const [stat, setStat]             = useState('GP')
   const [data, setData]             = useState(null)
   const [loading, setLoading]       = useState(false)
   const [saving, setSaving]         = useState({})
