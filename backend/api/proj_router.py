@@ -66,7 +66,7 @@ _UPDATABLE_FIELDS = {
 
 # Map API stat name → game_logs column (for counting stats)
 _STAT_COL = {
-    "PTS": "pts", "OREB": "oreb", "DREB": "dreb", "AST": "ast", "STL": "stl",
+    "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
     "BLK": "blk", "TOV": "tov", "3PM": "fg3m",
 }
 
@@ -673,6 +673,12 @@ def get_team_calibration(
             ), 1)
         if stat_key == "GP":
             return round(sum((pd["inputs"].get("projected_gp") or 0) for pd in pdata), 1)
+        if stat_key == "REB":
+            return round(sum(
+                (pd["inputs"].get("projected_gp") or 0) *
+                ((pd["projected"].get("oreb") or 0) + (pd["projected"].get("dreb") or 0))
+                for pd in pdata
+            ), 1)
         col = _STAT_COL.get(stat_key)
         if not col:
             return None

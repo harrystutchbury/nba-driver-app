@@ -44,7 +44,7 @@ const STYLES = `
 .pcal-rate-label { font-size: 11px; color: #64748b; white-space: nowrap; }
 `
 
-const STATS = ['GP', 'MIN', 'PTS', 'OREB', 'DREB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
+const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
 
 const STAT_RATE_FIELDS = {
   MIN:  [],
@@ -57,8 +57,10 @@ const STAT_RATE_FIELDS = {
     { key: 'fta_rate',      label: 'FTA/min', pct: false, step: 0.001 },
     { key: 'ft_pct',        label: 'FT%',     pct: true },
   ],
-  OREB: [{ key: 'oreb_rate', label: 'OREB/poss', pct: false, step: 0.0001 }],
-  DREB: [{ key: 'dreb_rate', label: 'DREB/poss', pct: false, step: 0.0001 }],
+  REB:  [
+    { key: 'oreb_rate', label: 'OREB/poss', pct: false, step: 0.0001 },
+    { key: 'dreb_rate', label: 'DREB/poss', pct: false, step: 0.0001 },
+  ],
   AST:  [{ key: 'ast_rate',      label: 'AST/poss', pct: false, step: 0.0001 }],
   STL:  [{ key: 'steal_rate',    label: 'STL/poss', pct: false, step: 0.0001 }],
   BLK:  [{ key: 'block_rate',    label: 'BLK/poss', pct: false, step: 0.0001 }],
@@ -68,24 +70,23 @@ const STAT_RATE_FIELDS = {
   'FT%':[{ key: 'ft_pct',       label: 'FT%',  pct: true }],
 }
 
-// Map display stat to projected key (MIN/GP use actual fields only)
+// Map display stat to projected key (MIN/GP/REB use special handling)
 const STAT_PROJ_KEY = {
-  MIN: null, GP: null,
-  PTS: 'pts', OREB: 'oreb', DREB: 'dreb', AST: 'ast', STL: 'stl', BLK: 'blk',
+  MIN: null, GP: null, REB: null,
+  PTS: 'pts', AST: 'ast', STL: 'stl', BLK: 'blk',
   TOV: 'tov', '3PM': 'fg3m', 'FG%': 'fg_pct', 'FT%': 'ft_pct',
 }
 
 // Age curve stat mapping: display stat → age_curve_lookup stat name
 const AGE_CURVE_STAT = {
-  PTS: 'PTS', OREB: 'REB', DREB: 'REB', AST: 'AST', STL: 'STL', BLK: 'BLK',
+  PTS: 'PTS', REB: 'REB', AST: 'AST', STL: 'STL', BLK: 'BLK',
   TOV: 'TOV', '3PM': '3PM', 'FG%': 'FG_PCT', 'FT%': 'FT_PCT',
 }
 
 // Rate fields affected by each age curve stat
 const AGE_CURVE_FIELDS = {
   PTS:  ['two_pa_rate', 'two_p_pct', 'three_pa_rate', 'three_p_pct', 'fta_rate', 'ft_pct'],
-  OREB: ['oreb_rate'],
-  DREB: ['dreb_rate'],
+  REB:  ['oreb_rate', 'dreb_rate'],
   AST:  ['ast_rate'],
   STL:  ['steal_rate'],
   BLK:  ['block_rate'],
@@ -337,11 +338,17 @@ export default function ProjectionCalibrationPage() {
             const inp = localInputs[p.player_id] || p.inputs
             return sum + (inp.projected_gp || 0)
           }, 0)
-        : data.players.reduce((sum, p) => {
-            const proj = getProjected(p)
-            const inp = localInputs[p.player_id] || p.inputs
-            return sum + (inp.projected_gp || 0) * (proj?.[projKey] || 0)
-          }, 0)
+        : stat === 'REB'
+          ? data.players.reduce((sum, p) => {
+              const proj = getProjected(p)
+              const inp = localInputs[p.player_id] || p.inputs
+              return sum + (inp.projected_gp || 0) * ((proj?.oreb || 0) + (proj?.dreb || 0))
+            }, 0)
+          : data.players.reduce((sum, p) => {
+              const proj = getProjected(p)
+              const inp = localInputs[p.player_id] || p.inputs
+              return sum + (inp.projected_gp || 0) * (proj?.[projKey] || 0)
+            }, 0)
     : null
 
   const mBar = minutesBadge(minutesTotal)
@@ -490,9 +497,14 @@ export default function ProjectionCalibrationPage() {
                         <th style={{ color: '#64748b' }}>Min/G</th>
                         <th style={{ color: '#64748b' }}>GP</th>
                         {rateFields.map(f => <th key={f.key}>{f.label}</th>)}
-                        <th>Proj {stat}</th>
-                        <th>Actual {stat}</th>
-                        <th>Δ%</th>
+                        {stat === 'REB' ? (
+                          <>
+                            <th>Proj OREB</th><th>Act OREB</th><th>Δ%</th>
+                            <th>Proj DREB</th><th>Act DREB</th><th>Δ%</th>
+                          </>
+                        ) : (
+                          <><th>Proj {stat}</th><th>Actual {stat}</th><th>Δ%</th></>
+                        )}
                         <th>Base year</th>
                         <th>Age adjustment</th>
                       </>
@@ -628,20 +640,38 @@ export default function ProjectionCalibrationPage() {
                               </td>
                             ))}
 
-                            {/* Proj / Actual / Δ% */}
-                            <td className="pcal-projected">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct'
-                                ? fmtPct(projV)
-                                : fmt(projV)}
-                            </td>
-                            <td className="pcal-actual">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct'
-                                ? fmtPct(actV)
-                                : fmt(actV)}
-                            </td>
-                            <td className={deltaClass}>
-                              {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
-                            </td>
+                            {/* Proj / Actual / Δ% — REB gets two pairs (OREB + DREB) */}
+                            {stat === 'REB' ? (() => {
+                              const proj = getProjected(p)
+                              const mkDelta = (pv, av) => {
+                                if (pv == null || av == null || av === 0) return null
+                                return ((pv - av) / av) * 100
+                              }
+                              const mkClass = d => d == null ? 'pcal-delta-neutral' : d > 5 ? 'pcal-delta-neg' : d < -5 ? 'pcal-delta-pos' : 'pcal-delta-neutral'
+                              const orebProj = proj?.oreb, orebAct = p.actual?.oreb
+                              const drebProj = proj?.dreb, drebAct = p.actual?.dreb
+                              const od = mkDelta(orebProj, orebAct), dd = mkDelta(drebProj, drebAct)
+                              return (<>
+                                <td className="pcal-projected">{fmt(orebProj)}</td>
+                                <td className="pcal-actual">{fmt(orebAct)}</td>
+                                <td className={mkClass(od)}>{od != null ? `${od > 0 ? '+' : ''}${od.toFixed(1)}%` : '—'}</td>
+                                <td className="pcal-projected">{fmt(drebProj)}</td>
+                                <td className="pcal-actual">{fmt(drebAct)}</td>
+                                <td className={mkClass(dd)}>{dd != null ? `${dd > 0 ? '+' : ''}${dd.toFixed(1)}%` : '—'}</td>
+                              </>)
+                            })() : (
+                              <>
+                                <td className="pcal-projected">
+                                  {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(projV) : fmt(projV)}
+                                </td>
+                                <td className="pcal-actual">
+                                  {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(actV) : fmt(actV)}
+                                </td>
+                                <td className={deltaClass}>
+                                  {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
+                                </td>
+                              </>
+                            )}
 
                             {/* Base year dropdown */}
                             <td>
