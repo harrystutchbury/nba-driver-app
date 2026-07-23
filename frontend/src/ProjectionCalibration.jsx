@@ -389,6 +389,7 @@ export default function ProjectionCalibrationPage() {
                     {rateFields.map(f => <th key={f.key}>{f.label}</th>)}
                     {stat !== 'MIN' && stat !== 'GP' && <><th>Proj {stat}</th><th>Actual {stat}</th><th>Δ%</th></>}
                     {stat === 'MIN' && <><th>Proj MIN</th><th>Actual MIN</th><th>Δ%</th></>}
+                    {stat === 'GP'  && <><th>Proj GP</th><th>Actual GP</th><th>Δ%</th></>}
                     <th>Base year</th>
                     <th>Scenario</th>
                     <th>Age curve</th>
@@ -401,14 +402,14 @@ export default function ProjectionCalibrationPage() {
                     const season = data.season || '2025-26'
                     const isSaving = saving[p.player_id]
 
-                    // MIN view: projected = inp value, actual = actual.min
+                    // MIN/GP: projected = input value, actual = actuals
                     const projV = stat === 'MIN' ? (inp.minutes_per_game ?? null)
-                      : stat === 'GP'  ? null
+                      : stat === 'GP'  ? (inp.projected_gp ?? null)
                       : proj?.[projKey]
                     const actV  = stat === 'MIN' ? (p.actual?.min ?? null)
                       : stat === 'GP'  ? (p.actual?.gp ?? null)
                       : p.actual?.[projKey]
-                    const delta = stat !== 'GP' && projV != null && actV != null && actV !== 0
+                    const delta = projV != null && actV != null && actV !== 0
                       ? ((projV - actV) / actV) * 100
                       : null
                     const deltaClass = delta == null ? 'pcal-delta-neutral'
@@ -448,16 +449,59 @@ export default function ProjectionCalibrationPage() {
                           </td>
                         )}
 
-                        {/* GP view: read-only GP */}
-                        {stat === 'GP' && (
-                          <td className="pcal-actual">{p.actual?.gp ?? '—'}</td>
-                        )}
+                        {/* GP view: editable projected GP + fill-from dropdown */}
+                        {stat === 'GP' && (() => {
+                          const refs = p.gp_references || {}
+                          const fillOptions = [
+                            refs.last_yr   != null && { label: `Last yr (${refs.last_yr})`,       value: refs.last_yr },
+                            refs.prev_yr   != null && { label: `2 yrs ago (${refs.prev_yr})`,     value: refs.prev_yr },
+                            refs.three_avg != null && { label: `3yr avg (${refs.three_avg})`,     value: refs.three_avg },
+                            refs.career    != null && { label: `Career avg (${refs.career})`,     value: refs.career },
+                          ].filter(Boolean)
+                          return (
+                            <td>
+                              <div className="pcal-rate-pair">
+                                <input
+                                  className="pcal-input"
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  max="82"
+                                  value={inp.projected_gp ?? ''}
+                                  onChange={e => setField(p.player_id, 'projected_gp', parseFloat(e.target.value) || 0)}
+                                  onBlur={e => {
+                                    const val = parseFloat(e.target.value) || 0
+                                    saveField(p.player_id, 'projected_gp', val, p.inputs.projected_gp, season)
+                                  }}
+                                />
+                                {fillOptions.length > 0 && (
+                                  <select
+                                    className="pcal-mini-select"
+                                    value=""
+                                    onChange={e => {
+                                      if (!e.target.value) return
+                                      const val = parseFloat(e.target.value)
+                                      setField(p.player_id, 'projected_gp', val)
+                                      saveField(p.player_id, 'projected_gp', val, inp.projected_gp, season)
+                                      e.target.value = ''
+                                    }}
+                                  >
+                                    <option value="">Fill…</option>
+                                    {fillOptions.map(o => (
+                                      <option key={o.label} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            </td>
+                          )
+                        })()}
 
                         {/* Other stats: Min/G and GP as read-only reference columns */}
                         {stat !== 'MIN' && stat !== 'GP' && (
                           <>
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
-                            <td className="pcal-actual">{p.actual?.gp ?? '—'}</td>
+                            <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
                           </>
                         )}
 
@@ -495,24 +539,20 @@ export default function ProjectionCalibrationPage() {
                           </td>
                         ))}
 
-                        {/* Proj / Actual / Δ% — not shown for GP (no projection) */}
-                        {stat !== 'GP' && (
-                          <>
-                            <td className="pcal-projected">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct'
-                                ? fmtPct(projV)
-                                : fmt(projV)}
-                            </td>
-                            <td className="pcal-actual">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct'
-                                ? fmtPct(actV)
-                                : fmt(actV)}
-                            </td>
-                            <td className={deltaClass}>
-                              {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
-                            </td>
-                          </>
-                        )}
+                        {/* Proj / Actual / Δ% */}
+                        <td className="pcal-projected">
+                          {projKey === 'fg_pct' || projKey === 'ft_pct'
+                            ? fmtPct(projV)
+                            : fmt(projV)}
+                        </td>
+                        <td className="pcal-actual">
+                          {projKey === 'fg_pct' || projKey === 'ft_pct'
+                            ? fmtPct(actV)
+                            : fmt(actV)}
+                        </td>
+                        <td className={deltaClass}>
+                          {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
+                        </td>
 
                         {/* Base year dropdown */}
                         <td>

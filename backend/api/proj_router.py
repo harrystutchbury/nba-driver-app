@@ -59,9 +59,9 @@ CURRENT_SEASON   = "2025-26"
 PREV_SEASON      = "2024-25"
 
 _UPDATABLE_FIELDS = {
-    "minutes_per_game", "usage_rate", "steal_rate", "block_rate", "ast_rate",
-    "reb_rate", "three_pa_rate", "three_p_pct", "two_pa_rate", "two_p_pct",
-    "fta_rate", "ft_pct", "tov_rate", "base_year", "scenario",
+    "projected_gp", "minutes_per_game", "usage_rate", "steal_rate", "block_rate",
+    "ast_rate", "reb_rate", "three_pa_rate", "three_p_pct", "two_pa_rate",
+    "two_p_pct", "fta_rate", "ft_pct", "tov_rate", "base_year", "scenario",
 }
 
 # Map API stat name → game_logs column (for counting stats)
@@ -176,6 +176,30 @@ def compute_projected(inp: dict, pace: float) -> dict:
     }
 
 
+def get_gp_references(conn, player_id: str, current_season: str) -> dict:
+    """Return historical GP reference values for a player."""
+    rows = conn.execute(
+        """
+        SELECT season, COUNT(*) gp
+        FROM game_logs
+        WHERE player_slug=? AND min>0 AND season<?
+        GROUP BY season ORDER BY season DESC
+        """,
+        [player_id, current_season],
+    ).fetchall()
+    seasons = [(r["season"], r["gp"]) for r in rows]
+    last_yr   = seasons[0][1] if len(seasons) >= 1 else None
+    prev_yr   = seasons[1][1] if len(seasons) >= 2 else None
+    three_avg = round(sum(g for _, g in seasons[:3]) / len(seasons[:3]), 1) if seasons else None
+    career    = round(sum(g for _, g in seasons) / len(seasons), 1) if seasons else None
+    return {
+        "last_yr":   last_yr,
+        "prev_yr":   prev_yr,
+        "three_avg": three_avg,
+        "career":    career,
+    }
+
+
 def get_or_init_inputs(conn, player_id: str, season: str, team: str,
                        base_year: str = PREV_SEASON) -> dict:
     """Return existing projection_inputs row, or auto-init from base_year actuals."""
@@ -191,9 +215,14 @@ def get_or_init_inputs(conn, player_id: str, season: str, team: str,
     mpg   = avgs.get("min") or 0
     rates = derive_rates(avgs, pace) if avgs else {}
 
+    # Default projected_gp to last year's actual GP
+    gp_refs = get_gp_references(conn, player_id, season)
+    default_gp = gp_refs["last_yr"]
+
     return {
         "player_id": player_id, "season": season,
         "base_year": base_year, "scenario": "base_case",
+        "projected_gp": default_gp,
         "minutes_per_game": round(mpg, 1),
         **rates,
         "last_updated": None, "updated_by": None,
@@ -582,6 +611,8 @@ def get_team_calibration(
             "gp":     actual.get("gp") or 0,
         } if actual else {}
 
+        gp_refs = get_gp_references(conn, pid, season)
+
         player_data.append({
             "player_id": pid,
             "full_name": p["full_name"],
@@ -591,6 +622,7 @@ def get_team_calibration(
             "projected": proj,
             "actual":    actual_out,
             "available_seasons": available_seasons,
+            "gp_references": gp_refs,
         })
 
     # Team minutes total

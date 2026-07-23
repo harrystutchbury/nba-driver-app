@@ -511,6 +511,7 @@ def init_db():
             season             TEXT NOT NULL,
             base_year          TEXT,
             scenario           TEXT NOT NULL DEFAULT 'base_case',
+            projected_gp       REAL,
             minutes_per_game   REAL,
             usage_rate         REAL,
             steal_rate         REAL,
@@ -529,6 +530,11 @@ def init_db():
             PRIMARY KEY (player_id, season)
         )
     """)
+    # Migration: add projected_gp to existing tables that predate this column
+    try:
+        conn.execute("ALTER TABLE projection_inputs ADD COLUMN projected_gp REAL")
+    except Exception:
+        pass  # column already exists
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projection_edit_log (
