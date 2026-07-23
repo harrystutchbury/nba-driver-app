@@ -12401,7 +12401,7 @@ from api.forum import forum_router
 app.include_router(forum_router)
 
 from nbacom.api import router as nbacom_router
-app.include_router(nbacom_router)
+app.include_router(nbacom_router, prefix="/api")
 
 from api.proj_router import proj_router
 app.include_router(proj_router)
