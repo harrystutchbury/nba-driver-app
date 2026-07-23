@@ -194,9 +194,9 @@ export default function ProjectionCalibrationPage() {
       .catch(() => {})
 
     authFetch('/api/admin/projections/age-curves')
-      .then(r => r.ok ? r.json() : [])
-      .then(setAgeCurves)
-      .catch(() => {})
+      .then(r => r.ok ? r.json() : (console.warn('age-curves fetch failed', r.status), []))
+      .then(d => { console.log('ageCurves loaded', d?.length, d?.[0]); setAgeCurves(d) })
+      .catch(e => console.error('age-curves error', e))
   }, [])
 
   // Load team data when team or stat changes
@@ -309,6 +309,7 @@ export default function ProjectionCalibrationPage() {
     const curveStatKey = AGE_CURVE_STAT[stat]
     const age = player.age
     const curveRow = ageCurves.find(c => c.age === age && c.stat === curveStatKey)
+    console.log('ageCurve lookup', { age, curveStatKey, curveRow, ageCurvesLen: ageCurves.length })
     const inp = localInputs[player.player_id] || player.inputs
     const season = data?.season || '2025-26'
 
