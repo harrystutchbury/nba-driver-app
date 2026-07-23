@@ -388,22 +388,32 @@ export default function ProjectionCalibrationPage() {
                     <th>Player</th>
                     <th>Age</th>
                     {stat === 'MIN' ? (
-                      <th>Min/G ✎</th>
+                      <>
+                        <th>Min/G ✎</th>
+                        <th style={{ color: '#64748b' }}>Last yr MIN</th>
+                        <th style={{ color: '#64748b' }}>2 yrs ago</th>
+                      </>
                     ) : stat === 'GP' ? (
-                      <th>GP</th>
+                      <>
+                        <th>Proj GP ✎</th>
+                        <th style={{ color: '#64748b' }}>Last yr GP</th>
+                        <th style={{ color: '#64748b' }}>2 yrs ago</th>
+                        <th style={{ color: '#64748b' }}>3yr avg</th>
+                        <th style={{ color: '#64748b' }}>Career avg</th>
+                      </>
                     ) : (
                       <>
                         <th style={{ color: '#64748b' }}>Min/G</th>
                         <th style={{ color: '#64748b' }}>GP</th>
+                        {rateFields.map(f => <th key={f.key}>{f.label}</th>)}
+                        <th>Proj {stat}</th>
+                        <th>Actual {stat}</th>
+                        <th>Δ%</th>
+                        <th>Base year</th>
+                        <th>Scenario</th>
+                        <th>Age curve</th>
                       </>
                     )}
-                    {rateFields.map(f => <th key={f.key}>{f.label}</th>)}
-                    {stat !== 'MIN' && stat !== 'GP' && <><th>Proj {stat}</th><th>Actual {stat}</th><th>Δ%</th></>}
-                    {stat === 'MIN' && <><th>Proj MIN</th><th>Actual MIN</th><th>Δ%</th></>}
-                    {stat === 'GP'  && <><th>Proj GP</th><th>Actual GP</th><th>Δ%</th></>}
-                    <th>Base year</th>
-                    <th>Scenario</th>
-                    <th>Age curve</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -441,37 +451,38 @@ export default function ProjectionCalibrationPage() {
                         {/* Age */}
                         <td style={{ color: '#94a3b8' }}>{p.age}</td>
 
-                        {/* MIN view: editable Min/G cell */}
-                        {stat === 'MIN' && (
-                          <td>
-                            <input
-                              className="pcal-input"
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="48"
-                              value={inp.minutes_per_game ?? ''}
-                              onChange={e => setField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0)}
-                              onBlur={e => {
-                                const val = parseFloat(e.target.value) || 0
-                                saveField(p.player_id, 'minutes_per_game', val, p.inputs.minutes_per_game, season)
-                              }}
-                            />
-                          </td>
-                        )}
+                        {/* MIN view: editable Min/G + historical reference columns */}
+                        {stat === 'MIN' && (() => {
+                          const refs = p.min_references || {}
+                          return (
+                            <>
+                              <td>
+                                <input
+                                  className="pcal-input"
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  max="48"
+                                  value={inp.minutes_per_game ?? ''}
+                                  onChange={e => setField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0)}
+                                  onBlur={e => {
+                                    const val = parseFloat(e.target.value) || 0
+                                    saveField(p.player_id, 'minutes_per_game', val, p.inputs.minutes_per_game, season)
+                                  }}
+                                />
+                              </td>
+                              <td className="pcal-actual">{refs.last_yr ?? '—'}</td>
+                              <td className="pcal-actual">{refs.prev_yr ?? '—'}</td>
+                            </>
+                          )
+                        })()}
 
-                        {/* GP view: editable projected GP + fill-from dropdown */}
+                        {/* GP view: editable projected GP + historical reference columns */}
                         {stat === 'GP' && (() => {
                           const refs = p.gp_references || {}
-                          const fillOptions = [
-                            refs.last_yr   != null && { label: `Last yr (${refs.last_yr})`,       value: refs.last_yr },
-                            refs.prev_yr   != null && { label: `2 yrs ago (${refs.prev_yr})`,     value: refs.prev_yr },
-                            refs.three_avg != null && { label: `3yr avg (${refs.three_avg})`,     value: refs.three_avg },
-                            refs.career    != null && { label: `Career avg (${refs.career})`,     value: refs.career },
-                          ].filter(Boolean)
                           return (
-                            <td>
-                              <div className="pcal-rate-pair">
+                            <>
+                              <td>
                                 <input
                                   className="pcal-input"
                                   type="number"
@@ -485,129 +496,115 @@ export default function ProjectionCalibrationPage() {
                                     saveField(p.player_id, 'projected_gp', val, p.inputs.projected_gp, season)
                                   }}
                                 />
-                                {fillOptions.length > 0 && (
-                                  <select
-                                    className="pcal-mini-select"
-                                    value=""
-                                    onChange={e => {
-                                      if (!e.target.value) return
-                                      const val = parseFloat(e.target.value)
-                                      setField(p.player_id, 'projected_gp', val)
-                                      saveField(p.player_id, 'projected_gp', val, inp.projected_gp, season)
-                                      e.target.value = ''
-                                    }}
-                                  >
-                                    <option value="">Fill…</option>
-                                    {fillOptions.map(o => (
-                                      <option key={o.label} value={o.value}>{o.label}</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
-                            </td>
+                              </td>
+                              <td className="pcal-actual">{refs.last_yr ?? '—'}</td>
+                              <td className="pcal-actual">{refs.prev_yr ?? '—'}</td>
+                              <td className="pcal-actual">{refs.three_avg ?? '—'}</td>
+                              <td className="pcal-actual">{refs.career ?? '—'}</td>
+                            </>
                           )
                         })()}
 
-                        {/* Other stats: Min/G and GP as read-only reference columns */}
+                        {/* Other stats: Min/G and GP as read-only reference columns, then full calibration */}
                         {stat !== 'MIN' && stat !== 'GP' && (
                           <>
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
                             <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
+
+                            {/* Rate field(s) editable */}
+                            {rateFields.map(f => (
+                              <td key={f.key}>
+                                {f.pct ? (
+                                  <input
+                                    className="pcal-input"
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    max="100"
+                                    value={inp[f.key] != null ? +(inp[f.key] * 100).toFixed(2) : ''}
+                                    onChange={e => setField(p.player_id, f.key, (parseFloat(e.target.value) || 0) / 100)}
+                                    onBlur={e => {
+                                      const val = (parseFloat(e.target.value) || 0) / 100
+                                      saveField(p.player_id, f.key, val, p.inputs[f.key], season)
+                                    }}
+                                  />
+                                ) : (
+                                  <input
+                                    className="pcal-input pcal-input-wide"
+                                    type="number"
+                                    step={f.step || 0.0001}
+                                    min="0"
+                                    value={inp[f.key] ?? ''}
+                                    onChange={e => setField(p.player_id, f.key, parseFloat(e.target.value) || 0)}
+                                    onBlur={e => {
+                                      const val = parseFloat(e.target.value) || 0
+                                      saveField(p.player_id, f.key, val, p.inputs[f.key], season)
+                                    }}
+                                  />
+                                )}
+                              </td>
+                            ))}
+
+                            {/* Proj / Actual / Δ% */}
+                            <td className="pcal-projected">
+                              {projKey === 'fg_pct' || projKey === 'ft_pct'
+                                ? fmtPct(projV)
+                                : fmt(projV)}
+                            </td>
+                            <td className="pcal-actual">
+                              {projKey === 'fg_pct' || projKey === 'ft_pct'
+                                ? fmtPct(actV)
+                                : fmt(actV)}
+                            </td>
+                            <td className={deltaClass}>
+                              {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
+                            </td>
+
+                            {/* Base year dropdown */}
+                            <td>
+                              <select
+                                className="pcal-mini-select"
+                                value={inp.base_year || ''}
+                                onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}
+                              >
+                                {(p.available_seasons || []).map(s => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* Scenario dropdown */}
+                            <td>
+                              <select
+                                className="pcal-mini-select"
+                                value={inp.scenario || 'base_case'}
+                                onChange={e => saveField(p.player_id, 'scenario', e.target.value, inp.scenario, season)}
+                              >
+                                <option value="base_case">Base case</option>
+                                <option value="optimistic">Optimistic</option>
+                                <option value="pessimistic">Pessimistic</option>
+                              </select>
+                            </td>
+
+                            {/* Age curve action dropdown */}
+                            <td>
+                              <select
+                                className="pcal-mini-select"
+                                value=""
+                                onChange={e => {
+                                  if (e.target.value) handleAgeCurveAction(p, e.target.value)
+                                  e.target.value = ''
+                                }}
+                              >
+                                <option value="">Apply curve…</option>
+                                <option value="base">Apply base curve</option>
+                                <option value="optimistic">Apply optimistic</option>
+                                <option value="pessimistic">Apply pessimistic</option>
+                                <option value="reset">Reset to base year</option>
+                              </select>
+                            </td>
                           </>
                         )}
-
-                        {/* Rate field(s) editable */}
-                        {rateFields.map(f => (
-                          <td key={f.key}>
-                            {f.pct ? (
-                              <input
-                                className="pcal-input"
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={inp[f.key] != null ? +(inp[f.key] * 100).toFixed(2) : ''}
-                                onChange={e => setField(p.player_id, f.key, (parseFloat(e.target.value) || 0) / 100)}
-                                onBlur={e => {
-                                  const val = (parseFloat(e.target.value) || 0) / 100
-                                  saveField(p.player_id, f.key, val, p.inputs[f.key], season)
-                                }}
-                              />
-                            ) : (
-                              <input
-                                className="pcal-input pcal-input-wide"
-                                type="number"
-                                step={f.step || 0.0001}
-                                min="0"
-                                value={inp[f.key] ?? ''}
-                                onChange={e => setField(p.player_id, f.key, parseFloat(e.target.value) || 0)}
-                                onBlur={e => {
-                                  const val = parseFloat(e.target.value) || 0
-                                  saveField(p.player_id, f.key, val, p.inputs[f.key], season)
-                                }}
-                              />
-                            )}
-                          </td>
-                        ))}
-
-                        {/* Proj / Actual / Δ% */}
-                        <td className="pcal-projected">
-                          {projKey === 'fg_pct' || projKey === 'ft_pct'
-                            ? fmtPct(projV)
-                            : fmt(projV)}
-                        </td>
-                        <td className="pcal-actual">
-                          {projKey === 'fg_pct' || projKey === 'ft_pct'
-                            ? fmtPct(actV)
-                            : fmt(actV)}
-                        </td>
-                        <td className={deltaClass}>
-                          {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
-                        </td>
-
-                        {/* Base year dropdown */}
-                        <td>
-                          <select
-                            className="pcal-mini-select"
-                            value={inp.base_year || ''}
-                            onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}
-                          >
-                            {(p.available_seasons || []).map(s => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                        </td>
-
-                        {/* Scenario dropdown */}
-                        <td>
-                          <select
-                            className="pcal-mini-select"
-                            value={inp.scenario || 'base_case'}
-                            onChange={e => saveField(p.player_id, 'scenario', e.target.value, inp.scenario, season)}
-                          >
-                            <option value="base_case">Base case</option>
-                            <option value="optimistic">Optimistic</option>
-                            <option value="pessimistic">Pessimistic</option>
-                          </select>
-                        </td>
-
-                        {/* Age curve action dropdown */}
-                        <td>
-                          <select
-                            className="pcal-mini-select"
-                            value=""
-                            onChange={e => {
-                              if (e.target.value) handleAgeCurveAction(p, e.target.value)
-                              e.target.value = ''
-                            }}
-                          >
-                            <option value="">Apply curve…</option>
-                            <option value="base">Apply base curve</option>
-                            <option value="optimistic">Apply optimistic</option>
-                            <option value="pessimistic">Apply pessimistic</option>
-                            <option value="reset">Reset to base year</option>
-                          </select>
-                        </td>
                       </tr>
                     )
                   })}

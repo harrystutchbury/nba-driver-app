@@ -176,6 +176,25 @@ def compute_projected(inp: dict, pace: float) -> dict:
     }
 
 
+def get_min_references(conn, player_id: str, current_season: str) -> dict:
+    """Return historical MPG reference values for a player (last 2 seasons)."""
+    rows = conn.execute(
+        """
+        SELECT season, AVG(min) mpg
+        FROM game_logs
+        WHERE player_slug=? AND min>0 AND season<?
+        GROUP BY season ORDER BY season DESC
+        LIMIT 2
+        """,
+        [player_id, current_season],
+    ).fetchall()
+    seasons = [(r["season"], round(r["mpg"], 1)) for r in rows]
+    return {
+        "last_yr":  seasons[0][1] if len(seasons) >= 1 else None,
+        "prev_yr":  seasons[1][1] if len(seasons) >= 2 else None,
+    }
+
+
 def get_gp_references(conn, player_id: str, current_season: str) -> dict:
     """Return historical GP reference values for a player."""
     rows = conn.execute(
@@ -611,7 +630,8 @@ def get_team_calibration(
             "gp":     actual.get("gp") or 0,
         } if actual else {}
 
-        gp_refs = get_gp_references(conn, pid, season)
+        gp_refs  = get_gp_references(conn, pid, season)
+        min_refs = get_min_references(conn, pid, season)
 
         player_data.append({
             "player_id": pid,
@@ -622,44 +642,68 @@ def get_team_calibration(
             "projected": proj,
             "actual":    actual_out,
             "available_seasons": available_seasons,
-            "gp_references": gp_refs,
+            "gp_references":  gp_refs,
+            "min_references": min_refs,
         })
 
-    # Team minutes total
+    # Team season minutes total: Σ(projected_gp × mpg)
     minutes_total = round(sum(
-        (pd["inputs"].get("minutes_per_game") or 0) for pd in player_data
+        (pd["inputs"].get("projected_gp") or 0) * (pd["inputs"].get("minutes_per_game") or 0)
+        for pd in player_data
     ), 1)
 
-    # Team projected total for selected stat
+    # Team projected total for selected stat — all counting stats are GP-weighted season totals.
+    # FG%/FT% remain rates (GP-weighted fgm/fga ratio).
     def _team_proj_total(pdata, stat_key):
         if stat_key == "FG%":
-            total_fgm = sum((pd["projected"].get("fgm") or 0) for pd in pdata)
-            total_fga = sum((pd["projected"].get("fga") or 0) for pd in pdata)
+            total_fgm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fgm") or 0) for pd in pdata)
+            total_fga = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fga") or 0) for pd in pdata)
             return round(total_fgm / total_fga, 3) if total_fga > 0 else None
         if stat_key == "FT%":
-            total_ftm = sum((pd["projected"].get("ftm") or 0) for pd in pdata)
-            total_fta = sum((pd["projected"].get("fta") or 0) for pd in pdata)
+            total_ftm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("ftm") or 0) for pd in pdata)
+            total_fta = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fta") or 0) for pd in pdata)
             return round(total_ftm / total_fta, 3) if total_fta > 0 else None
+        if stat_key == "MIN":
+            return round(sum(
+                (pd["inputs"].get("projected_gp") or 0) * (pd["inputs"].get("minutes_per_game") or 0)
+                for pd in pdata
+            ), 1)
+        if stat_key == "GP":
+            return round(sum((pd["inputs"].get("projected_gp") or 0) for pd in pdata), 1)
         col = _STAT_COL.get(stat_key)
         if not col:
             return None
-        return round(sum((pd["projected"].get(col) or 0) for pd in pdata), 1)
+        return round(sum(
+            (pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get(col) or 0)
+            for pd in pdata
+        ), 1)
 
     team_proj_total = _team_proj_total(player_data, stat)
 
-    # Last season team actual total (from game_logs, average daily team total)
+    # Last season team actual total — season totals for counting stats, rate for FG%/FT%
     col_name = _STAT_COL.get(stat)
     last_season_team_total = None
     if col_name:
-        row = conn.execute(f"""
-            SELECT AVG(day_total) FROM (
-                SELECT game_date, SUM({col_name}) day_total
-                FROM game_logs WHERE team=? AND season=?
-                GROUP BY game_date
-            )
-        """, [team, PREV_SEASON]).fetchone()
+        row = conn.execute(
+            f"SELECT SUM({col_name}) FROM game_logs WHERE team=? AND season=?",
+            [team, PREV_SEASON],
+        ).fetchone()
         if row and row[0]:
             last_season_team_total = round(row[0], 1)
+    elif stat == "MIN":
+        row = conn.execute(
+            "SELECT SUM(min) FROM game_logs WHERE team=? AND season=?",
+            [team, PREV_SEASON],
+        ).fetchone()
+        if row and row[0]:
+            last_season_team_total = round(row[0], 1)
+    elif stat == "GP":
+        row = conn.execute(
+            "SELECT COUNT(*) FROM game_logs WHERE team=? AND season=? AND min>0",
+            [team, PREV_SEASON],
+        ).fetchone()
+        if row and row[0]:
+            last_season_team_total = row[0]
     elif stat == "FG%":
         row = conn.execute("""
             SELECT SUM(fgm)/NULLIF(SUM(fga),0) FROM game_logs WHERE team=? AND season=?
