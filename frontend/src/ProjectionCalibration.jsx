@@ -444,24 +444,29 @@ export default function ProjectionCalibrationPage() {
                 </div>
                 <div className="pcal-minutes-track" style={{ position: 'relative', overflow: 'visible', marginBottom: 36 }}>
                   {projPct != null && <div className="pcal-minutes-fill" style={{ width: `${projPct}%`, background: projColor }} />}
-                  {ticks.map(m => (
-                    <div key={m.label}>
-                      {/* Tick line */}
-                      <div style={{
-                        position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`,
-                        width: '2px', background: '#475569', transform: 'translateX(-50%)',
-                      }} />
-                      {/* Tick label below bar */}
-                      <div style={{
-                        position: 'absolute', top: '100%', left: `${pct(m.v)}%`,
-                        transform: 'translateX(-50%)', marginTop: 4,
-                        textAlign: 'center', whiteSpace: 'nowrap',
-                      }}>
-                        <div style={{ fontSize: 10, color: '#64748b' }}>{m.label}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{m.val}</div>
+                  {ticks.map((m, i) => {
+                    const isFirst = i === 0
+                    const isLast  = i === ticks.length - 1
+                    const labelTransform = isFirst ? 'translateX(0)' : isLast ? 'translateX(-100%)' : 'translateX(-50%)'
+                    const lineTransform  = isFirst ? 'translateX(0)' : isLast  ? 'translateX(-100%)' : 'translateX(-50%)'
+                    return (
+                      <div key={m.label}>
+                        <div style={{
+                          position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`,
+                          width: '2px', background: '#475569', transform: lineTransform,
+                        }} />
+                        <div style={{
+                          position: 'absolute', top: '100%', left: `${pct(m.v)}%`,
+                          transform: labelTransform, marginTop: 4,
+                          textAlign: isFirst ? 'left' : isLast ? 'right' : 'center',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <div style={{ fontSize: 10, color: '#64748b' }}>{m.label}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{m.val}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
