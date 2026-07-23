@@ -504,8 +504,8 @@ export default function ProjectionCalibrationPage() {
                       </>
                     ) : stat === 'PTS' ? (
                       <>
-                        <th>Min/G ✎</th>
-                        <th>GP ✎</th>
+                        <th style={{color:'#64748b'}}>Min/G</th>
+                        <th style={{color:'#64748b'}}>GP</th>
                         <th>Points</th><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
                         <th>3PM</th><th>Δ%</th>
                         <th>3PA ✎</th><th>3P% ✎</th>
@@ -643,17 +643,10 @@ export default function ProjectionCalibrationPage() {
                               value={val ?? ''} onChange={onChange} onBlur={onBlur} />
                           )
                           return (<>
-                            {/* Min/G editable */}
-                            <td>{mkInput(inp.minutes_per_game,
-                              e => setField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0),
-                              e => saveField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0, p.inputs.minutes_per_game, season)
-                            )}</td>
-                            {/* GP editable */}
-                            <td>{mkInput(inp.projected_gp,
-                              e => setField(p.player_id, 'projected_gp', parseFloat(e.target.value) || 0),
-                              e => saveField(p.player_id, 'projected_gp', parseFloat(e.target.value) || 0, p.inputs.projected_gp, season),
-                              1, 82
-                            )}</td>
+                            {/* Min/G read-only */}
+                            <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
+                            {/* GP read-only */}
+                            <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
                             {/* Points */}
                             <td className="pcal-projected">{fmt(proj?.pts)}</td>
                             <td className="pcal-actual">{fmt(act.pts)}</td>
