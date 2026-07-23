@@ -584,8 +584,8 @@ def get_team_calibration(
         conn.close()
         return {"team": team, "stat": stat, "season": season, "minutes_total": 0,
                 "players": [], "team_projected_total": 0,
-                "last_season_team_total": None, "league_avg": None,
-                "league_p25": None, "league_p75": None}
+                "last_season_team_total": None, "league_avg": None, "league_median": None,
+                "league_min": None, "league_max": None, "league_p25": None, "league_p75": None}
 
     placeholders = ",".join("?" * len(slugs))
     bio_rows = conn.execute(
@@ -740,9 +740,12 @@ def get_team_calibration(
 
     league_totals_sorted = sorted(league_totals)
     n = len(league_totals_sorted)
-    league_avg = round(statistics.mean(league_totals_sorted), 1) if league_totals_sorted else None
-    league_p25 = round(league_totals_sorted[n // 4], 1) if n >= 4 else None
-    league_p75 = round(league_totals_sorted[3 * n // 4], 1) if n >= 4 else None
+    league_avg    = round(statistics.mean(league_totals_sorted), 1) if league_totals_sorted else None
+    league_median = round(statistics.median(league_totals_sorted), 1) if league_totals_sorted else None
+    league_min    = round(league_totals_sorted[0], 1) if league_totals_sorted else None
+    league_max    = round(league_totals_sorted[-1], 1) if league_totals_sorted else None
+    league_p25    = round(league_totals_sorted[n // 4], 1) if n >= 4 else None
+    league_p75    = round(league_totals_sorted[3 * n // 4], 1) if n >= 4 else None
 
     conn.close()
     return {
@@ -754,6 +757,9 @@ def get_team_calibration(
         "team_projected_total": team_proj_total,
         "last_season_team_total": last_season_team_total,
         "league_avg":           league_avg,
+        "league_median":        league_median,
+        "league_min":           league_min,
+        "league_max":           league_max,
         "league_p25":           league_p25,
         "league_p75":           league_p75,
     }

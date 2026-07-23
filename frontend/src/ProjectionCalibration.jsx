@@ -49,7 +49,14 @@ const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG
 const STAT_RATE_FIELDS = {
   MIN:  [],
   GP:   [],
-  PTS:  [{ key: 'usage_rate',    label: 'USG%',  pct: true }],
+  PTS:  [
+    { key: 'two_pa_rate',   label: '2PA/min', pct: false, step: 0.001 },
+    { key: 'two_p_pct',     label: '2P%',     pct: true },
+    { key: 'three_pa_rate', label: '3PA/min', pct: false, step: 0.001 },
+    { key: 'three_p_pct',   label: '3P%',     pct: true },
+    { key: 'fta_rate',      label: 'FTA/min', pct: false, step: 0.001 },
+    { key: 'ft_pct',        label: 'FT%',     pct: true },
+  ],
   REB:  [{ key: 'reb_rate',      label: 'REB/poss', pct: false, step: 0.0001 }],
   AST:  [{ key: 'ast_rate',      label: 'AST/poss', pct: false, step: 0.0001 }],
   STL:  [{ key: 'steal_rate',    label: 'STL/poss', pct: false, step: 0.0001 }],
@@ -75,7 +82,7 @@ const AGE_CURVE_STAT = {
 
 // Rate fields affected by each age curve stat
 const AGE_CURVE_FIELDS = {
-  PTS: ['usage_rate'],
+  PTS: ['two_pa_rate', 'two_p_pct', 'three_pa_rate', 'three_p_pct', 'fta_rate', 'ft_pct'],
   REB: ['reb_rate'],
   AST: ['ast_rate'],
   STL: ['steal_rate'],
@@ -615,7 +622,7 @@ export default function ProjectionCalibrationPage() {
             {/* Team stat validation panel */}
             {valStatus && (
               <div className="pcal-validation-panel">
-                <p className="pcal-validation-title">Team {stat} validation</p>
+                <p className="pcal-validation-title">Team {stat} audit</p>
                 <div className="pcal-validation-grid">
                   <div className="pcal-validation-item">
                     <span className="pcal-validation-label">Projected total:</span>
@@ -630,12 +637,24 @@ export default function ProjectionCalibrationPage() {
                     <span className="pcal-validation-value">{fmt(data.last_season_team_total)}</span>
                   </div>
                   <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">League avg:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_avg)}</span>
+                    <span className="pcal-validation-label">League median:</span>
+                    <span className="pcal-validation-value">{fmt(data.league_median)}</span>
                   </div>
                   <div className="pcal-validation-item">
-                    <span className="pcal-validation-label">League IQR:</span>
-                    <span className="pcal-validation-value">{fmt(data.league_p25)} – {fmt(data.league_p75)}</span>
+                    <span className="pcal-validation-label">League max:</span>
+                    <span className="pcal-validation-value">{fmt(data.league_max)}</span>
+                  </div>
+                  <div className="pcal-validation-item">
+                    <span className="pcal-validation-label">League min:</span>
+                    <span className="pcal-validation-value">{fmt(data.league_min)}</span>
+                  </div>
+                  <div className="pcal-validation-item">
+                    <span className="pcal-validation-label">75th pct:</span>
+                    <span className="pcal-validation-value">{fmt(data.league_p75)}</span>
+                  </div>
+                  <div className="pcal-validation-item">
+                    <span className="pcal-validation-label">25th pct:</span>
+                    <span className="pcal-validation-value">{fmt(data.league_p25)}</span>
                   </div>
                 </div>
                 <span
