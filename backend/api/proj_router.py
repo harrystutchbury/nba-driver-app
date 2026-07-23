@@ -60,13 +60,13 @@ PREV_SEASON      = "2025-26"
 
 _UPDATABLE_FIELDS = {
     "projected_gp", "minutes_per_game", "usage_rate", "steal_rate", "block_rate",
-    "ast_rate", "reb_rate", "three_pa_rate", "three_p_pct", "two_pa_rate",
+    "ast_rate", "oreb_rate", "dreb_rate", "three_pa_rate", "three_p_pct", "two_pa_rate",
     "two_p_pct", "fta_rate", "ft_pct", "tov_rate", "base_year", "scenario",
 }
 
 # Map API stat name → game_logs column (for counting stats)
 _STAT_COL = {
-    "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+    "PTS": "pts", "OREB": "oreb", "DREB": "dreb", "AST": "ast", "STL": "stl",
     "BLK": "blk", "TOV": "tov", "3PM": "fg3m",
 }
 
@@ -128,9 +128,10 @@ def derive_rates(avgs: dict, pace: float) -> dict:
         "fta_rate":      round(fta / mpg, 4),
         "ft_pct":        round((avgs.get("ftm") or 0) / fta, 4) if fta > 0 else 0.75,
         # Possession-based counting rates
-        "ast_rate":   round((avgs.get("ast") or 0) / poss, 4) if poss > 0 else 0,
-        "reb_rate":   round((avgs.get("reb") or 0) / poss, 4) if poss > 0 else 0,
-        "steal_rate": round((avgs.get("stl") or 0) / poss, 4) if poss > 0 else 0,
+        "ast_rate":   round((avgs.get("ast")  or 0) / poss, 4) if poss > 0 else 0,
+        "oreb_rate":  round((avgs.get("oreb") or 0) / poss, 4) if poss > 0 else 0,
+        "dreb_rate":  round((avgs.get("dreb") or 0) / poss, 4) if poss > 0 else 0,
+        "steal_rate": round((avgs.get("stl")  or 0) / poss, 4) if poss > 0 else 0,
         "block_rate": round((avgs.get("blk") or 0) / poss, 4) if poss > 0 else 0,
         # TOV per possession used (usage_used guards zero division)
         "tov_rate":   round(tov / (usage_used * poss), 4) if poss > 0 else 0,
@@ -160,7 +161,8 @@ def compute_projected(inp: dict, pace: float) -> dict:
 
     return {
         "pts":    round(two_pm * 2 + three_pm * 3 + ftm, 1),
-        "reb":    round((inp.get("reb_rate") or 0) * poss, 1),
+        "oreb":   round((inp.get("oreb_rate") or 0) * poss, 1),
+        "dreb":   round((inp.get("dreb_rate") or 0) * poss, 1),
         "ast":    round((inp.get("ast_rate") or 0) * poss, 1),
         "stl":    round((inp.get("steal_rate") or 0) * poss, 2),
         "blk":    round((inp.get("block_rate") or 0) * poss, 2),
@@ -615,9 +617,10 @@ def get_team_calibration(
         available_seasons = [r["season"] for r in avail_rows]
 
         actual_out = {
-            "pts":    round(actual.get("pts") or 0, 1),
-            "reb":    round(actual.get("reb") or 0, 1),
-            "ast":    round(actual.get("ast") or 0, 1),
+            "pts":    round(actual.get("pts")  or 0, 1),
+            "oreb":   round(actual.get("oreb") or 0, 1),
+            "dreb":   round(actual.get("dreb") or 0, 1),
+            "ast":    round(actual.get("ast")  or 0, 1),
             "stl":    round(actual.get("stl") or 0, 2),
             "blk":    round(actual.get("blk") or 0, 2),
             "tov":    round(actual.get("tov") or 0, 1),

@@ -517,7 +517,8 @@ def init_db():
             steal_rate         REAL,
             block_rate         REAL,
             ast_rate           REAL,
-            reb_rate           REAL,
+            oreb_rate          REAL,
+            dreb_rate          REAL,
             three_pa_rate      REAL,
             three_p_pct        REAL,
             two_pa_rate        REAL,
@@ -530,11 +531,12 @@ def init_db():
             PRIMARY KEY (player_id, season)
         )
     """)
-    # Migration: add projected_gp to existing tables that predate this column
-    try:
-        conn.execute("ALTER TABLE projection_inputs ADD COLUMN projected_gp REAL")
-    except Exception:
-        pass  # column already exists
+    # Migrations: add columns to existing tables that predate them
+    for _col in ("projected_gp REAL", "oreb_rate REAL", "dreb_rate REAL"):
+        try:
+            conn.execute(f"ALTER TABLE projection_inputs ADD COLUMN {_col}")
+        except Exception:
+            pass  # column already exists
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projection_edit_log (

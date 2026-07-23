@@ -44,7 +44,7 @@ const STYLES = `
 .pcal-rate-label { font-size: 11px; color: #64748b; white-space: nowrap; }
 `
 
-const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
+const STATS = ['GP', 'MIN', 'PTS', 'OREB', 'DREB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
 
 const STAT_RATE_FIELDS = {
   MIN:  [],
@@ -57,7 +57,8 @@ const STAT_RATE_FIELDS = {
     { key: 'fta_rate',      label: 'FTA/min', pct: false, step: 0.001 },
     { key: 'ft_pct',        label: 'FT%',     pct: true },
   ],
-  REB:  [{ key: 'reb_rate',      label: 'REB/poss', pct: false, step: 0.0001 }],
+  OREB: [{ key: 'oreb_rate', label: 'OREB/poss', pct: false, step: 0.0001 }],
+  DREB: [{ key: 'dreb_rate', label: 'DREB/poss', pct: false, step: 0.0001 }],
   AST:  [{ key: 'ast_rate',      label: 'AST/poss', pct: false, step: 0.0001 }],
   STL:  [{ key: 'steal_rate',    label: 'STL/poss', pct: false, step: 0.0001 }],
   BLK:  [{ key: 'block_rate',    label: 'BLK/poss', pct: false, step: 0.0001 }],
@@ -70,24 +71,25 @@ const STAT_RATE_FIELDS = {
 // Map display stat to projected key (MIN/GP use actual fields only)
 const STAT_PROJ_KEY = {
   MIN: null, GP: null,
-  PTS: 'pts', REB: 'reb', AST: 'ast', STL: 'stl', BLK: 'blk',
+  PTS: 'pts', OREB: 'oreb', DREB: 'dreb', AST: 'ast', STL: 'stl', BLK: 'blk',
   TOV: 'tov', '3PM': 'fg3m', 'FG%': 'fg_pct', 'FT%': 'ft_pct',
 }
 
 // Age curve stat mapping: display stat → age_curve_lookup stat name
 const AGE_CURVE_STAT = {
-  PTS: 'PTS', REB: 'REB', AST: 'AST', STL: 'STL', BLK: 'BLK',
+  PTS: 'PTS', OREB: 'REB', DREB: 'REB', AST: 'AST', STL: 'STL', BLK: 'BLK',
   TOV: 'TOV', '3PM': '3PM', 'FG%': 'FG_PCT', 'FT%': 'FT_PCT',
 }
 
 // Rate fields affected by each age curve stat
 const AGE_CURVE_FIELDS = {
-  PTS: ['two_pa_rate', 'two_p_pct', 'three_pa_rate', 'three_p_pct', 'fta_rate', 'ft_pct'],
-  REB: ['reb_rate'],
-  AST: ['ast_rate'],
-  STL: ['steal_rate'],
-  BLK: ['block_rate'],
-  TOV: ['tov_rate'],
+  PTS:  ['two_pa_rate', 'two_p_pct', 'three_pa_rate', 'three_p_pct', 'fta_rate', 'ft_pct'],
+  OREB: ['oreb_rate'],
+  DREB: ['dreb_rate'],
+  AST:  ['ast_rate'],
+  STL:  ['steal_rate'],
+  BLK:  ['block_rate'],
+  TOV:  ['tov_rate'],
   '3PM': ['three_pa_rate'],
   'FG%': ['two_p_pct', 'three_p_pct'],
   'FT%': ['ft_pct'],
@@ -118,7 +120,8 @@ function computeProjected(inp, pace = 98) {
   const fgm      = three_pm + two_pm
   return {
     pts:    +(two_pm * 2 + three_pm * 3 + ftm).toFixed(1),
-    reb:    +((inp.reb_rate    || 0) * poss).toFixed(1),
+    oreb:   +((inp.oreb_rate || 0) * poss).toFixed(1),
+    dreb:   +((inp.dreb_rate || 0) * poss).toFixed(1),
     ast:    +((inp.ast_rate    || 0) * poss).toFixed(1),
     stl:    +((inp.steal_rate  || 0) * poss).toFixed(2),
     blk:    +((inp.block_rate  || 0) * poss).toFixed(2),
