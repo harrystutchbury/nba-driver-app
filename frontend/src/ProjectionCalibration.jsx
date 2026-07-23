@@ -258,29 +258,16 @@ export default function ProjectionCalibrationPage() {
   }
 
   async function handleBaseYearChange(playerId, newBaseYear, season) {
-    await saveField(playerId, 'base_year', newBaseYear, localInputs[playerId]?.base_year, season)
-    // Reload team data to get fresh rates from backend
-    if (team) {
-      authFetch(`/api/admin/projections/team/${team}?stat=${stat}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          setData(d)
-          if (d?.players) {
-            setLocalInputs(prev => {
-              const next = { ...prev }
-              d.players.forEach(p => {
-                if (p.player_id === playerId) next[p.player_id] = { ...p.inputs }
-              })
-              return next
-            })
-          }
-        })
-        .catch(() => {})
-    }
+    const prevBaseYear = localInputs[playerId]?.base_year
+    // Optimistic update so the dropdown doesn't snap back
+    setLocalInputs(prev => ({ ...prev, [playerId]: { ...(prev[playerId] || {}), base_year: newBaseYear } }))
+    await saveField(playerId, 'base_year', newBaseYear, prevBaseYear, season)
   }
 
   async function handleAgeCurveAction(player, action) {
     const season = data?.season || '2025-26'
+    // Optimistic update so the dropdown doesn't snap back while the API call is in-flight
+    setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...(prev[player.player_id] || {}), scenario: action } }))
     setSaving(s => ({ ...s, [player.player_id]: true }))
     setErrors(e => ({ ...e, [player.player_id]: null }))
     try {

@@ -1194,9 +1194,9 @@ def apply_age_curve(
             if field in derived and derived[field] is not None:
                 derived[field] = round(derived[field] * multiplier, 6)
 
-    # Merge and upsert
+    # Merge and upsert — store the action as scenario so the dropdown reflects it on reload
     now    = datetime.utcnow().isoformat()
-    merged = {**existing, **derived, "last_updated": now, "updated_by": current_user}
+    merged = {**existing, **derived, "scenario": action, "last_updated": now, "updated_by": current_user}
 
     all_cols     = list(merged.keys())
     placeholders = ", ".join("?" * len(all_cols))
