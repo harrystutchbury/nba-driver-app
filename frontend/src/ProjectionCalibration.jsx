@@ -442,7 +442,7 @@ export default function ProjectionCalibrationPage() {
                     {data.last_season_team_total != null && <> · Last yr: {fmt(data.last_season_team_total)}</>}
                   </span>
                 </div>
-                <div className="pcal-minutes-track" style={{ position: 'relative', marginBottom: 20 }}>
+                <div className="pcal-minutes-track" style={{ position: 'relative', overflow: 'visible', marginBottom: 36 }}>
                   {projPct != null && <div className="pcal-minutes-fill" style={{ width: `${projPct}%`, background: projColor }} />}
                   {ticks.map(m => (
                     <div key={m.label}>
