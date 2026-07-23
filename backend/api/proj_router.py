@@ -616,22 +616,38 @@ def get_team_calibration(
         ).fetchall()
         available_seasons = [r["season"] for r in avail_rows]
 
-        actual_out = {
-            "pts":    round(actual.get("pts")  or 0, 1),
-            "oreb":   round(actual.get("oreb") or 0, 1),
-            "dreb":   round(actual.get("dreb") or 0, 1),
-            "ast":    round(actual.get("ast")  or 0, 1),
-            "stl":    round(actual.get("stl") or 0, 2),
-            "blk":    round(actual.get("blk") or 0, 2),
-            "tov":    round(actual.get("tov") or 0, 1),
-            "fg3m":   round(actual.get("fg3m") or 0, 1),
-            "fg_pct": round((actual.get("fgm") or 0) / actual.get("fga"), 3)
-                      if actual.get("fga") else None,
-            "ft_pct": round((actual.get("ftm") or 0) / actual.get("fta"), 3)
-                      if actual.get("fta") else None,
-            "min":    round(actual.get("min") or 0, 1),
-            "gp":     actual.get("gp") or 0,
-        } if actual else {}
+        if actual:
+            _fgm   = actual.get("fgm")  or 0
+            _fga   = actual.get("fga")  or 0
+            _fg3m  = actual.get("fg3m") or 0
+            _fg3a  = actual.get("fg3a") or 0
+            _fg2m  = max(_fgm - _fg3m, 0)
+            _fg2a  = max(_fga - _fg3a, 0)
+            _ftm   = actual.get("ftm") or 0
+            _fta   = actual.get("fta") or 0
+            actual_out = {
+                "pts":      round(actual.get("pts")  or 0, 1),
+                "oreb":     round(actual.get("oreb") or 0, 1),
+                "dreb":     round(actual.get("dreb") or 0, 1),
+                "ast":      round(actual.get("ast")  or 0, 1),
+                "stl":      round(actual.get("stl")  or 0, 2),
+                "blk":      round(actual.get("blk")  or 0, 2),
+                "tov":      round(actual.get("tov")  or 0, 1),
+                "fg3m":     round(_fg3m, 1),
+                "fg3a":     round(_fg3a, 1),
+                "fg3_pct":  round(_fg3m / _fg3a, 3) if _fg3a > 0 else None,
+                "fg2m":     round(_fg2m, 1),
+                "fg2a":     round(_fg2a, 1),
+                "fg2_pct":  round(_fg2m / _fg2a, 3) if _fg2a > 0 else None,
+                "fta":      round(_fta, 1),
+                "ftm":      round(_ftm, 1),
+                "fg_pct":   round(_fgm / _fga, 3) if _fga > 0 else None,
+                "ft_pct":   round(_ftm / _fta, 3) if _fta > 0 else None,
+                "min":      round(actual.get("min") or 0, 1),
+                "gp":       actual.get("gp") or 0,
+            }
+        else:
+            actual_out = {}
 
         gp_refs  = get_gp_references(conn, pid, season)
         min_refs = get_min_references(conn, pid, season)

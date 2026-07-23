@@ -127,9 +127,14 @@ function computeProjected(inp, pace = 98) {
     stl:    +((inp.steal_rate  || 0) * poss).toFixed(2),
     blk:    +((inp.block_rate  || 0) * poss).toFixed(2),
     tov:    +((inp.tov_rate    || 0) * (inp.usage_rate || 0) * poss).toFixed(1),
-    fg3m:   +three_pm.toFixed(1),
-    fg_pct: fga > 0 ? +(fgm / fga).toFixed(3) : null,
-    ft_pct: +(inp.ft_pct || 0).toFixed(3),
+    fg3m:    +three_pm.toFixed(1),
+    fg3a:    +three_pa.toFixed(1),
+    fg2m:    +two_pm.toFixed(1),
+    fg2a:    +two_pa.toFixed(1),
+    fg2_pct: two_pa > 0 ? +(two_pm / two_pa).toFixed(3) : null,
+    fta:     +fta.toFixed(1),
+    fg_pct:  fga > 0 ? +(fgm / fga).toFixed(3) : null,
+    ft_pct:  +(inp.ft_pct || 0).toFixed(3),
   }
 }
 
@@ -497,6 +502,22 @@ export default function ProjectionCalibrationPage() {
                         <th style={{ color: '#64748b' }}>3yr avg</th>
                         <th style={{ color: '#64748b' }}>Career avg</th>
                       </>
+                    ) : stat === 'PTS' ? (
+                      <>
+                        <th>Min/G ✎</th>
+                        <th>GP ✎</th>
+                        <th>Points</th><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
+                        <th>3PM</th><th>Δ%</th>
+                        <th>3PA ✎</th><th>3P% ✎</th>
+                        <th style={{color:'#64748b'}}>25/26 3PM</th><th style={{color:'#64748b'}}>25/26 3PA</th><th style={{color:'#64748b'}}>25/26 3P%</th>
+                        <th>2PM</th>
+                        <th>2PA ✎</th><th>2P% ✎</th>
+                        <th style={{color:'#64748b'}}>25/26 2PM</th><th style={{color:'#64748b'}}>25/26 2PA</th><th style={{color:'#64748b'}}>25/26 2P%</th>
+                        <th>FTA ✎</th><th>FT% ✎</th>
+                        <th style={{color:'#64748b'}}>25/26 FTA</th><th>Δ%</th>
+                        <th style={{color:'#64748b'}}>25/26 FT%</th><th>Δ%</th>
+                        <th>Base year</th><th>Age adj</th>
+                      </>
                     ) : (
                       <>
                         <th style={{ color: '#64748b' }}>Min/G</th>
@@ -605,8 +626,108 @@ export default function ProjectionCalibrationPage() {
                           )
                         })()}
 
+                        {/* PTS view: fully custom columns */}
+                        {stat === 'PTS' && (() => {
+                          const proj = getProjected(p)
+                          const act  = p.actual || {}
+                          const mpg  = inp.minutes_per_game || 0
+                          const mkPct = (a, b) => a != null && b != null && b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null
+                          const fmtDelta = d => d == null ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(1)}%`
+                          const deltaClass = d => d == null ? 'pcal-delta-neutral' : Math.abs(d) > 10 ? (d > 0 ? 'pcal-delta-neg' : 'pcal-delta-pos') : 'pcal-delta-neutral'
+                          // Per-game display for rate-based inputs
+                          const pg3pa = +(( inp.three_pa_rate || 0) * mpg).toFixed(1)
+                          const pg2pa = +((inp.two_pa_rate   || 0) * mpg).toFixed(1)
+                          const pgFta = +((inp.fta_rate      || 0) * mpg).toFixed(1)
+                          const mkInput = (val, onChange, onBlur, step = 0.1, max = 99) => (
+                            <input className="pcal-input" type="number" step={step} min="0" max={max}
+                              value={val ?? ''} onChange={onChange} onBlur={onBlur} />
+                          )
+                          return (<>
+                            {/* Min/G editable */}
+                            <td>{mkInput(inp.minutes_per_game,
+                              e => setField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0),
+                              e => saveField(p.player_id, 'minutes_per_game', parseFloat(e.target.value) || 0, p.inputs.minutes_per_game, season)
+                            )}</td>
+                            {/* GP editable */}
+                            <td>{mkInput(inp.projected_gp,
+                              e => setField(p.player_id, 'projected_gp', parseFloat(e.target.value) || 0),
+                              e => saveField(p.player_id, 'projected_gp', parseFloat(e.target.value) || 0, p.inputs.projected_gp, season),
+                              1, 82
+                            )}</td>
+                            {/* Points */}
+                            <td className="pcal-projected">{fmt(proj?.pts)}</td>
+                            <td className="pcal-actual">{fmt(act.pts)}</td>
+                            <td className={deltaClass(mkPct(proj?.pts, act.pts))}>{fmtDelta(mkPct(proj?.pts, act.pts))}</td>
+                            {/* 3PM */}
+                            <td className="pcal-projected">{fmt(proj?.fg3m)}</td>
+                            <td className={deltaClass(mkPct(proj?.fg3m, act.fg3m))}>{fmtDelta(mkPct(proj?.fg3m, act.fg3m))}</td>
+                            {/* 3PA editable (per-game), 3P% editable */}
+                            <td>{mkInput(pg3pa,
+                              e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'three_pa_rate', mpg > 0 ? v / mpg : 0) },
+                              e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'three_pa_rate', r, p.inputs.three_pa_rate, season) },
+                              0.1
+                            )}</td>
+                            <td>{mkInput(inp.three_p_pct != null ? +(inp.three_p_pct * 100).toFixed(1) : '',
+                              e => setField(p.player_id, 'three_p_pct', (parseFloat(e.target.value) || 0) / 100),
+                              e => saveField(p.player_id, 'three_p_pct', (parseFloat(e.target.value) || 0) / 100, p.inputs.three_p_pct, season),
+                              0.1, 100
+                            )}</td>
+                            {/* 25/26 3PM, 3PA, 3P% */}
+                            <td className="pcal-actual">{fmt(act.fg3m)}</td>
+                            <td className="pcal-actual">{fmt(act.fg3a)}</td>
+                            <td className="pcal-actual">{act.fg3_pct != null ? fmtPct(act.fg3_pct) : '—'}</td>
+                            {/* 2PM */}
+                            <td className="pcal-projected">{fmt(proj?.fg2m)}</td>
+                            {/* 2PA editable, 2P% editable */}
+                            <td>{mkInput(pg2pa,
+                              e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'two_pa_rate', mpg > 0 ? v / mpg : 0) },
+                              e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'two_pa_rate', r, p.inputs.two_pa_rate, season) },
+                              0.1
+                            )}</td>
+                            <td>{mkInput(inp.two_p_pct != null ? +(inp.two_p_pct * 100).toFixed(1) : '',
+                              e => setField(p.player_id, 'two_p_pct', (parseFloat(e.target.value) || 0) / 100),
+                              e => saveField(p.player_id, 'two_p_pct', (parseFloat(e.target.value) || 0) / 100, p.inputs.two_p_pct, season),
+                              0.1, 100
+                            )}</td>
+                            {/* 25/26 2PM, 2PA, 2P% */}
+                            <td className="pcal-actual">{fmt(act.fg2m)}</td>
+                            <td className="pcal-actual">{fmt(act.fg2a)}</td>
+                            <td className="pcal-actual">{act.fg2_pct != null ? fmtPct(act.fg2_pct) : '—'}</td>
+                            {/* FTA editable, FT% editable */}
+                            <td>{mkInput(pgFta,
+                              e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'fta_rate', mpg > 0 ? v / mpg : 0) },
+                              e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'fta_rate', r, p.inputs.fta_rate, season) },
+                              0.1
+                            )}</td>
+                            <td>{mkInput(inp.ft_pct != null ? +(inp.ft_pct * 100).toFixed(1) : '',
+                              e => setField(p.player_id, 'ft_pct', (parseFloat(e.target.value) || 0) / 100),
+                              e => saveField(p.player_id, 'ft_pct', (parseFloat(e.target.value) || 0) / 100, p.inputs.ft_pct, season),
+                              0.1, 100
+                            )}</td>
+                            {/* 25/26 FTA + Δ% */}
+                            <td className="pcal-actual">{fmt(act.fta)}</td>
+                            <td className={deltaClass(mkPct(pgFta, act.fta))}>{fmtDelta(mkPct(pgFta, act.fta))}</td>
+                            {/* 25/26 FT% + Δ% */}
+                            <td className="pcal-actual">{act.ft_pct != null ? fmtPct(act.ft_pct) : '—'}</td>
+                            <td className={deltaClass(mkPct(inp.ft_pct, act.ft_pct))}>{fmtDelta(mkPct(inp.ft_pct, act.ft_pct))}</td>
+                            {/* Base year */}
+                            <td><select className="pcal-mini-select" value={inp.base_year || ''}
+                              onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}>
+                              {(p.available_seasons || []).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select></td>
+                            {/* Age adjustment */}
+                            <td><select className="pcal-mini-select" value={inp.scenario || 'no_change'}
+                              onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
+                              <option value="no_change">No change</option>
+                              <option value="base_change">Base change</option>
+                              <option value="pessimistic">Pessimistic</option>
+                              <option value="optimistic">Optimistic</option>
+                            </select></td>
+                          </>)
+                        })()}
+
                         {/* Other stats: Min/G and GP as read-only reference columns, then full calibration */}
-                        {stat !== 'MIN' && stat !== 'GP' && (
+                        {stat !== 'MIN' && stat !== 'GP' && stat !== 'PTS' && (
                           <>
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
                             <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
