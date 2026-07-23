@@ -713,8 +713,6 @@ export default function ProjectionCalibrationPage() {
                               onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
                               <option value="no_change">No change</option>
                               <option value="base_change">Base change</option>
-                              <option value="pessimistic">Pessimistic</option>
-                              <option value="optimistic">Optimistic</option>
                             </select></td>
                           </>)
                         })()}

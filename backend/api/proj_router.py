@@ -1025,6 +1025,16 @@ def update_player_projection(
         conn.close()
         raise HTTPException(400, "No updatable fields provided")
 
+    # When base_year changes, re-derive all rates from that season's actuals
+    if "base_year" in updates:
+        new_base = updates["base_year"]
+        avgs  = get_player_season_avgs(conn, player_id, new_base)
+        pace  = get_team_pace(conn, team, new_base)
+        if avgs:
+            derived = derive_rates(avgs, pace)
+            # Merge derived rates in; base_year and projected_gp are preserved
+            updates = {**derived, **updates}
+
     # Log each changed field
     for field, new_val in updates.items():
         old_val = existing.get(field)
