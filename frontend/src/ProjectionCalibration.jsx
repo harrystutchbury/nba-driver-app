@@ -122,18 +122,20 @@ function computeProjected(inp, pace = 98) {
   }
 }
 
+const SEASON_MINUTES_TARGET = 82 * 240  // 19,680
+
 function minutesColor(total) {
-  const diff = Math.abs(total - 240)
-  if (total > 240 || diff > 15) return '#ef4444'
-  if (diff > 5) return '#f59e0b'
+  const diff = Math.abs(total - SEASON_MINUTES_TARGET)
+  if (total > SEASON_MINUTES_TARGET || diff > 1000) return '#ef4444'
+  if (diff > 400) return '#f59e0b'
   return '#22c55e'
 }
 
 function minutesBadge(total) {
-  const diff = total - 240
-  if (Math.abs(diff) <= 5) return { text: 'On target', color: '#22c55e', bg: '#052e16' }
-  if (diff > 0) return { text: `OVER by ${diff.toFixed(1)}`, color: '#ef4444', bg: '#2d0000' }
-  return { text: `Under by ${Math.abs(diff).toFixed(1)}`, color: diff < -15 ? '#ef4444' : '#f59e0b', bg: diff < -15 ? '#2d0000' : '#271900' }
+  const diff = total - SEASON_MINUTES_TARGET
+  if (Math.abs(diff) <= 400) return { text: 'On target', color: '#22c55e', bg: '#052e16' }
+  if (diff > 0) return { text: `OVER by ${Math.round(diff)}`, color: '#ef4444', bg: '#2d0000' }
+  return { text: `Under by ${Math.round(Math.abs(diff))}`, color: diff < -1000 ? '#ef4444' : '#f59e0b', bg: diff < -1000 ? '#2d0000' : '#271900' }
 }
 
 function validationStatus(projected, lastSeason, p25, p75) {
@@ -202,9 +204,12 @@ export default function ProjectionCalibrationPage() {
 
   const teamPace = data?.pace || 98
 
-  // Live minutes total from localInputs
+  // Live season minutes total: Σ(projected_gp × mpg) across roster
   const minutesTotal = data?.players
-    ? data.players.reduce((sum, p) => sum + (localInputs[p.player_id]?.minutes_per_game || p.inputs.minutes_per_game || 0), 0)
+    ? data.players.reduce((sum, p) => {
+        const inp = localInputs[p.player_id] || p.inputs
+        return sum + (inp.projected_gp || 0) * (inp.minutes_per_game || 0)
+      }, 0)
     : 0
 
   function getProjected(p) {
@@ -312,20 +317,26 @@ export default function ProjectionCalibrationPage() {
     saveMultipleFields(player.player_id, updated, season)
   }
 
-  // Team projected total for selected stat (from localInputs)
+  // Team projected total for selected stat (from localInputs) — GP-weighted season totals
   const projKey = STAT_PROJ_KEY[stat]
   const teamProjectedTotal = data?.players
     ? stat === 'MIN'
-      ? minutesTotal  // for MIN view, the "projected total" is the sum of input minutes
-      : data.players.reduce((sum, p) => {
-          const proj = getProjected(p)
-          return sum + (proj?.[projKey] || 0)
-        }, 0)
+      ? minutesTotal
+      : stat === 'GP'
+        ? data.players.reduce((sum, p) => {
+            const inp = localInputs[p.player_id] || p.inputs
+            return sum + (inp.projected_gp || 0)
+          }, 0)
+        : data.players.reduce((sum, p) => {
+            const proj = getProjected(p)
+            const inp = localInputs[p.player_id] || p.inputs
+            return sum + (inp.projected_gp || 0) * (proj?.[projKey] || 0)
+          }, 0)
     : null
 
   const mBar = minutesBadge(minutesTotal)
   const mColor = minutesColor(minutesTotal)
-  const fillPct = Math.min((minutesTotal / 240) * 100, 100)
+  const fillPct = Math.min((minutesTotal / SEASON_MINUTES_TARGET) * 100, 100)
 
   const valStatus = data ? validationStatus(
     teamProjectedTotal,
@@ -356,7 +367,7 @@ export default function ProjectionCalibrationPage() {
         {/* Minutes status bar — always shown (useful context for all stat views) */}
         {data && stat !== 'GP' && (
           <div className="pcal-minutes-bar">
-            <span className="pcal-minutes-label">Team minutes: {minutesTotal.toFixed(1)} / 240</span>
+            <span className="pcal-minutes-label">Season minutes: {Math.round(minutesTotal).toLocaleString()} / 19,680</span>
             <div className="pcal-minutes-track">
               <div className="pcal-minutes-fill" style={{ width: `${fillPct}%`, background: mColor }} />
             </div>
