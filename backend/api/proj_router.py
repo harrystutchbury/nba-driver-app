@@ -1164,6 +1164,13 @@ def apply_age_curve(
     existing = get_or_init_inputs(conn, player_id, season, team)
     base_year = existing.get("base_year") or PREV_SEASON
 
+    # Which fields this stat view owns — the write is scoped to these, so an
+    # age curve applied in one view can't disturb rates tuned in another.
+    scope = _AGE_CURVE_FIELDS.get(stat)
+    if not scope:
+        conn.close()
+        raise HTTPException(400, f"No age curve fields for stat {stat}")
+
     # Always start by re-deriving rates from base_year actuals
     avgs  = get_player_season_avgs(conn, player_id, base_year)
     pace  = get_team_pace(conn, team, base_year)
@@ -1197,15 +1204,22 @@ def apply_age_curve(
             conn.close()
             raise HTTPException(404, f"No base_case_multiplier for age={age}, stat={curve_stat}")
 
-        multiplier   = curve_row["base_case_multiplier"]
-        fields       = _AGE_CURVE_FIELDS.get(stat, [])
-        for field in fields:
+        multiplier = curve_row["base_case_multiplier"]
+        for field in scope:
             if field in derived and derived[field] is not None:
                 derived[field] = round(derived[field] * multiplier, 6)
 
+    # Keep only this view's fields. derive_rates() returns the player's full rate
+    # set, so writing it wholesale would silently reset every other stat back to
+    # base_year actuals and discard hand-tuned values.
+    scoped = {f: derived[f] for f in scope if f in derived}
+    if not scoped:
+        conn.close()
+        raise HTTPException(404, f"Could not derive {stat} rates for {player_id}")
+
     # Merge and upsert — store the action as scenario so the dropdown reflects it on reload
     now    = datetime.utcnow().isoformat()
-    merged = {**existing, **derived, "scenario": action, "last_updated": now, "updated_by": current_user}
+    merged = {**existing, **scoped, "scenario": action, "last_updated": now, "updated_by": current_user}
 
     all_cols     = list(merged.keys())
     placeholders = ", ".join("?" * len(all_cols))
