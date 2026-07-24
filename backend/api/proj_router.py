@@ -81,6 +81,15 @@ _AGE_CURVE_FIELDS = {
     "FT%":  ["ft_pct"],
 }
 
+# Per-row reset: which fields a reset in each view is allowed to touch.
+# Deliberately scoped to the current view so resetting a row in, say, the PTS
+# view can't clobber hand-tuned AST/REB/STL rates the user set in other views.
+_RESET_FIELDS = {
+    **_AGE_CURVE_FIELDS,
+    "MIN": ["minutes_per_game"],
+    "GP":  ["projected_gp"],
+}
+
 # Map API stat name → game_logs column (for counting stats)
 _STAT_COL = {
     "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
@@ -1215,6 +1224,85 @@ def apply_age_curve(
     ).fetchone()
     conn.close()
     return {"ok": True, "player_id": player_id, "updated": dict(updated) if updated else merged}
+
+
+# ---------------------------------------------------------------------------
+# POST /player/{player_id}/reset-row
+# ---------------------------------------------------------------------------
+
+@proj_router.post("/player/{player_id}/reset-row")
+def reset_row(
+    player_id:    str,
+    body:         dict,
+    current_user: str = Depends(_get_user),
+):
+    """
+    Reset one player's inputs for ONE stat view back to base_year actuals.
+    Body: { season, stat }
+
+    Only the fields editable in that view are touched (see _RESET_FIELDS) —
+    edits made in other stat views are preserved.
+    """
+    conn   = get_conn()
+    _require_admin(current_user, conn)
+    season = body.get("season", _current_season(conn))
+    stat   = (body.get("stat") or "PTS").upper()
+
+    fields = _RESET_FIELDS.get(stat)
+    if not fields:
+        conn.close()
+        raise HTTPException(400, f"No reset defined for stat {stat}")
+
+    meta = conn.execute(
+        "SELECT team FROM players WHERE slug=? AND season=?", [player_id, season]
+    ).fetchone()
+    team = meta["team"] if meta else "UNK"
+
+    existing  = get_or_init_inputs(conn, player_id, season, team)
+    base_year = existing.get("base_year") or PREV_SEASON
+
+    avgs = get_player_season_avgs(conn, player_id, base_year)
+    pace = get_team_pace(conn, team, base_year)
+    if not avgs:
+        conn.close()
+        raise HTTPException(404, f"No game log data for {player_id} in {base_year}")
+
+    # Baseline values for every resettable field, from base_year actuals
+    baseline = derive_rates(avgs, pace)
+    baseline["minutes_per_game"] = round(avgs.get("min") or 0, 1)
+    baseline["projected_gp"]     = int(round(avgs.get("gp") or 0))
+
+    reset_vals = {f: baseline[f] for f in fields if f in baseline}
+    if not reset_vals:
+        conn.close()
+        raise HTTPException(404, f"Could not derive baseline values for {player_id}")
+
+    # Rates now equal the clean base-year values, so any applied age curve is gone.
+    # MIN/GP views don't show the scenario dropdown, so leave it alone there.
+    if stat not in ("MIN", "GP"):
+        reset_vals["scenario"] = "no_change"
+
+    now    = datetime.utcnow().isoformat()
+    merged = {**existing, **reset_vals, "last_updated": now, "updated_by": current_user}
+
+    all_cols     = list(merged.keys())
+    placeholders = ", ".join("?" * len(all_cols))
+    set_clause   = ", ".join(f"{c}=excluded.{c}" for c in all_cols)
+
+    conn.execute(f"""
+        INSERT INTO projection_inputs ({", ".join(all_cols)})
+        VALUES ({placeholders})
+        ON CONFLICT(player_id, season) DO UPDATE SET {set_clause}
+    """, [merged[c] for c in all_cols])
+    conn.commit()
+
+    updated = conn.execute(
+        "SELECT * FROM projection_inputs WHERE player_id=? AND season=?",
+        [player_id, season],
+    ).fetchone()
+    conn.close()
+    return {"ok": True, "player_id": player_id, "reset": list(reset_vals.keys()),
+            "updated": dict(updated) if updated else merged}
 
 
 # ---------------------------------------------------------------------------

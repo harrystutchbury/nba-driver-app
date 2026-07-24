@@ -42,6 +42,9 @@ const STYLES = `
 .pcal-loading { color: #64748b; padding: 40px; text-align: center; }
 .pcal-rate-pair { display: flex; gap: 8px; align-items: center; }
 .pcal-rate-label { font-size: 11px; color: #64748b; white-space: nowrap; }
+.pcal-reset-btn { background: #0f172a; color: #64748b; border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; line-height: 1.4; }
+.pcal-reset-btn:hover:not(:disabled) { color: #e2e8f0; border-color: #475569; background: #1e293b; }
+.pcal-reset-btn:disabled { opacity: 0.4; cursor: default; }
 `
 
 const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
@@ -287,6 +290,28 @@ export default function ProjectionCalibrationPage() {
     }
   }
 
+  // Reset one row back to base-year actuals, scoped to the fields the current view edits
+  async function handleResetRow(player) {
+    const season = data?.season || '2025-26'
+    setSaving(s => ({ ...s, [player.player_id]: true }))
+    setErrors(e => ({ ...e, [player.player_id]: null }))
+    try {
+      const res = await authFetch(`/api/admin/projections/player/${player.player_id}/reset-row`, {
+        method: 'POST',
+        body: JSON.stringify({ season, stat }),
+      })
+      if (!res.ok) throw new Error(`Reset failed (${res.status})`)
+      const body = await res.json()
+      if (body.updated) {
+        setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...prev[player.player_id], ...body.updated } }))
+      }
+    } catch (err) {
+      setErrors(e => ({ ...e, [player.player_id]: err.message }))
+    } finally {
+      setSaving(s => ({ ...s, [player.player_id]: false }))
+    }
+  }
+
   // Team projected total for selected stat (from localInputs) — GP-weighted season totals
   const projKey = STAT_PROJ_KEY[stat]
   const teamProjectedTotal = data?.players
@@ -489,6 +514,7 @@ export default function ProjectionCalibrationPage() {
                         <th>Age adjustment</th>
                       </>
                     )}
+                    <th style={{ color: '#64748b' }}>Reset</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -772,6 +798,19 @@ export default function ProjectionCalibrationPage() {
                             </td>
                           </>
                         )}
+
+                        {/* Per-row reset — scoped to the fields this view edits */}
+                        <td>
+                          <button
+                            className="pcal-reset-btn"
+                            type="button"
+                            disabled={isSaving}
+                            title={`Reset ${stat} inputs for ${p.full_name} back to ${inp.base_year || 'base year'} actuals. Other stats are not affected.`}
+                            onClick={() => handleResetRow(p)}
+                          >
+                            ↺
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
