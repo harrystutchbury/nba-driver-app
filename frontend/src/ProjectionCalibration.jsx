@@ -535,8 +535,8 @@ export default function ProjectionCalibrationPage() {
                       ? ((projV - actV) / actV) * 100
                       : null
                     const deltaClass = delta == null ? 'pcal-delta-neutral'
-                      : delta > 5 ? 'pcal-delta-neg'
-                      : delta < -5 ? 'pcal-delta-pos'
+                      : delta > 5 ? 'pcal-delta-pos'
+                      : delta < -5 ? 'pcal-delta-neg'
                       : 'pcal-delta-neutral'
 
                     return (
@@ -613,7 +613,7 @@ export default function ProjectionCalibrationPage() {
                           const mpg  = inp.minutes_per_game || 0
                           const mkPct = (a, b) => a != null && b != null && b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null
                           const fmtDelta = d => d == null ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(1)}%`
-                          const deltaClass = d => d == null ? 'pcal-delta-neutral' : Math.abs(d) > 10 ? (d > 0 ? 'pcal-delta-neg' : 'pcal-delta-pos') : 'pcal-delta-neutral'
+                          const deltaClass = d => d == null ? 'pcal-delta-neutral' : Math.abs(d) > 10 ? (d > 0 ? 'pcal-delta-pos' : 'pcal-delta-neg') : 'pcal-delta-neutral'
                           // Per-game display for rate-based inputs
                           const pg3pa = +(( inp.three_pa_rate || 0) * mpg).toFixed(1)
                           const pg2pa = +((inp.two_pa_rate   || 0) * mpg).toFixed(1)
@@ -744,7 +744,7 @@ export default function ProjectionCalibrationPage() {
                                 if (pv == null || av == null || av === 0) return null
                                 return ((pv - av) / av) * 100
                               }
-                              const mkClass = d => d == null ? 'pcal-delta-neutral' : d > 5 ? 'pcal-delta-neg' : d < -5 ? 'pcal-delta-pos' : 'pcal-delta-neutral'
+                              const mkClass = d => d == null ? 'pcal-delta-neutral' : d > 5 ? 'pcal-delta-pos' : d < -5 ? 'pcal-delta-neg' : 'pcal-delta-neutral'
                               const orebProj = proj?.oreb, orebAct = p.actual?.oreb
                               const drebProj = proj?.dreb, drebAct = p.actual?.dreb
                               const od = mkDelta(orebProj, orebAct), dd = mkDelta(drebProj, drebAct)
