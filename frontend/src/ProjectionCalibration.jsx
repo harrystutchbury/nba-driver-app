@@ -47,47 +47,23 @@ const STYLES = `
 .pcal-reset-btn:disabled { opacity: 0.4; cursor: default; }
 `
 
-const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG%', 'FT%']
-
-const STAT_RATE_FIELDS = {
-  MIN:  [],
-  GP:   [],
-  PTS:  [
-    { key: 'two_pa_rate',   label: '2PA/min', pct: false, step: 0.001 },
-    { key: 'two_p_pct',     label: '2P%',     pct: true },
-    { key: 'three_pa_rate', label: '3PA/min', pct: false, step: 0.001 },
-    { key: 'three_p_pct',   label: '3P%',     pct: true },
-    { key: 'fta_rate',      label: 'FTA/min', pct: false, step: 0.001 },
-    { key: 'ft_pct',        label: 'FT%',     pct: true },
-  ],
-  REB:  [
-    { key: 'oreb_rate', label: 'OREB/poss', pct: false, step: 0.0001 },
-    { key: 'dreb_rate', label: 'DREB/poss', pct: false, step: 0.0001 },
-  ],
-  AST:  [{ key: 'ast_rate',      label: 'AST/poss', pct: false, step: 0.0001 }],
-  STL:  [{ key: 'steal_rate',    label: 'STL/poss', pct: false, step: 0.0001 }],
-  BLK:  [{ key: 'block_rate',    label: 'BLK/poss', pct: false, step: 0.0001 }],
-  TOV:  [{ key: 'tov_rate',      label: 'TOV/poss', pct: false, step: 0.0001 }],
-  '3PM':[{ key: 'three_pa_rate', label: '3PA/min',  pct: false, step: 0.001 }],
-  'FG%':[{ key: 'two_p_pct',    label: '2PT%', pct: true }, { key: 'three_p_pct', label: '3PT%', pct: true }],
-  'FT%':[{ key: 'ft_pct',       label: 'FT%',  pct: true }],
-}
+// 3PM, FG% and FT% are omitted: their inputs (3PA/3P%, 2PA/2P%, FTA/FT%)
+// are all set within the PTS workflow, so standalone views would be redundant.
+const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV']
 
 // Map display stat to projected key (MIN/GP/REB use special handling)
 const STAT_PROJ_KEY = {
   MIN: null, GP: null, REB: null,
-  PTS: 'pts', AST: 'ast', STL: 'stl', BLK: 'blk',
-  TOV: 'tov', '3PM': 'fg3m', 'FG%': 'fg_pct', 'FT%': 'ft_pct',
+  PTS: 'pts', AST: 'ast', STL: 'stl', BLK: 'blk', TOV: 'tov',
 }
 
 // Single-rate counting stats that share the canonical layout:
 // Stat / 25-26 Stat / Δ, then Rate / 25-26 Rate / Δ.
 const COUNTING_STAT = {
-  AST:   { projKey: 'ast',  rateKey: 'ast_rate',      rateLabel: 'AST/poss', step: 0.0001 },
-  STL:   { projKey: 'stl',  rateKey: 'steal_rate',    rateLabel: 'STL/poss', step: 0.0001 },
-  BLK:   { projKey: 'blk',  rateKey: 'block_rate',    rateLabel: 'BLK/poss', step: 0.0001 },
-  TOV:   { projKey: 'tov',  rateKey: 'tov_rate',      rateLabel: 'TOV/poss', step: 0.0001 },
-  '3PM': { projKey: 'fg3m', rateKey: 'three_pa_rate', rateLabel: '3PA/min',  step: 0.001  },
+  AST: { projKey: 'ast', rateKey: 'ast_rate',   rateLabel: 'AST/poss', step: 0.0001 },
+  STL: { projKey: 'stl', rateKey: 'steal_rate', rateLabel: 'STL/poss', step: 0.0001 },
+  BLK: { projKey: 'blk', rateKey: 'block_rate', rateLabel: 'BLK/poss', step: 0.0001 },
+  TOV: { projKey: 'tov', rateKey: 'tov_rate',   rateLabel: 'TOV/poss', step: 0.0001 },
 }
 
 
@@ -356,8 +332,6 @@ export default function ProjectionCalibrationPage() {
     data.league_p75,
   ) : null
 
-  const rateFields = STAT_RATE_FIELDS[stat] || []
-
   return (
     <>
       <style>{STYLES}</style>
@@ -527,16 +501,7 @@ export default function ProjectionCalibrationPage() {
                         <th>Base year</th>
                         <th>Age adjustment</th>
                       </>
-                    ) : (
-                      <>
-                        <th style={{ color: '#64748b' }}>Min/G</th>
-                        <th style={{ color: '#64748b' }}>GP</th>
-                        {rateFields.map(f => <th key={f.key}>{f.label}</th>)}
-                        <><th>Proj {stat}</th><th>Actual {stat}</th><th>Δ%</th></>
-                        <th>Base year</th>
-                        <th>Age adjustment</th>
-                      </>
-                    )}
+                    ) : null}
                     <th style={{ color: '#64748b' }}>Reset</th>
                   </tr>
                 </thead>
@@ -546,21 +511,6 @@ export default function ProjectionCalibrationPage() {
                     const proj   = getProjected(p)
                     const season = data.season || '2025-26'
                     const isSaving = saving[p.player_id]
-
-                    // MIN/GP: projected = input value, actual = actuals
-                    const projV = stat === 'MIN' ? (inp.minutes_per_game ?? null)
-                      : stat === 'GP'  ? (inp.projected_gp ?? null)
-                      : proj?.[projKey]
-                    const actV  = stat === 'MIN' ? (p.actual?.min ?? null)
-                      : stat === 'GP'  ? (p.actual?.gp ?? null)
-                      : p.actual?.[projKey]
-                    const delta = projV != null && actV != null && actV !== 0
-                      ? ((projV - actV) / actV) * 100
-                      : null
-                    const deltaClass = delta == null ? 'pcal-delta-neutral'
-                      : delta > 5 ? 'pcal-delta-pos'
-                      : delta < -5 ? 'pcal-delta-neg'
-                      : 'pcal-delta-neutral'
 
                     return (
                       <tr key={p.player_id}>
@@ -811,86 +761,6 @@ export default function ProjectionCalibrationPage() {
                             </select></td>
                           </>)
                         })()}
-
-                        {/* Other stats (FG%/FT%): Min/G and GP as read-only reference columns, then full calibration */}
-                        {stat !== 'MIN' && stat !== 'GP' && stat !== 'PTS' && stat !== 'REB' && !COUNTING_STAT[stat] && (
-                          <>
-                            <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
-                            <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
-
-                            {/* Rate field(s) editable */}
-                            {rateFields.map(f => (
-                              <td key={f.key}>
-                                {f.pct ? (
-                                  <input
-                                    className="pcal-input"
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    max="100"
-                                    value={inp[f.key] != null ? +(inp[f.key] * 100).toFixed(2) : ''}
-                                    onChange={e => setField(p.player_id, f.key, (parseFloat(e.target.value) || 0) / 100)}
-                                    onBlur={e => {
-                                      const val = (parseFloat(e.target.value) || 0) / 100
-                                      saveField(p.player_id, f.key, val, p.inputs[f.key], season)
-                                    }}
-                                  />
-                                ) : (
-                                  <input
-                                    className="pcal-input pcal-input-wide"
-                                    type="number"
-                                    step={f.step || 0.0001}
-                                    min="0"
-                                    value={inp[f.key] ?? ''}
-                                    onChange={e => setField(p.player_id, f.key, parseFloat(e.target.value) || 0)}
-                                    onBlur={e => {
-                                      const val = parseFloat(e.target.value) || 0
-                                      saveField(p.player_id, f.key, val, p.inputs[f.key], season)
-                                    }}
-                                  />
-                                )}
-                              </td>
-                            ))}
-
-                            {/* Proj / Actual / Δ% */}
-                            <td className="pcal-projected">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(projV) : fmt(projV)}
-                            </td>
-                            <td className="pcal-actual">
-                              {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(actV) : fmt(actV)}
-                            </td>
-                            <td className={deltaClass}>
-                              {delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : '—'}
-                            </td>
-
-                            {/* Base year dropdown */}
-                            <td>
-                              <select
-                                className="pcal-mini-select"
-                                value={inp.base_year || ''}
-                                onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}
-                              >
-                                {(p.available_seasons || []).map(s => (
-                                  <option key={s} value={s}>{s}</option>
-                                ))}
-                              </select>
-                            </td>
-
-                            {/* Age adjustment dropdown */}
-                            <td>
-                              <select
-                                className="pcal-mini-select"
-                                value={inp.scenario || 'no_change'}
-                                onChange={e => {
-                                  if (e.target.value) handleAgeCurveAction(p, e.target.value)
-                                }}
-                              >
-                                <option value="no_change">No change</option>
-                                <option value="base_change">Base change</option>
-                              </select>
-                            </td>
-                          </>
-                        )}
 
                         {/* Per-row reset — scoped to the fields this view edits */}
                         <td>
