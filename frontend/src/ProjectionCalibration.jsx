@@ -109,7 +109,8 @@ function computeProjected(inp, pace = 98) {
   }
 }
 
-const SEASON_MINUTES_TARGET = 82 * 240  // 19,680
+const TEAM_GAMES = 82
+const SEASON_MINUTES_TARGET = TEAM_GAMES * 240  // 19,680
 
 function minutesColor(total) {
   const diff = Math.abs(total - SEASON_MINUTES_TARGET)
@@ -376,12 +377,15 @@ export default function ProjectionCalibrationPage() {
             if (Math.abs(proj - (data.league_median || data.league_avg)) / (data.league_median || data.league_avg || 1) > 0.08) return '#f59e0b'
             return '#22c55e'
           })()
+          // Bar values are GP-weighted season totals; show them per game (÷82) so
+          // they read as a team's per-game production. Positions stay total-based.
+          const pg = v => v == null ? '—' : fmt(v / TEAM_GAMES)
           const ticks = [
-            { v: data.league_min,    label: 'Min',  val: fmt(data.league_min) },
-            { v: data.league_p25,    label: 'P25',  val: fmt(data.league_p25) },
-            { v: data.league_median, label: 'Med',  val: fmt(data.league_median) },
-            { v: data.league_p75,    label: 'P75',  val: fmt(data.league_p75) },
-            { v: data.league_max,    label: 'Max',  val: fmt(data.league_max) },
+            { v: data.league_min,    label: 'Min',  val: pg(data.league_min) },
+            { v: data.league_p25,    label: 'P25',  val: pg(data.league_p25) },
+            { v: data.league_median, label: 'Med',  val: pg(data.league_median) },
+            { v: data.league_p75,    label: 'P75',  val: pg(data.league_p75) },
+            { v: data.league_max,    label: 'Max',  val: pg(data.league_max) },
           ].filter(m => m.v != null)
           const rank = data.team_rank
           const count = data.team_count || 30
@@ -406,8 +410,8 @@ export default function ProjectionCalibrationPage() {
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <span className="pcal-minutes-label" style={{ margin: 0 }}>
-                    Proj: {projKey === 'fg_pct' || projKey === 'ft_pct' ? fmtPct(proj / (data.players?.length || 1)) : fmt(proj)}
-                    {data.last_season_team_total != null && <> · Last yr: {fmt(data.last_season_team_total)}</>}
+                    Proj: {pg(proj)}/g
+                    {data.last_season_team_total != null && <> · Last yr: {pg(data.last_season_team_total)}/g</>}
                   </span>
                 </div>
                 <div className="pcal-minutes-track" style={{ position: 'relative', overflow: 'visible', marginBottom: 36 }}>
