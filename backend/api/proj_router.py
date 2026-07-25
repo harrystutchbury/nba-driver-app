@@ -672,8 +672,12 @@ def get_team_calibration(
                 "min":      round(actual.get("min") or 0, 1),
                 "gp":       actual.get("gp") or 0,
             }
+            # Last-season rates, derived the same way inputs are, so the
+            # "2025/26 Rate" reference columns are comparable to the editable rates.
+            actual_rates = derive_rates(actual, pace)
         else:
-            actual_out = {}
+            actual_out   = {}
+            actual_rates = {}
 
         gp_refs  = get_gp_references(conn, pid, season)
         min_refs = get_min_references(conn, pid, season)
@@ -686,6 +690,7 @@ def get_team_calibration(
             "inputs":    inp,
             "projected": proj,
             "actual":    actual_out,
+            "actual_rates": actual_rates,
             "available_seasons": available_seasons,
             "gp_references":  gp_refs,
             "min_references": min_refs,

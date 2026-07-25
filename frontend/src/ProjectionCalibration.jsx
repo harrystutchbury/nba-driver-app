@@ -80,6 +80,16 @@ const STAT_PROJ_KEY = {
   TOV: 'tov', '3PM': 'fg3m', 'FG%': 'fg_pct', 'FT%': 'ft_pct',
 }
 
+// Single-rate counting stats that share the canonical layout:
+// Stat / 25-26 Stat / Δ, then Rate / 25-26 Rate / Δ.
+const COUNTING_STAT = {
+  AST:   { projKey: 'ast',  rateKey: 'ast_rate',      rateLabel: 'AST/poss', step: 0.0001 },
+  STL:   { projKey: 'stl',  rateKey: 'steal_rate',    rateLabel: 'STL/poss', step: 0.0001 },
+  BLK:   { projKey: 'blk',  rateKey: 'block_rate',    rateLabel: 'BLK/poss', step: 0.0001 },
+  TOV:   { projKey: 'tov',  rateKey: 'tov_rate',      rateLabel: 'TOV/poss', step: 0.0001 },
+  '3PM': { projKey: 'fg3m', rateKey: 'three_pa_rate', rateLabel: '3PA/min',  step: 0.001  },
+}
+
 
 function authFetch(url, opts = {}) {
   const token = localStorage.getItem('nba_token')
@@ -507,6 +517,16 @@ export default function ProjectionCalibrationPage() {
                         <th>Base year</th>
                         <th>Age adjustment</th>
                       </>
+                    ) : COUNTING_STAT[stat] ? (
+                      <>
+                        <th style={{ color: '#64748b' }}>Min/G</th>
+                        <th style={{ color: '#64748b' }}>GP</th>
+                        <th>{stat}</th><th style={{ color: '#64748b' }}>25/26 {stat}</th><th>Δ%</th>
+                        <th>{COUNTING_STAT[stat].rateLabel} ✎</th>
+                        <th style={{ color: '#64748b' }}>25/26 {COUNTING_STAT[stat].rateLabel}</th><th>Δ%</th>
+                        <th>Base year</th>
+                        <th>Age adjustment</th>
+                      </>
                     ) : (
                       <>
                         <th style={{ color: '#64748b' }}>Min/G</th>
@@ -749,8 +769,51 @@ export default function ProjectionCalibrationPage() {
                           </>)
                         })()}
 
-                        {/* Other stats: Min/G and GP as read-only reference columns, then full calibration */}
-                        {stat !== 'MIN' && stat !== 'GP' && stat !== 'PTS' && stat !== 'REB' && (
+                        {/* Counting stats (AST/STL/BLK/TOV/3PM): Stat / 25-26 / Δ, then Rate / 25-26 / Δ */}
+                        {COUNTING_STAT[stat] && (() => {
+                          const cfg  = COUNTING_STAT[stat]
+                          const proj = getProjected(p)
+                          const rates = p.actual_rates || {}
+                          const mkDelta = (pv, av) => (pv == null || av == null || av === 0) ? null : ((pv - av) / av) * 100
+                          const mkClass = d => d == null ? 'pcal-delta-neutral' : d > 5 ? 'pcal-delta-pos' : d < -5 ? 'pcal-delta-neg' : 'pcal-delta-neutral'
+                          const fmtDelta = d => d == null ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(1)}%`
+                          const statProj = proj?.[cfg.projKey]
+                          const statAct  = p.actual?.[cfg.projKey]
+                          const rateProj = inp[cfg.rateKey]
+                          const rateAct  = rates[cfg.rateKey]
+                          return (<>
+                            {/* Min/G, GP read-only */}
+                            <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
+                            <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
+                            {/* Counting stat */}
+                            <td className="pcal-projected">{fmt(statProj)}</td>
+                            <td className="pcal-actual">{fmt(statAct)}</td>
+                            <td className={mkClass(mkDelta(statProj, statAct))}>{fmtDelta(mkDelta(statProj, statAct))}</td>
+                            {/* Driving rate (editable) */}
+                            <td>
+                              <input className="pcal-input pcal-input-wide" type="number" step={cfg.step} min="0"
+                                value={rateProj ?? ''}
+                                onChange={e => setField(p.player_id, cfg.rateKey, parseFloat(e.target.value) || 0)}
+                                onBlur={e => saveField(p.player_id, cfg.rateKey, parseFloat(e.target.value) || 0, p.inputs[cfg.rateKey], season)} />
+                            </td>
+                            <td className="pcal-actual">{rateAct != null ? rateAct.toFixed(4) : '—'}</td>
+                            <td className={mkClass(mkDelta(rateProj, rateAct))}>{fmtDelta(mkDelta(rateProj, rateAct))}</td>
+                            {/* Base year */}
+                            <td><select className="pcal-mini-select" value={inp.base_year || ''}
+                              onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}>
+                              {(p.available_seasons || []).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select></td>
+                            {/* Age adjustment */}
+                            <td><select className="pcal-mini-select" value={inp.scenario || 'no_change'}
+                              onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
+                              <option value="no_change">No change</option>
+                              <option value="base_change">Base change</option>
+                            </select></td>
+                          </>)
+                        })()}
+
+                        {/* Other stats (FG%/FT%): Min/G and GP as read-only reference columns, then full calibration */}
+                        {stat !== 'MIN' && stat !== 'GP' && stat !== 'PTS' && stat !== 'REB' && !COUNTING_STAT[stat] && (
                           <>
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
                             <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
