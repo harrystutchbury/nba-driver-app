@@ -81,6 +81,26 @@ _AGE_CURVE_FIELDS = {
     "FT%":  ["ft_pct"],
 }
 
+# PTS is the one view whose fields don't all age on the same curve: the
+# shooting percentages follow the FG%/FT% efficiency curves, while the
+# attempt-rate (volume) fields follow the overall PTS curve.
+_PTS_FIELD_CURVE = {
+    "two_pa_rate":   "PTS",
+    "three_pa_rate": "PTS",
+    "fta_rate":      "PTS",
+    "two_p_pct":     "FG_PCT",
+    "three_p_pct":   "FG_PCT",
+    "ft_pct":        "FT_PCT",
+}
+
+
+def _field_curve_map(stat: str) -> dict:
+    """Map each of a view's rate fields to the age_curve_lookup stat it ages on."""
+    if stat == "PTS":
+        return dict(_PTS_FIELD_CURVE)
+    curve = _AGE_CURVE_STAT.get(stat)
+    return {f: curve for f in _AGE_CURVE_FIELDS.get(stat, [])} if curve else {}
+
 # Per-row reset: which fields a reset in each view is allowed to touch.
 # Deliberately scoped to the current view so resetting a row in, say, the PTS
 # view can't clobber hand-tuned AST/REB/STL rates the user set in other views.
@@ -1195,24 +1215,30 @@ def apply_age_curve(
             conn.close()
             raise HTTPException(404, f"No birthdate for {player_id}")
 
-        # Map display stat → age_curve_lookup stat name
-        curve_stat = _AGE_CURVE_STAT.get(stat)
-        if not curve_stat:
+        # Each field ages on its own curve (see _field_curve_map). Fetch every
+        # curve this view needs for the player's age in one query.
+        field_curves = _field_curve_map(stat)
+        if not field_curves:
             conn.close()
             raise HTTPException(400, f"No age curve for stat {stat}")
 
-        curve_row = conn.execute(
-            "SELECT base_case_multiplier FROM age_curve_lookup WHERE age=? AND stat=?",
-            [age, curve_stat],
-        ).fetchone()
-        if not curve_row or curve_row["base_case_multiplier"] is None:
+        needed = sorted(set(field_curves.values()))
+        rows = conn.execute(
+            f"SELECT stat, base_case_multiplier FROM age_curve_lookup "
+            f"WHERE age=? AND stat IN ({','.join('?' * len(needed))})",
+            [age, *needed],
+        ).fetchall()
+        mult_by_curve = {r["stat"]: r["base_case_multiplier"] for r in rows
+                         if r["base_case_multiplier"] is not None}
+        if not mult_by_curve:
             conn.close()
-            raise HTTPException(404, f"No base_case_multiplier for age={age}, stat={curve_stat}")
+            raise HTTPException(404, f"No age curve multipliers for age={age}, stat={stat}")
 
-        multiplier = curve_row["base_case_multiplier"]
-        for field in scope:
-            if field in derived and derived[field] is not None:
-                derived[field] = round(derived[field] * multiplier, 6)
+        # Apply each field's own multiplier; skip any field whose curve is absent.
+        for field, curve in field_curves.items():
+            mult = mult_by_curve.get(curve)
+            if mult is not None and field in derived and derived[field] is not None:
+                derived[field] = round(derived[field] * mult, 6)
 
     # Keep only this view's fields. derive_rates() returns the player's full rate
     # set, so writing it wholesale would silently reset every other stat back to
