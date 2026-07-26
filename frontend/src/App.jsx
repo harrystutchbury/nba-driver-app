@@ -1977,6 +1977,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
   // Effective Value: per-game = Σ unpunted z × gp; totals = Σ unpunted totals-Z
   const getEffectiveValue = (p) => {
+    if (p.unprojected) return -Infinity   // not projected yet → sort to bottom
     let sum = 0
     for (const c of PROJ_PUNT_COLS) {
       if (puntedCats.has(c.key)) continue
@@ -2126,7 +2127,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
         }
         if (showCTW && !c.noZ) row.push(p[`ctw_${c.key}`]!=null?p[`ctw_${c.key}`].toFixed(2):'')
       })
-      if (showZ) { const v=getEffectiveValue(p); row.push(v!=null?v.toFixed(1):'') }
+      if (showZ) { const v=getEffectiveValue(p); row.push((v!=null && isFinite(v))?v.toFixed(1):'') }
       if (showCTW) row.push(p.ctw!=null?p.ctw.toFixed(2):'')
       return row
     })
@@ -2173,7 +2174,9 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
               {sorted.map((p, i) => {
                 const ctwVal = p.ctw
                 return (
-                <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                <tr key={p.slug} className={i % 2 === 0 ? 'row-even' : 'row-odd'}
+                    style={p.unprojected ? { opacity: 0.5 } : undefined}
+                    title={p.unprojected ? 'Not projected yet — set minutes in Calibration' : undefined}>
                   <td className="rank-col muted">{i + 1}</td>
                   <td className="name-col">
                     <div className="name-col-inner">
@@ -2217,7 +2220,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                     )
                   })}
                   <td className="num mono z-total-cell">
-                    {(() => { const v = getEffectiveValue(p); return v != null ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
+                    {p.unprojected ? '—' : (() => { const v = getEffectiveValue(p); return (v != null && isFinite(v)) ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
                   </td>
                   <td className="num mono ctw-cell">
                     {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}

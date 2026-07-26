@@ -3573,11 +3573,6 @@ def get_projections_calibrated(
     GET /projections so the Projections page consumes it unchanged.
     """
     import time as _t
-    cache_key = ("cal", start, end)
-    cached = _proj_cache.get(cache_key)
-    if cached and (_t.time() - cached[0]) < _PROJ_CACHE_TTL:
-        return cached[1]
-
     from api.proj_router import (
         get_or_init_inputs, compute_projected, get_team_pace, PREV_SEASON,
     )
@@ -3589,6 +3584,21 @@ def get_projections_calibrated(
         if not season:
             return []
         base_year = PREV_SEASON
+
+        # Cache keyed on (window, data version). The version bumps whenever the
+        # roster or any saved projection for this season changes, so calibration
+        # edits appear on the next load instead of after the 10-minute TTL.
+        vrow = conn.execute("""
+            SELECT (SELECT COUNT(*) FROM players WHERE season=?),
+                   (SELECT COUNT(*) FROM projection_inputs WHERE season=?),
+                   (SELECT MAX(last_updated) FROM projection_inputs WHERE season=?)
+        """, (season, season, season)).fetchone()
+        version = tuple(vrow)
+        cache_key = ("cal", start, end)
+        cached = _proj_cache.get(cache_key)
+        if (cached and len(cached) == 3 and cached[2] == version
+                and (_t.time() - cached[0]) < _PROJ_CACHE_TTL):
+            return cached[1]
 
         # ── 1. Roster + display meta for the projection season ──────────────
         roster = conn.execute("""
@@ -3607,6 +3617,7 @@ def get_projections_calibrated(
         # ── 2. Projected per-game line per player (saved override or derived) ─
         pace_cache = {}
         baselines = []
+        unprojected_rows = []
         for r in roster:
             team = r["team"]
             if team not in pace_cache:
@@ -3614,7 +3625,14 @@ def get_projections_calibrated(
             inp  = get_or_init_inputs(conn, r["slug"], season, team, base_year=base_year)
             proj = compute_projected(inp, pace_cache[team])
             if not proj:
-                continue  # no minutes / no basis yet (e.g. unset rookie)
+                # No minutes set yet (e.g. a rookie with no prior stats). Keep the
+                # player so they show at the bottom of the page as unprojected.
+                unprojected_rows.append({
+                    "slug": r["slug"], "name": r["full_name"], "team": team,
+                    "position": r["fantasy_position"] or r["position_group"] or "Guard",
+                    "gp": int(round(inp.get("projected_gp") or 0)),
+                })
+                continue
             baselines.append({
                 "player_slug":      r["slug"],
                 "full_name":        r["full_name"],
@@ -3788,10 +3806,28 @@ def get_projections_calibrated(
         results.sort(
             key=lambda x: x["period_value"] if x["period_value"] is not None else -1e9,
             reverse=True)
+
+        # Unprojected roster players (no minutes yet) go to the bottom with null
+        # fields so the page renders them as dashes until they're projected.
+        _null_keys = (*Z_KEYS, *(f"z_{k}" for k in Z_KEYS),
+                      *(f"{s}_low" for s in SCHED_STATS), *(f"{s}_high" for s in SCHED_STATS),
+                      "ctw", *(f"ctw_{k}" for k in Z_KEYS))
+        for u in unprojected_rows:
+            entry = {
+                "slug": u["slug"], "name": u["name"], "team": u["team"],
+                "position": u["position"], "gp": u["gp"] or None,
+                "opponent": "", "is_home": True, "ease": None,
+                "injury": injury_map.get(u["slug"]), "is_adjusted": False,
+                "unprojected": True, "z_total": None, "period_value": None,
+            }
+            for k in _null_keys:
+                entry[k] = None
+            results.append(entry)
+
         for i, p in enumerate(results):
             p["rank"] = i + 1
 
-        _proj_cache[cache_key] = (_t.time(), results)
+        _proj_cache[cache_key] = (_t.time(), results, version)
         return results
     finally:
         conn.close()
