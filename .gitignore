@@ -10,6 +10,18 @@ venv312/
 backend/data/nba.db
 backend/data/*.db
 
+# Stray/empty DB files (the real DB is backend/data/nba.db above)
+/nba.db
+backend/nba.db
+frontend/nba.db
+
+# Local DB dumps (regenerated from the live DB, not source)
+backend/nbacom_dump.sql
+backend/nbacom_dump.sql.gz
+
+# DesignSync local cache
+frontend/.design-sync/
+
 # Trained models — regenerate on server or copy up manually
 # (comment this out if you want to include them)
 # backend/models/
