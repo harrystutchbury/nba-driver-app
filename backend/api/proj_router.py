@@ -129,7 +129,16 @@ def get_team_pace(conn, team: str, season: str) -> float:
     row = conn.execute(
         "SELECT AVG(pace) pace FROM team_games WHERE team=? AND season=?", [team, season]
     ).fetchone()
-    return float(row["pace"] or 98.0) if row and row["pace"] else 98.0
+    if row and row["pace"]:
+        return float(row["pace"])
+    # Fallback: the requested season has no games yet (e.g. projecting 2026-27
+    # pre-season). Use the team's most recent season with pace data rather than a
+    # flat 98.0, so projected rates and projected output share the same pace.
+    row = conn.execute(
+        "SELECT AVG(pace) pace FROM team_games WHERE team=? AND pace IS NOT NULL "
+        "GROUP BY season ORDER BY season DESC LIMIT 1", [team]
+    ).fetchone()
+    return float(row["pace"]) if row and row["pace"] else 98.0
 
 
 def get_player_season_avgs(conn, player_id: str, season: str) -> dict:
