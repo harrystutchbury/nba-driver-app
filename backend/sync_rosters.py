@@ -29,11 +29,50 @@ Usage:
 import json
 import logging
 import os
+import re
 import sys
+import unicodedata
 import urllib.request
 import urllib.parse
+from typing import Optional
 
 from schema import get_conn
+
+# Name suffixes that are not part of the family name for slug purposes
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+
+
+def _norm(s: str) -> str:
+    """Lowercase, strip accents to ASCII, drop everything but letters."""
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z]", "", s.lower())
+
+
+def generate_br_slug(full_name: str, taken: set) -> Optional[str]:
+    """
+    Build a Basketball-Reference-style slug from a full name, matching BR's
+    convention: first5(lastname) + first2(firstname) + NN, where NN starts at
+    01 and increments to avoid collisions with already-taken slugs.
+
+    e.g. 'Victor Wembanyama' -> 'wembavi01', 'Shai Gilgeous-Alexander' ->
+    'gilgesh01'. Returns None if the name can't yield a slug.
+    """
+    tokens = [t for t in (full_name or "").split() if t]
+    # Drop a trailing suffix token (Jr., III, ...)
+    while len(tokens) > 1 and _norm(tokens[-1]) in _NAME_SUFFIXES:
+        tokens.pop()
+    if len(tokens) < 2:
+        return None
+    first = _norm(tokens[0])
+    last  = _norm(" ".join(tokens[1:]))  # multi-word surnames collapse to letters
+    if not first or not last:
+        return None
+    base = f"{last[:5]}{first[:2]}"
+    for n in range(1, 100):
+        slug = f"{base}{n:02d}"
+        if slug not in taken:
+            return slug
+    return None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,34 +171,53 @@ def sync(season: str = None, dry_run: bool = False, conn=None) -> dict:
             raise RuntimeError("No season found in players table")
 
         roster = fetch_current_rosters()
-        existing = {r[0] for r in conn.execute(
-            "SELECT slug FROM players WHERE season=?", [season]).fetchall()}
+        rows = conn.execute(
+            "SELECT slug, full_name FROM players WHERE season=?", [season]).fetchall()
+        existing_slugs = {r[0] for r in rows}
+        existing_names = {_norm(r[1]) for r in rows}   # for name-based idempotency
 
         added, unmapped, already = [], [], 0
-        seen_new = set()
+        taken = set(existing_slugs)   # slugs unavailable for generation
+        seen_names = set()            # names already handled this run
         for p in roster:
-            if not p["slug"]:
-                unmapped.append({"name": p["name"], "team": p["team"], "exp": p["exp"]})
-                continue
-            if p["slug"] in existing:
-                already += 1
-                continue
-            if p["slug"] in seen_new:
-                continue  # de-dupe within this run
-            seen_new.add(p["slug"])
-            added.append(p)
+            slug = p["slug"]
+            if slug:
+                # Tank01 has a Basketball Reference id — exact match.
+                if slug in existing_slugs or slug in taken:
+                    already += 1 if slug in existing_slugs else 0
+                    continue
+                taken.add(slug)
+                added.append({**p, "slug": slug, "generated": False})
+            else:
+                # No BR id yet (unpublished rookie): generate the slug BR will use.
+                name_key = _norm(p["name"])
+                if not name_key or name_key in existing_names or name_key in seen_names:
+                    if name_key:
+                        already += 1  # already synced on a prior run
+                    else:
+                        unmapped.append({"name": p["name"], "team": p["team"], "exp": p["exp"]})
+                    continue
+                gen = generate_br_slug(p["name"], taken)
+                if not gen:
+                    unmapped.append({"name": p["name"], "team": p["team"], "exp": p["exp"]})
+                    continue
+                taken.add(gen)
+                seen_names.add(name_key)
+                added.append({**p, "slug": gen, "generated": True})
 
         if not dry_run and added:
             conn.executemany(
                 "INSERT OR IGNORE INTO players (slug, full_name, team, season, roster_source) "
-                "VALUES (?, ?, ?, ?, 'tank01')",
-                [(p["slug"], p["name"], p["team"], season) for p in added],
+                "VALUES (?, ?, ?, ?, ?)",
+                [(p["slug"], p["name"], p["team"], season,
+                  "tank01_generated" if p["generated"] else "tank01") for p in added],
             )
             conn.commit()
 
-        log.info("[%s] roster=%d, already=%d, %s=%d, unmapped=%d",
+        gen_n = sum(1 for p in added if p["generated"])
+        log.info("[%s] roster=%d, already=%d, %s=%d (%d generated slugs), unmapped=%d",
                  season, len(roster), already,
-                 "would_add" if dry_run else "added", len(added), len(unmapped))
+                 "would_add" if dry_run else "added", len(added), gen_n, len(unmapped))
         return {
             "season":         season,
             "dry_run":        dry_run,
@@ -181,8 +239,9 @@ if __name__ == "__main__":
     print(f"  already in table    : {result['already_present']}")
     print(f"  {'would add' if dry else 'added':<19} : {len(result['added'])}")
     for p in result["added"]:
-        print(f"      + {p['name']:<26} {p['team']:<24} exp={p['exp']} ({p['slug']})")
+        tag = "gen" if p.get("generated") else "brf"
+        print(f"      + {p['name']:<26} {p['team']:<24} exp={p['exp']:<2} [{tag}] {p['slug']}")
     if result["unmapped"]:
-        print(f"  unmapped (no bRefID): {len(result['unmapped'])} — need manual slugs")
+        print(f"  unmapped (no name): {len(result['unmapped'])} — cannot generate a slug")
         for p in result["unmapped"]:
             print(f"      ? {p['name']:<26} {p['team']:<24} exp={p['exp']}")
