@@ -1913,7 +1913,9 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     if (!start || !end || start > end) return
     setLoading(true)
     setError(null)
-    apiFetch(`/api/projections?start=${start}&end=${end}`)
+    // Projections page reads the hand-built calibration projections
+    // (projection_inputs -> compute_projected), not live game logs.
+    apiFetch(`/api/projections-calibrated?start=${start}&end=${end}`)
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
       .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })

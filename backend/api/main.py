@@ -3521,6 +3521,283 @@ def get_projections(
 
 
 # -----------------------------------------------------------------------
+# GET /projections-calibrated  — public Projections page, sourced from the
+# hand-built calibration projections instead of live game logs.
+# -----------------------------------------------------------------------
+
+def _projected_league_stats(lines):
+    """
+    League z-score reference built from the projected per-game lines themselves
+    (self-contained, so it works pre-season with no game_logs). Mirrors the
+    stats half of _league_data; fg_pct/ft_pct are on the 0-100 scale.
+    """
+    if len(lines) < 2:
+        return None
+    fg_vals = [l['fg_pct'] for l in lines if l.get('fg_pct') is not None]
+    ft_vals = [l['ft_pct'] for l in lines if l.get('ft_pct') is not None]
+    fg_mean = sum(fg_vals) / len(fg_vals) if fg_vals else None
+    ft_mean = sum(ft_vals) / len(ft_vals) if ft_vals else None
+    for l in lines:
+        l['fg_impact'] = ((l['fg_pct'] - fg_mean) * l['fga_pg']
+                          if l.get('fg_pct') is not None and fg_mean is not None else None)
+        l['ft_impact'] = ((l['ft_pct'] - ft_mean) * l['fta_pg']
+                          if l.get('ft_pct') is not None and ft_mean is not None else None)
+    stats = {'_fg_mean': fg_mean, '_ft_mean': ft_mean}
+    for key in Z_KEYS:
+        if key == 'fg_pct':
+            vals = [l['fg_impact'] for l in lines if l.get('fg_impact') is not None]
+        elif key == 'ft_pct':
+            vals = [l['ft_impact'] for l in lines if l.get('ft_impact') is not None]
+        else:
+            vals = [l[key] for l in lines if l.get(key) is not None]
+        if len(vals) < 2:
+            stats[key] = (None, None)
+            continue
+        mean = sum(vals) / len(vals)
+        std  = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))
+        stats[key] = (mean, std if std > 0 else None)
+    return stats
+
+
+@router.get("/projections-calibrated")
+def get_projections_calibrated(
+    start: str = Query(..., description="Window start date YYYY-MM-DD"),
+    end:   str = Query(..., description="Window end date YYYY-MM-DD"),
+):
+    """
+    Projections-page data sourced from the hand-built calibration projections
+    (projection_inputs -> compute_projected) rather than live game logs. Full
+    window + opponent-adjustment machinery applies when a schedule exists;
+    pre-season (no scheduled games in the window) it falls back to season-long
+    projected value (value = composite z x projected GP). Response shape matches
+    GET /projections so the Projections page consumes it unchanged.
+    """
+    import time as _t
+    cache_key = ("cal", start, end)
+    cached = _proj_cache.get(cache_key)
+    if cached and (_t.time() - cached[0]) < _PROJ_CACHE_TTL:
+        return cached[1]
+
+    from api.proj_router import (
+        get_or_init_inputs, compute_projected, get_team_pace, PREV_SEASON,
+    )
+
+    conn = get_conn()
+    try:
+        srow = conn.execute("SELECT MAX(season) FROM players").fetchone()
+        season = srow[0] if srow and srow[0] else None
+        if not season:
+            return []
+        base_year = PREV_SEASON
+
+        # ── 1. Roster + display meta for the projection season ──────────────
+        roster = conn.execute("""
+            SELECT p.slug, p.full_name, p.team,
+                   b.position_group,
+                   COALESCE(fpm.position, t01.position, b.position_group) AS fantasy_position
+            FROM players p
+            LEFT JOIN player_bio b ON b.br_slug = p.slug
+            LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01 ON t01.br_slug = p.slug
+            WHERE p.season = ?
+        """, (season,)).fetchall()
+        if not roster:
+            return []
+
+        # ── 2. Projected per-game line per player (saved override or derived) ─
+        pace_cache = {}
+        baselines = []
+        for r in roster:
+            team = r["team"]
+            if team not in pace_cache:
+                pace_cache[team] = get_team_pace(conn, team, season)
+            inp  = get_or_init_inputs(conn, r["slug"], season, team, base_year=base_year)
+            proj = compute_projected(inp, pace_cache[team])
+            if not proj:
+                continue  # no minutes / no basis yet (e.g. unset rookie)
+            baselines.append({
+                "player_slug":      r["slug"],
+                "full_name":        r["full_name"],
+                "team":             team,
+                "position_group":   r["position_group"] or "Guard",
+                "fantasy_position": r["fantasy_position"] or r["position_group"] or "Guard",
+                "min_pg":       round(inp.get("minutes_per_game") or 0, 1),
+                "projected_gp": int(round(inp.get("projected_gp") or 0)),
+                "pts": proj["pts"],
+                "reb": round((proj["oreb"] or 0) + (proj["dreb"] or 0), 1),
+                "ast": proj["ast"], "stl": proj["stl"], "blk": proj["blk"],
+                "tov": proj["tov"], "fg3m": proj["fg3m"],
+                "fg_pct": round(proj["fg_pct"] * 100, 1) if proj["fg_pct"] is not None else None,
+                "ft_pct": round((proj["ft_pct"] or 0) * 100, 1),
+                "fga_pg": proj["fga"], "fta_pg": proj["fta"],
+            })
+        if len(baselines) < 2:
+            return []
+
+        # ── 3. z-reference from the projected lines themselves ──────────────
+        league = _projected_league_stats(baselines)
+        if not league:
+            return []
+
+        # ── 4. Schedule window (empty pre-season -> season-long fallback) ───
+        sched = conn.execute(
+            "SELECT home_team, away_team FROM nba_schedule WHERE game_date>=? AND game_date<=?",
+            (start, end)).fetchall()
+        team_opponents, team_game_info = {}, {}
+        for s in sched:
+            team_opponents.setdefault(s["home_team"], []).append(s["away_team"])
+            team_opponents.setdefault(s["away_team"], []).append(s["home_team"])
+            team_game_info.setdefault(s["home_team"], {"opponent": s["away_team"], "is_home": True})
+            team_game_info.setdefault(s["away_team"], {"opponent": s["home_team"], "is_home": False})
+        has_schedule = bool(team_opponents)
+
+        # ── 5. Opponent defensive factors (only meaningful with a schedule) ─
+        opp_factors = {}
+        if has_schedule:
+            dsrow = conn.execute("SELECT MAX(season) FROM game_logs").fetchone()
+            def_season = dsrow[0] if dsrow else None
+            if def_season:
+                for pos in ["Guard", "Forward", "Center", "Guard-Forward", "Forward-Center"]:
+                    allowed = conn.execute("""
+                        SELECT g.opponent AS defending_team,
+                               AVG(g.pts) pts, AVG(g.reb) reb, AVG(g.ast) ast,
+                               AVG(g.stl) stl, AVG(g.blk) blk, AVG(g.tov) tov, AVG(g.fg3m) fg3m
+                        FROM game_logs g JOIN player_bio b ON b.br_slug = g.player_slug
+                        WHERE g.season = ? AND b.position_group = ? AND g.min > 0
+                        GROUP BY g.opponent HAVING COUNT(*) >= 5
+                    """, (def_season, pos)).fetchall()
+                    lavg = {}
+                    for stat in SCHED_STATS:
+                        vals = [a[stat] for a in allowed if a[stat] is not None]
+                        lavg[stat] = sum(vals) / len(vals) if vals else 1.0
+                    for a in allowed:
+                        opp_factors[(a["defending_team"], pos)] = {
+                            stat: (a[stat] / lavg[stat]) if (a[stat] and lavg[stat]) else 1.0
+                            for stat in SCHED_STATS
+                        }
+
+        # ── 6. Outcome-range SDs from base-year game logs (best effort) ─────
+        sd_map = {}
+        for r in conn.execute("""
+            SELECT player_slug,
+                   SQRT(MAX(0, AVG(pts*pts)-AVG(pts)*AVG(pts)))   pts_sd,
+                   SQRT(MAX(0, AVG(reb*reb)-AVG(reb)*AVG(reb)))   reb_sd,
+                   SQRT(MAX(0, AVG(ast*ast)-AVG(ast)*AVG(ast)))   ast_sd,
+                   SQRT(MAX(0, AVG(stl*stl)-AVG(stl)*AVG(stl)))   stl_sd,
+                   SQRT(MAX(0, AVG(blk*blk)-AVG(blk)*AVG(blk)))   blk_sd,
+                   SQRT(MAX(0, AVG(tov*tov)-AVG(tov)*AVG(tov)))   tov_sd,
+                   SQRT(MAX(0, AVG(fg3m*fg3m)-AVG(fg3m)*AVG(fg3m))) fg3m_sd
+            FROM game_logs WHERE season=? AND min>=15 GROUP BY player_slug HAVING COUNT(*)>=10
+        """, (base_year,)).fetchall():
+            sd_map[r["player_slug"]] = dict(r)
+
+        injury_map = _get_injury_map(conn)
+        adj_rows = conn.execute("""
+            SELECT * FROM player_adjustments WHERE is_active=1
+              AND (start_date IS NULL OR start_date<=?) AND (end_date IS NULL OR end_date>=?)
+        """, [end, start]).fetchall()
+        adj_map = {r["player_slug"]: dict(r) for r in adj_rows}
+
+        # ── 7. Assemble per-player results ─────────────────────────────────
+        results = []
+        for base in baselines:
+            slug = base["player_slug"]; team = base["team"]; position = base["position_group"]
+
+            if has_schedule:
+                opponents = team_opponents.get(team, [])
+                if not opponents:
+                    continue  # team isn't playing in this window
+                gp = len(opponents)
+                avg_factor = {stat: 0.0 for stat in SCHED_STATS}; matched = 0
+                for opp in opponents:
+                    f = opp_factors.get((opp, position))
+                    if f:
+                        for stat in SCHED_STATS:
+                            avg_factor[stat] += f[stat]
+                        matched += 1
+                if matched:
+                    for stat in SCHED_STATS:
+                        avg_factor[stat] /= matched
+                else:
+                    avg_factor = {stat: 1.0 for stat in SCHED_STATS}
+                gi = team_game_info.get(team, {})
+                is_home = gi.get("is_home", True)
+                ha = _HOME_FACTORS if is_home else _AWAY_FACTORS
+                opp_name = gi.get("opponent", "")
+            else:
+                # Season-long fallback: one "game unit" per projected game.
+                gp = base["projected_gp"] or 0
+                avg_factor = {stat: 1.0 for stat in SCHED_STATS}
+                ha = {}
+                is_home = True; opp_name = ""
+
+            row = dict(base)
+            adj = adj_map.get(slug)
+            if adj:
+                row = _apply_player_adjustment(row, adj)
+
+            proj = {stat: round((row[stat] or 0.0) * avg_factor[stat] * ha.get(stat, 1.0), 1)
+                    for stat in SCHED_STATS}
+            proj["fg_pct"] = round(row["fg_pct"] * ha.get("fg_pct", 1.0), 1) if row["fg_pct"] is not None else None
+            proj["ft_pct"] = round(row["ft_pct"] * ha.get("ft_pct", 1.0), 1) if row["ft_pct"] is not None else None
+            proj["fga_pg"] = row["fga_pg"] or 0.0
+            proj["fta_pg"] = row["fta_pg"] or 0.0
+            proj["min_pg"] = row["min_pg"]
+
+            psd = sd_map.get(slug, {})
+            ranges = {}
+            for stat in SCHED_STATS:
+                sd = (psd.get(f"{stat}_sd") or 0.0) * avg_factor[stat]
+                ranges[f"{stat}_low"]  = round(max(0.0, proj[stat] - sd), 1)
+                ranges[f"{stat}_high"] = round(proj[stat] + sd, 1)
+
+            z_total = _composite_z(proj, league)
+            proj_z  = _with_zscores(proj, league)
+            results.append({
+                "slug": slug, "name": base["full_name"], "team": team,
+                "position": base["fantasy_position"], "gp": gp,
+                "opponent": opp_name, "is_home": is_home, "ease": None,
+                "injury": injury_map.get(slug), "is_adjusted": adj is not None,
+                "z_total": round(z_total, 2) if z_total is not None else None,
+                "period_value": round(z_total * gp, 2) if z_total is not None else None,
+                **proj_z, **ranges,
+            })
+
+        # ── 8. CTW score (best effort; None where a player has no score) ────
+        ctw_rows = conn.execute("""
+            SELECT player_slug, total_expected_wins,
+                   expected_wins_pts, expected_wins_reb, expected_wins_ast,
+                   expected_wins_stl, expected_wins_blk, expected_wins_tov,
+                   expected_wins_3pm, expected_wins_fg, expected_wins_ft
+            FROM ctw_player_scores WHERE season=? AND league_size=12 AND period='full_season'
+        """, (base_year,)).fetchall()
+        ctw_map = {r["player_slug"]: dict(r) for r in ctw_rows}
+        for p in results:
+            c = ctw_map.get(p["slug"])
+            p["ctw"]        = c["total_expected_wins"] if c else None
+            p["ctw_pts"]    = c["expected_wins_pts"]   if c else None
+            p["ctw_reb"]    = c["expected_wins_reb"]   if c else None
+            p["ctw_ast"]    = c["expected_wins_ast"]   if c else None
+            p["ctw_stl"]    = c["expected_wins_stl"]   if c else None
+            p["ctw_blk"]    = c["expected_wins_blk"]   if c else None
+            p["ctw_tov"]    = c["expected_wins_tov"]   if c else None
+            p["ctw_fg3m"]   = c["expected_wins_3pm"]   if c else None
+            p["ctw_fg_pct"] = c["expected_wins_fg"]    if c else None
+            p["ctw_ft_pct"] = c["expected_wins_ft"]    if c else None
+
+        results.sort(
+            key=lambda x: x["period_value"] if x["period_value"] is not None else -1e9,
+            reverse=True)
+        for i, p in enumerate(results):
+            p["rank"] = i + 1
+
+        _proj_cache[cache_key] = (_t.time(), results)
+        return results
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # GET /projection-audit
 # -----------------------------------------------------------------------
 
