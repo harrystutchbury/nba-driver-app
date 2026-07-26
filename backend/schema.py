@@ -226,6 +226,14 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    # Migration: mark how a players row was sourced. NULL/absent = Basketball
+    # Reference season totals (the default refresh); 'tank01' = added from a live
+    # roster sync (rookies/signings that have no BR season stats yet).
+    try:
+        conn.execute("ALTER TABLE players ADD COLUMN roster_source TEXT")
+    except Exception:
+        pass  # column already exists
+
     # Migration: add scoring_settings to fantasy_connections
     try:
         conn.execute("ALTER TABLE fantasy_connections ADD COLUMN scoring_settings TEXT")

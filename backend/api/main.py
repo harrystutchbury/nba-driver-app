@@ -3759,6 +3759,36 @@ def admin_sync_injuries(current_user: str = Depends(get_current_user)):
         conn.close()
 
 
+@router.post("/admin/sync-rosters")
+def admin_sync_rosters(
+    dry_run: bool = False,
+    season: str = None,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Add current-roster players (rookies / new signings) that Basketball
+    Reference season totals don't yet include, pulled live from Tank01.
+    Additive only — never modifies or removes existing players.
+    Pass ?dry_run=true to preview what would be added without writing.
+    Requires RAPIDAPI_KEY on server.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        if not os.environ.get("RAPIDAPI_KEY"):
+            raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+        import sync_rosters
+        return sync_rosters.sync(season=season, dry_run=dry_run, conn=conn)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_sync_rosters failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
     """Return shot_logs row count, seasons present, and unmatched players per season."""
