@@ -4102,6 +4102,49 @@ def admin_sync_rosters(
         conn.close()
 
 
+@router.post("/admin/purge-synced-roster")
+def admin_purge_synced_roster(
+    season:  str = Query(..., description="Season to remove Tank01-synced rows from"),
+    dry_run: bool = False,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Remove players rows added by the Tank01 roster sync (roster_source in
+    'tank01' / 'tank01_generated') for ONE season. Used to restore a completed
+    season's roster to historical truth after rookies were parked there as a
+    stepping stone. `season` is required so this can't touch the wrong season.
+    Pass ?dry_run=true to preview. Reversible: re-run sync-rosters to re-add.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        rows = conn.execute(
+            "SELECT slug, full_name, team FROM players "
+            "WHERE season=? AND roster_source IN ('tank01','tank01_generated') "
+            "ORDER BY full_name", (season,)).fetchall()
+        preview = [{"slug": r["slug"], "name": r["full_name"], "team": r["team"]} for r in rows]
+        if not dry_run and preview:
+            conn.execute(
+                "DELETE FROM players WHERE season=? "
+                "AND roster_source IN ('tank01','tank01_generated')", (season,))
+            conn.commit()
+        return {
+            "season":   season,
+            "dry_run":  dry_run,
+            "count":    len(preview),
+            "players":  preview[:100],
+            "truncated": len(preview) > 100,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_purge_synced_roster failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
     """Return shot_logs row count, seasons present, and unmatched players per season."""
