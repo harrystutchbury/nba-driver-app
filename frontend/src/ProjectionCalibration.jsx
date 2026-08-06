@@ -154,6 +154,7 @@ export default function ProjectionCalibrationPage() {
   const [bulkCurve, setBulkCurve]   = useState('')
   const [bulkApplying, setBulkApplying] = useState(false)
   const [bulkMsg, setBulkMsg]       = useState(null)
+  const [search, setSearch]         = useState('')
   const [loading, setLoading]       = useState(false)
   const [saving, setSaving]         = useState({})
   const [errors, setErrors]         = useState({})
@@ -393,6 +394,15 @@ export default function ProjectionCalibrationPage() {
             <option value="FA">★ Free Agents</option>
           </select>
 
+          <input className="pcal-select" type="search" placeholder="Search player…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            style={{ minWidth: 160 }} />
+          {search && data?.players && (
+            <span className="pcal-minutes-label" style={{ margin: 0 }}>
+              {data.players.filter(p => (p.full_name || '').toLowerCase().includes(search.toLowerCase())).length} of {data.players.length}
+            </span>
+          )}
+
           <select className="pcal-select" value={stat} onChange={e => setStat(e.target.value)}>
             {STATS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -576,7 +586,9 @@ export default function ProjectionCalibrationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.players.map(p => {
+                  {data.players
+                    .filter(p => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase()))
+                    .map(p => {
                     const inp    = localInputs[p.player_id] || p.inputs
                     const proj   = getProjected(p)
                     const season = data.season || '2025-26'
