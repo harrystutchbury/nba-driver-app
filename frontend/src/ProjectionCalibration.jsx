@@ -305,6 +305,25 @@ export default function ProjectionCalibrationPage() {
     }
   }
 
+  // Roster override: move a player to another team for the projection season.
+  async function handleMoveTeam(player, newTeam) {
+    if (!newTeam || newTeam === team) return
+    const season = data?.season || '2025-26'
+    setSaving(s => ({ ...s, [player.player_id]: true }))
+    setErrors(e => ({ ...e, [player.player_id]: null }))
+    try {
+      const res = await authFetch(`/api/admin/projections/player/${player.player_id}/set-team`, {
+        method: 'POST',
+        body: JSON.stringify({ season, team: newTeam }),
+      })
+      if (!res.ok) throw new Error(`Move failed (${res.status})`)
+      setRefreshKey(k => k + 1)   // reload — the player leaves this team's roster
+    } catch (err) {
+      setErrors(e => ({ ...e, [player.player_id]: err.message }))
+      setSaving(s => ({ ...s, [player.player_id]: false }))
+    }
+  }
+
   // Reset one row back to base-year actuals, scoped to the fields the current view edits
   async function handleResetRow(player) {
     const season = data?.season || '2025-26'
@@ -505,6 +524,7 @@ export default function ProjectionCalibrationPage() {
                         <th>Min/G ✎</th>
                         <th style={{ color: '#64748b' }}>Last yr MIN</th>
                         <th style={{ color: '#64748b' }}>2 yrs ago</th>
+                        <th>Team</th>
                       </>
                     ) : stat === 'GP' ? (
                       <>
@@ -596,6 +616,15 @@ export default function ProjectionCalibrationPage() {
                               </td>
                               <td className="pcal-actual">{refs.last_yr ?? '—'}</td>
                               <td className="pcal-actual">{refs.prev_yr ?? '—'}</td>
+                              {/* Roster override: move this player to another team */}
+                              <td>
+                                <select className="pcal-mini-select" value={team}
+                                  disabled={isSaving}
+                                  onChange={e => handleMoveTeam(p, e.target.value)}
+                                  title="Move this player to another team's roster">
+                                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </td>
                             </>
                           )
                         })()}

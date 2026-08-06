@@ -1323,6 +1323,47 @@ def apply_age_curve_bulk(
 
 
 # ---------------------------------------------------------------------------
+# POST /player/{player_id}/set-team  — manual roster override
+# ---------------------------------------------------------------------------
+
+@proj_router.post("/player/{player_id}/set-team")
+def set_player_team(
+    player_id:    str,
+    body:         dict,
+    current_user: str = Depends(_get_user),
+):
+    """
+    Move a player to another team for the projection season (manual roster
+    override). Body: { season, team }. Tags the row roster_source='manual' so a
+    later ingest won't revert the change. Editing only the projection season's
+    players row — no historical game logs are touched.
+    """
+    conn   = get_conn()
+    _require_admin(current_user, conn)
+    season   = body.get("season") or _current_season(conn)
+    new_team = (body.get("team") or "").strip()
+    if not new_team:
+        conn.close()
+        raise HTTPException(400, "team is required")
+
+    cur = conn.execute(
+        "SELECT team FROM players WHERE slug=? AND season=?", [player_id, season]
+    ).fetchone()
+    if not cur:
+        conn.close()
+        raise HTTPException(404, f"{player_id} is not on the {season} roster")
+
+    conn.execute(
+        "UPDATE players SET team=?, roster_source='manual' WHERE slug=? AND season=?",
+        [new_team, player_id, season],
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "player_id": player_id, "season": season,
+            "from_team": cur["team"], "team": new_team}
+
+
+# ---------------------------------------------------------------------------
 # POST /player/{player_id}/reset-row
 # ---------------------------------------------------------------------------
 
