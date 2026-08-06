@@ -389,7 +389,8 @@ export default function ProjectionCalibrationPage() {
         <div className="pcal-controls">
           <select className="pcal-select" value={team} onChange={e => setTeam(e.target.value)}>
             {!team && <option value="">Select team…</option>}
-            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            {teams.filter(t => t !== 'FA').map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="FA">★ Free Agents</option>
           </select>
 
           <select className="pcal-select" value={stat} onChange={e => setStat(e.target.value)}>

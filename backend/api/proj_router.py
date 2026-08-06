@@ -643,11 +643,27 @@ def get_team_calibration(
     season = _current_season(conn)
     stat   = stat.upper()
 
-    # Roster
-    players = conn.execute(
-        "SELECT slug, full_name FROM players WHERE team=? AND season=? ORDER BY full_name",
-        [team, season],
-    ).fetchall()
+    # Roster — the "FA" pseudo-team lists free agents: players in the system
+    # (last season's pool, or explicitly dropped to FA) who are NOT on a real
+    # team for the projection season, so they can be re-allocated.
+    if team == "FA":
+        players = conn.execute(
+            """
+            SELECT slug, MAX(full_name) AS full_name FROM players
+            WHERE ((season = ?) OR (season = ? AND team = 'FA'))
+              AND slug NOT IN (
+                  SELECT slug FROM players
+                  WHERE season = ? AND team IS NOT NULL AND team != 'FA'
+              )
+            GROUP BY slug ORDER BY full_name
+            """,
+            [PREV_SEASON, season, season],
+        ).fetchall()
+    else:
+        players = conn.execute(
+            "SELECT slug, full_name FROM players WHERE team=? AND season=? ORDER BY full_name",
+            [team, season],
+        ).fetchall()
 
     # Bio: age + position
     slugs  = [p["slug"] for p in players]
@@ -1354,18 +1370,33 @@ def set_player_team(
     cur = conn.execute(
         "SELECT team FROM players WHERE slug=? AND season=?", [player_id, season]
     ).fetchone()
-    if not cur:
-        conn.close()
-        raise HTTPException(404, f"{player_id} is not on the {season} roster")
+    if cur:
+        conn.execute(
+            "UPDATE players SET team=?, roster_source='manual' WHERE slug=? AND season=?",
+            [new_team, player_id, season],
+        )
+        from_team = cur["team"]
+    else:
+        # Free agent with no row for the projection season — create one so they
+        # join the target team's roster. Name comes from their most recent row.
+        nm = conn.execute(
+            "SELECT full_name FROM players WHERE slug=? ORDER BY season DESC LIMIT 1",
+            [player_id],
+        ).fetchone()
+        if not nm:
+            conn.close()
+            raise HTTPException(404, f"{player_id} is not in the system")
+        conn.execute(
+            "INSERT INTO players (slug, full_name, team, season, roster_source) "
+            "VALUES (?, ?, ?, ?, 'manual')",
+            [player_id, nm["full_name"], new_team, season],
+        )
+        from_team = "FA"
 
-    conn.execute(
-        "UPDATE players SET team=?, roster_source='manual' WHERE slug=? AND season=?",
-        [new_team, player_id, season],
-    )
     conn.commit()
     conn.close()
     return {"ok": True, "player_id": player_id, "season": season,
-            "from_team": cur["team"], "team": new_team}
+            "from_team": from_team, "team": new_team}
 
 
 # ---------------------------------------------------------------------------
