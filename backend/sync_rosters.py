@@ -173,11 +173,17 @@ def sync(season: str = None, dry_run: bool = False, conn=None) -> dict:
         roster = fetch_current_rosters()
         rows = conn.execute(
             "SELECT slug, full_name FROM players WHERE season=?", [season]).fetchall()
-        existing_slugs = {r[0] for r in rows}
+        existing_slugs = {r[0] for r in rows}          # this season's roster (dedup)
         existing_names = {_norm(r[1]) for r in rows}   # for name-based idempotency
 
+        # Collision set for GENERATED slugs must span every known player — all
+        # seasons + game logs — not just this season's roster. Otherwise a rookie
+        # can be handed a retired player's slug (Christian Anderson vs Chris
+        # Andersen both -> anderch01) and inherit their entire history.
+        taken = {r[0] for r in conn.execute("SELECT DISTINCT slug FROM players").fetchall()}
+        taken |= {r[0] for r in conn.execute("SELECT DISTINCT player_slug FROM game_logs").fetchall()}
+
         added, unmapped, already = [], [], 0
-        taken = set(existing_slugs)   # slugs unavailable for generation
         seen_names = set()            # names already handled this run
         for p in roster:
             slug = p["slug"]

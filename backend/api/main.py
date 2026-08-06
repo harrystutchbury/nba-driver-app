@@ -4145,6 +4145,65 @@ def admin_purge_synced_roster(
         conn.close()
 
 
+@router.post("/admin/fix-slug-collisions")
+def admin_fix_slug_collisions(
+    season:  str = None,
+    dry_run: bool = False,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Re-slug generated rookie rows whose slug collides with a historical player.
+    Detection: a roster_source='tank01_generated' row whose slug has game logs
+    (a real rookie has none, so those logs belong to someone else — e.g.
+    Christian Anderson landed on Chris Andersen's 'anderch01'). Assigns each a
+    fresh collision-free slug and moves its projection_inputs across. Only the
+    projection-season row is changed — the historical player is untouched.
+    Pass ?dry_run=true to preview.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        import sync_rosters
+        if not season:
+            row = conn.execute("SELECT MAX(season) FROM players").fetchone()
+            season = row[0] if row and row[0] else None
+
+        collisions = conn.execute("""
+            SELECT slug, full_name FROM players
+            WHERE season=? AND roster_source='tank01_generated'
+              AND slug IN (SELECT DISTINCT player_slug FROM game_logs)
+            ORDER BY full_name
+        """, (season,)).fetchall()
+
+        taken = {r[0] for r in conn.execute("SELECT DISTINCT slug FROM players").fetchall()}
+        taken |= {r[0] for r in conn.execute("SELECT DISTINCT player_slug FROM game_logs").fetchall()}
+
+        fixed = []
+        for c in collisions:
+            old, name = c["slug"], c["full_name"]
+            new = sync_rosters.generate_br_slug(name, taken)
+            if not new or new == old:
+                continue
+            taken.add(new)
+            fixed.append({"name": name, "old_slug": old, "new_slug": new})
+            if not dry_run:
+                conn.execute("UPDATE players SET slug=? WHERE slug=? AND season=?",
+                             (new, old, season))
+                conn.execute("UPDATE projection_inputs SET player_id=? WHERE player_id=? AND season=?",
+                             (new, old, season))
+        if not dry_run and fixed:
+            conn.commit()
+        return {"season": season, "dry_run": dry_run, "count": len(fixed), "fixed": fixed}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_fix_slug_collisions failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
     """Return shot_logs row count, seasons present, and unmatched players per season."""
