@@ -101,6 +101,15 @@ def _field_curve_map(stat: str) -> dict:
     curve = _AGE_CURVE_STAT.get(stat)
     return {f: curve for f in _AGE_CURVE_FIELDS.get(stat, [])} if curve else {}
 
+
+# Age-adjustment action -> the age_curve_lookup column it reads. "no_change"
+# just resets to base-year rates (no multiplier).
+_ACTION_MULT_COL = {
+    "base_change": "base_case_multiplier",
+    "optimistic":  "optimistic_multiplier",
+    "pessimistic": "pessimistic_multiplier",
+}
+
 # Per-row reset: which fields a reset in each view is allowed to touch.
 # Deliberately scoped to the current view so resetting a row in, say, the PTS
 # view can't clobber hand-tuned AST/REB/STL rates the user set in other views.
@@ -1172,6 +1181,75 @@ def get_age_curves(current_user: str = Depends(_get_user)):
 # POST /player/{player_id}/apply-curve
 # ---------------------------------------------------------------------------
 
+def _apply_curve_to_player(conn, player_id, season, team, stat, action, user):
+    """
+    Apply an age curve to one player's inputs for one stat view, writing to
+    projection_inputs (caller commits). Returns None on success, or an
+    (status_code, detail) tuple explaining why it couldn't be applied — the
+    single-player endpoint raises it; the bulk endpoint uses it to skip.
+    """
+    existing  = get_or_init_inputs(conn, player_id, season, team)
+    base_year = existing.get("base_year") or PREV_SEASON
+
+    # Fields this stat view owns — the write is scoped to these so an age curve
+    # applied in one view can't disturb rates tuned in another.
+    scope = _AGE_CURVE_FIELDS.get(stat)
+    if not scope:
+        return (400, f"No age curve fields for stat {stat}")
+
+    # Always re-derive rates from base_year actuals first.
+    avgs = get_player_season_avgs(conn, player_id, base_year)
+    pace = get_team_pace(conn, team, base_year)
+    if not avgs:
+        return (404, f"No game log data for {player_id} in {base_year}")
+
+    derived = derive_rates(avgs, pace)
+
+    mult_col = _ACTION_MULT_COL.get(action)
+    if mult_col:   # base_change / optimistic / pessimistic — apply the aging curve
+        bio = conn.execute(
+            "SELECT birthdate FROM player_bio WHERE br_slug=?", [player_id]
+        ).fetchone()
+        age = _player_age(bio["birthdate"] if bio else None)
+        if age is None:
+            return (404, f"No birthdate for {player_id}")
+
+        # Each field ages on its own curve (see _field_curve_map), reading the
+        # column for the chosen scenario (base / optimistic / pessimistic).
+        field_curves = _field_curve_map(stat)
+        if not field_curves:
+            return (400, f"No age curve for stat {stat}")
+        needed = sorted(set(field_curves.values()))
+        rows = conn.execute(
+            f"SELECT stat, {mult_col} AS mult FROM age_curve_lookup "
+            f"WHERE age=? AND stat IN ({','.join('?' * len(needed))})",
+            [age, *needed],
+        ).fetchall()
+        mult_by_curve = {r["stat"]: r["mult"] for r in rows if r["mult"] is not None}
+        if not mult_by_curve:
+            return (404, f"No {action} multipliers for age={age}, stat={stat}")
+        for field, curve in field_curves.items():
+            mult = mult_by_curve.get(curve)
+            if mult is not None and field in derived and derived[field] is not None:
+                derived[field] = round(derived[field] * mult, 6)
+
+    scoped = {f: derived[f] for f in scope if f in derived}
+    if not scoped:
+        return (404, f"Could not derive {stat} rates for {player_id}")
+
+    now    = datetime.utcnow().isoformat()
+    merged = {**existing, **scoped, "scenario": action, "last_updated": now, "updated_by": user}
+    all_cols     = list(merged.keys())
+    placeholders = ", ".join("?" * len(all_cols))
+    set_clause   = ", ".join(f"{c}=excluded.{c}" for c in all_cols)
+    conn.execute(
+        f"INSERT INTO projection_inputs ({', '.join(all_cols)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(player_id, season) DO UPDATE SET {set_clause}",
+        [merged[c] for c in all_cols],
+    )
+    return None
+
+
 @proj_router.post("/player/{player_id}/apply-curve")
 def apply_age_curve(
     player_id:    str,
@@ -1179,10 +1257,12 @@ def apply_age_curve(
     current_user: str = Depends(_get_user),
 ):
     """
-    Apply (or reset) an age curve to a player's projection inputs.
+    Apply (or reset) an age curve to one player's projection inputs.
     Body: { season, stat, action }
-      action: "no_change" = reset rates to base_year actuals
-              "base_change" = reset rates then apply base_case_multiplier
+      action: "no_change"   = reset rates to base_year actuals (no multiplier)
+              "base_change"  = reset, then apply the base age curve
+              "optimistic"   = reset, then apply the optimistic age curve
+              "pessimistic"  = reset, then apply the pessimistic age curve
     """
     conn   = get_conn()
     _require_admin(current_user, conn)
@@ -1195,89 +1275,51 @@ def apply_age_curve(
     ).fetchone()
     team = meta["team"] if meta else "UNK"
 
-    existing = get_or_init_inputs(conn, player_id, season, team)
-    base_year = existing.get("base_year") or PREV_SEASON
-
-    # Which fields this stat view owns — the write is scoped to these, so an
-    # age curve applied in one view can't disturb rates tuned in another.
-    scope = _AGE_CURVE_FIELDS.get(stat)
-    if not scope:
+    err = _apply_curve_to_player(conn, player_id, season, team, stat, action, current_user)
+    if err:
         conn.close()
-        raise HTTPException(400, f"No age curve fields for stat {stat}")
-
-    # Always start by re-deriving rates from base_year actuals
-    avgs  = get_player_season_avgs(conn, player_id, base_year)
-    pace  = get_team_pace(conn, team, base_year)
-    if not avgs:
-        conn.close()
-        raise HTTPException(404, f"No game log data for {player_id} in {base_year}")
-
-    derived = derive_rates(avgs, pace)
-
-    if action == "base_change":
-        # Look up player age
-        bio = conn.execute(
-            "SELECT birthdate FROM player_bio WHERE br_slug=?", [player_id]
-        ).fetchone()
-        age = _player_age(bio["birthdate"] if bio else None)
-        if age is None:
-            conn.close()
-            raise HTTPException(404, f"No birthdate for {player_id}")
-
-        # Each field ages on its own curve (see _field_curve_map). Fetch every
-        # curve this view needs for the player's age in one query.
-        field_curves = _field_curve_map(stat)
-        if not field_curves:
-            conn.close()
-            raise HTTPException(400, f"No age curve for stat {stat}")
-
-        needed = sorted(set(field_curves.values()))
-        rows = conn.execute(
-            f"SELECT stat, base_case_multiplier FROM age_curve_lookup "
-            f"WHERE age=? AND stat IN ({','.join('?' * len(needed))})",
-            [age, *needed],
-        ).fetchall()
-        mult_by_curve = {r["stat"]: r["base_case_multiplier"] for r in rows
-                         if r["base_case_multiplier"] is not None}
-        if not mult_by_curve:
-            conn.close()
-            raise HTTPException(404, f"No age curve multipliers for age={age}, stat={stat}")
-
-        # Apply each field's own multiplier; skip any field whose curve is absent.
-        for field, curve in field_curves.items():
-            mult = mult_by_curve.get(curve)
-            if mult is not None and field in derived and derived[field] is not None:
-                derived[field] = round(derived[field] * mult, 6)
-
-    # Keep only this view's fields. derive_rates() returns the player's full rate
-    # set, so writing it wholesale would silently reset every other stat back to
-    # base_year actuals and discard hand-tuned values.
-    scoped = {f: derived[f] for f in scope if f in derived}
-    if not scoped:
-        conn.close()
-        raise HTTPException(404, f"Could not derive {stat} rates for {player_id}")
-
-    # Merge and upsert — store the action as scenario so the dropdown reflects it on reload
-    now    = datetime.utcnow().isoformat()
-    merged = {**existing, **scoped, "scenario": action, "last_updated": now, "updated_by": current_user}
-
-    all_cols     = list(merged.keys())
-    placeholders = ", ".join("?" * len(all_cols))
-    set_clause   = ", ".join(f"{c}=excluded.{c}" for c in all_cols)
-
-    conn.execute(f"""
-        INSERT INTO projection_inputs ({", ".join(all_cols)})
-        VALUES ({placeholders})
-        ON CONFLICT(player_id, season) DO UPDATE SET {set_clause}
-    """, [merged[c] for c in all_cols])
+        raise HTTPException(err[0], err[1])
     conn.commit()
-
     updated = conn.execute(
         "SELECT * FROM projection_inputs WHERE player_id=? AND season=?",
         [player_id, season],
     ).fetchone()
     conn.close()
-    return {"ok": True, "player_id": player_id, "updated": dict(updated) if updated else merged}
+    return {"ok": True, "player_id": player_id, "updated": dict(updated) if updated else None}
+
+
+@proj_router.post("/team/{team}/apply-curve")
+def apply_age_curve_bulk(
+    team:         str,
+    body:         dict,
+    current_user: str = Depends(_get_user),
+):
+    """
+    Apply an age curve to EVERY player on a team for one stat view at once.
+    Body: { season, stat, action } (same actions as the single-player route).
+    Players that can't be aged (no base-year data / no birthdate) are skipped,
+    not failed, so one missing rookie doesn't abort the whole team.
+    """
+    conn   = get_conn()
+    _require_admin(current_user, conn)
+    season = body.get("season", _current_season(conn))
+    stat   = (body.get("stat") or "PTS").upper()
+    action = body.get("action", "no_change")
+
+    players = conn.execute(
+        "SELECT slug FROM players WHERE team=? AND season=?", [team, season]
+    ).fetchall()
+    applied, skipped = [], []
+    try:
+        for p in players:
+            err = _apply_curve_to_player(conn, p["slug"], season, team, stat, action, current_user)
+            (skipped if err else applied).append(p["slug"])
+        conn.commit()
+        return {"ok": True, "team": team, "stat": stat, "action": action,
+                "applied": len(applied), "skipped": len(skipped),
+                "skipped_players": skipped[:50]}
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

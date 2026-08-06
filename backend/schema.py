@@ -33,19 +33,56 @@ _AGE_CURVE_PARAMS = {
 }
 
 
-def _smooth_yoy(stat: str, age: int) -> float:
+# Optimistic = ages better (peak a year later, more growth, half the decline);
+# pessimistic = ages worse (peak a year earlier, less growth, steeper decline).
+def _scenario_params(stat: str) -> dict:
     peak, g20, d40 = _AGE_CURVE_PARAMS[stat]
+    return {
+        "base":        (peak,     g20,       d40),
+        "optimistic":  (peak + 1, g20 * 1.3, d40 * 0.5),
+        "pessimistic": (peak - 1, g20 * 0.7, d40 * 1.5),
+    }
+
+
+def _smooth_yoy(params, age: int) -> float:
+    peak, g20, d40 = params
     if age <= peak:
         return g20 * (peak - age) / (peak - 20)
     return d40 * (age - peak) / (40 - peak)
 
 
+def _curve_mult(stat: str, age: int, scenario: str) -> float:
+    return round(1.0 + _smooth_yoy(_scenario_params(stat)[scenario], age) / 100.0, 6)
+
+
+def _backfill_scenario_curves(conn) -> None:
+    """Populate optimistic/pessimistic multipliers on existing rows (they were
+    originally seeded NULL). Idempotent — only touches rows still missing them."""
+    rows = conn.execute(
+        "SELECT age, stat FROM age_curve_lookup "
+        "WHERE optimistic_multiplier IS NULL OR pessimistic_multiplier IS NULL"
+    ).fetchall()
+    for r in rows:
+        stat, age = r["stat"], r["age"]
+        if stat not in _AGE_CURVE_PARAMS:
+            continue
+        conn.execute(
+            "UPDATE age_curve_lookup SET optimistic_multiplier=?, pessimistic_multiplier=? "
+            "WHERE age=? AND stat=?",
+            (_curve_mult(stat, age, "optimistic"), _curve_mult(stat, age, "pessimistic"), age, stat),
+        )
+
+
 def _seed_age_curves(conn) -> None:
     existing = conn.execute("SELECT COUNT(*) FROM age_curve_lookup").fetchone()[0]
     if existing:
+        _backfill_scenario_curves(conn)   # fill opt/pess on pre-existing rows
         return
     rows = [
-        (age, stat, round(1.0 + _smooth_yoy(stat, age) / 100.0, 6), None, None)
+        (age, stat,
+         _curve_mult(stat, age, "base"),
+         _curve_mult(stat, age, "optimistic"),
+         _curve_mult(stat, age, "pessimistic"))
         for stat in _AGE_CURVE_PARAMS
         for age in range(18, 43)
     ]

@@ -150,6 +150,10 @@ export default function ProjectionCalibrationPage() {
   const [team, setTeam]             = useState('')
   const [stat, setStat]             = useState('GP')
   const [data, setData]             = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [bulkCurve, setBulkCurve]   = useState('')
+  const [bulkApplying, setBulkApplying] = useState(false)
+  const [bulkMsg, setBulkMsg]       = useState(null)
   const [loading, setLoading]       = useState(false)
   const [saving, setSaving]         = useState({})
   const [errors, setErrors]         = useState({})
@@ -180,7 +184,7 @@ export default function ProjectionCalibrationPage() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [team, stat])
+  }, [team, stat, refreshKey])
 
   const teamPace = data?.pace || 98
 
@@ -277,6 +281,30 @@ export default function ProjectionCalibrationPage() {
     }
   }
 
+  // Apply an age curve to EVERY player on the current team for the current stat.
+  async function handleBulkCurve(action) {
+    if (!action || !team) return
+    const season = data?.season || '2025-26'
+    setBulkCurve(action)
+    setBulkApplying(true)
+    setBulkMsg(null)
+    try {
+      const res = await authFetch(`/api/admin/projections/team/${team}/apply-curve`, {
+        method: 'POST',
+        body: JSON.stringify({ season, stat, action }),
+      })
+      if (!res.ok) throw new Error(`Bulk apply failed (${res.status})`)
+      const body = await res.json()
+      setBulkMsg(`Applied to ${body.applied}${body.skipped ? ` · skipped ${body.skipped}` : ''}`)
+      setRefreshKey(k => k + 1)   // reload team data so the grid reflects the curve
+    } catch (err) {
+      setBulkMsg(err.message)
+    } finally {
+      setBulkApplying(false)
+      setBulkCurve('')
+    }
+  }
+
   // Reset one row back to base-year actuals, scoped to the fields the current view edits
   async function handleResetRow(player) {
     const season = data?.season || '2025-26'
@@ -348,6 +376,23 @@ export default function ProjectionCalibrationPage() {
           <select className="pcal-select" value={stat} onChange={e => setStat(e.target.value)}>
             {STATS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+
+          {/* Bulk age-curve: apply one curve to every player on this team+stat */}
+          {stat !== 'MIN' && stat !== 'GP' && (
+            <>
+              <select className="pcal-select" value={bulkCurve} disabled={bulkApplying || !data}
+                onChange={e => handleBulkCurve(e.target.value)}
+                title={`Apply an age curve to every ${team} player for ${stat}`}>
+                <option value="">Apply curve to all…</option>
+                <option value="no_change">No change (reset all)</option>
+                <option value="base_change">Base change</option>
+                <option value="optimistic">Optimistic</option>
+                <option value="pessimistic">Pessimistic</option>
+              </select>
+              {bulkApplying && <span className="pcal-saving-dot" />}
+              {bulkMsg && <span className="pcal-minutes-label" style={{ margin: 0 }}>{bulkMsg}</span>}
+            </>
+          )}
         </div>
 
         {/* Minutes bar — only on MIN view */}
@@ -670,6 +715,8 @@ export default function ProjectionCalibrationPage() {
                               onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
                               <option value="no_change">No change</option>
                               <option value="base_change">Base change</option>
+                              <option value="optimistic">Optimistic</option>
+                              <option value="pessimistic">Pessimistic</option>
                             </select></td>
                           </>)
                         })()}
@@ -719,6 +766,8 @@ export default function ProjectionCalibrationPage() {
                               onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
                               <option value="no_change">No change</option>
                               <option value="base_change">Base change</option>
+                              <option value="optimistic">Optimistic</option>
+                              <option value="pessimistic">Pessimistic</option>
                             </select></td>
                           </>)
                         })()}
@@ -762,6 +811,8 @@ export default function ProjectionCalibrationPage() {
                               onChange={e => { if (e.target.value) handleAgeCurveAction(p, e.target.value) }}>
                               <option value="no_change">No change</option>
                               <option value="base_change">Base change</option>
+                              <option value="optimistic">Optimistic</option>
+                              <option value="pessimistic">Pessimistic</option>
                             </select></td>
                           </>)
                         })()}
