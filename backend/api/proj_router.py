@@ -300,9 +300,14 @@ def get_or_init_inputs(conn, player_id: str, season: str, team: str,
     mpg   = avgs.get("min") or 0
     rates = derive_rates(avgs, pace) if avgs else {}
 
-    # Default projected_gp to last year's actual GP
+    # Default projected_gp to the player's 3-year average GP (steadier than a
+    # single season); fall back to last year for players with < 3 seasons.
     gp_refs = get_gp_references(conn, player_id, season)
-    default_gp = gp_refs["last_yr"]
+    default_gp = gp_refs.get("three_avg")
+    if default_gp is None:
+        default_gp = gp_refs.get("last_yr")
+    if default_gp is not None:
+        default_gp = round(default_gp)
 
     return {
         "player_id": player_id, "season": season,

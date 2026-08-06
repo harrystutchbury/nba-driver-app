@@ -518,13 +518,13 @@ export default function ProjectionCalibrationPage() {
                 <thead>
                   <tr>
                     <th>Player</th>
+                    {stat === 'GP' && <th>Team</th>}
                     <th>Age</th>
                     {stat === 'MIN' ? (
                       <>
                         <th>Min/G ✎</th>
                         <th style={{ color: '#64748b' }}>Last yr MIN</th>
                         <th style={{ color: '#64748b' }}>2 yrs ago</th>
-                        <th>Team</th>
                       </>
                     ) : stat === 'GP' ? (
                       <>
@@ -591,6 +591,19 @@ export default function ProjectionCalibrationPage() {
                           {errors[p.player_id] && <span className="pcal-error-inline">{errors[p.player_id]}</span>}
                         </td>
 
+                        {/* Roster override (GP view only): move to another team, or FA to drop */}
+                        {stat === 'GP' && (
+                          <td>
+                            <select className="pcal-mini-select" value={team}
+                              disabled={isSaving}
+                              onChange={e => handleMoveTeam(p, e.target.value)}
+                              title="Move to another team, or FA to drop from the roster">
+                              {teams.filter(t => t !== 'FA').map(t => <option key={t} value={t}>{t}</option>)}
+                              <option value="FA">FA — Free Agent</option>
+                            </select>
+                          </td>
+                        )}
+
                         {/* Age */}
                         <td style={{ color: '#94a3b8' }}>{p.age}</td>
 
@@ -616,16 +629,6 @@ export default function ProjectionCalibrationPage() {
                               </td>
                               <td className="pcal-actual">{refs.last_yr ?? '—'}</td>
                               <td className="pcal-actual">{refs.prev_yr ?? '—'}</td>
-                              {/* Roster override: move this player to another team */}
-                              <td>
-                                <select className="pcal-mini-select" value={team}
-                                  disabled={isSaving}
-                                  onChange={e => handleMoveTeam(p, e.target.value)}
-                                  title="Move to another team, or FA to drop from the roster">
-                                  {teams.filter(t => t !== 'FA').map(t => <option key={t} value={t}>{t}</option>)}
-                                  <option value="FA">FA — Free Agent</option>
-                                </select>
-                              </td>
                             </>
                           )
                         })()}
