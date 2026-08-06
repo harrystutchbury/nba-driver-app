@@ -621,8 +621,9 @@ export default function ProjectionCalibrationPage() {
                                 <select className="pcal-mini-select" value={team}
                                   disabled={isSaving}
                                   onChange={e => handleMoveTeam(p, e.target.value)}
-                                  title="Move this player to another team's roster">
-                                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                  title="Move to another team, or FA to drop from the roster">
+                                  {teams.filter(t => t !== 'FA').map(t => <option key={t} value={t}>{t}</option>)}
+                                  <option value="FA">FA — Free Agent</option>
                                 </select>
                               </td>
                             </>
