@@ -647,17 +647,30 @@ def get_team_calibration(
     # (last season's pool, or explicitly dropped to FA) who are NOT on a real
     # team for the projection season, so they can be re-allocated.
     if team == "FA":
+        # Free agents = anyone in the system UNDER 35 (or explicitly dropped to
+        # FA) who isn't on a real team for the projection season. The age cap
+        # keeps returning vets of any recency while excluding the long-retired.
+        cutoff = datetime.now().date()
+        try:
+            cutoff = cutoff.replace(year=cutoff.year - 35)
+        except ValueError:          # Feb 29 → Feb 28
+            cutoff = cutoff.replace(year=cutoff.year - 35, day=28)
         players = conn.execute(
             """
-            SELECT slug, MAX(full_name) AS full_name FROM players
-            WHERE ((season = ?) OR (season = ? AND team = 'FA'))
-              AND slug NOT IN (
-                  SELECT slug FROM players
-                  WHERE season = ? AND team IS NOT NULL AND team != 'FA'
-              )
-            GROUP BY slug ORDER BY full_name
+            SELECT p.slug, MAX(p.full_name) AS full_name
+            FROM players p
+            LEFT JOIN player_bio b ON b.br_slug = p.slug
+            WHERE p.slug NOT IN (
+                    SELECT slug FROM players
+                    WHERE season = ? AND team IS NOT NULL AND team != 'FA'
+                  )
+              AND (
+                    (b.birthdate IS NOT NULL AND b.birthdate > ?)
+                    OR p.slug IN (SELECT slug FROM players WHERE season = ? AND team = 'FA')
+                  )
+            GROUP BY p.slug ORDER BY full_name
             """,
-            [PREV_SEASON, season, season],
+            [season, cutoff.isoformat(), season],
         ).fetchall()
     else:
         players = conn.execute(
