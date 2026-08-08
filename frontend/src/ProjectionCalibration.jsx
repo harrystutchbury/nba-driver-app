@@ -571,7 +571,7 @@ export default function ProjectionCalibrationPage() {
                       <>
                         <th style={{color:'#64748b'}}>Min/G</th>
                         <th style={{color:'#64748b'}}>GP</th>
-                        <th>Usage ✎</th>
+                        <th>Usage ✎</th><th style={{color:'#64748b'}}>25/26 Usg</th>
                         <th>Points</th><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
                         <th>3PM</th><th>Δ%</th>
                         <th>3PA ✎</th><th>3P% ✎</th>
@@ -712,6 +712,13 @@ export default function ProjectionCalibrationPage() {
                           // Usage% = shooting share + TOV share (see handleUsage)
                           const usgShoot = ((inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)) * 48 / (teamPace || 98)
                           const usagePct = +(((usgShoot) + (inp.tov_rate || 0) * (inp.usage_rate || 0)) * 100).toFixed(1)
+                          // Last-season usage from 25/26 actuals, same pace basis so it's comparable
+                          const usg2526 = (() => {
+                            const aPoss = (teamPace || 98) * ((act.min || 0) / 48)
+                            if (aPoss <= 0) return null
+                            const aFga = (act.fg2a || 0) + (act.fg3a || 0)
+                            return +(((aFga + 0.44 * (act.fta || 0) + (act.tov || 0)) / aPoss) * 100).toFixed(1)
+                          })()
                           const mkInput = (val, onChange, onBlur, step = 0.1, max = 99) => (
                             <input className="pcal-input" type="number" step={step} min="0" max={max}
                               value={val ?? ''} onChange={onChange} onBlur={onBlur} />
@@ -729,6 +736,8 @@ export default function ProjectionCalibrationPage() {
                                 title="Usage% — editing scales this player's shot volumes (2PA/3PA/FTA) together"
                                 onBlur={e => handleUsage(p, e.target.value)} />
                             </td>
+                            {/* 25/26 Usage (read-only reference) */}
+                            <td className="pcal-actual">{usg2526 != null ? usg2526.toFixed(1) : '—'}</td>
                             {/* Points */}
                             <td className="pcal-projected">{fmt(proj?.pts)}</td>
                             <td className="pcal-actual">{fmt(act.pts)}</td>
