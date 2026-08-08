@@ -252,6 +252,28 @@ export default function ProjectionCalibrationPage() {
     }
   }
 
+  // Usage lever: scale a player's shot volumes (2PA/3PA/FTA) proportionally so
+  // their usage rate hits the entered %. TOV held (its own view). Usage (frac) =
+  // (two_pa+three_pa+0.44*fta)*48/pace  +  tov_rate*usage_rate.
+  async function handleUsage(player, newUsagePct) {
+    const inp  = localInputs[player.player_id] || player.inputs
+    const pace = teamPace || 98
+    const u    = (parseFloat(newUsagePct) || 0) / 100
+    const T    = (inp.tov_rate || 0) * (inp.usage_rate || 0)          // TOV contribution (held)
+    const shootRate = (inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)
+    const C = pace > 0 ? shootRate * 48 / pace : 0                    // current shooting contribution
+    if (C <= 0) return
+    let k = (u - T) / C
+    if (!isFinite(k) || k < 0) k = 0
+    const fields = {
+      two_pa_rate:   +((inp.two_pa_rate   || 0) * k).toFixed(6),
+      three_pa_rate: +((inp.three_pa_rate || 0) * k).toFixed(6),
+      fta_rate:      +((inp.fta_rate      || 0) * k).toFixed(6),
+    }
+    setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...(prev[player.player_id] || {}), ...fields } }))
+    await saveMultipleFields(player.player_id, fields, data?.season || '2025-26')
+  }
+
   async function handleBaseYearChange(playerId, newBaseYear, season) {
     const prevBaseYear = localInputs[playerId]?.base_year
     // Optimistic update so the dropdown doesn't snap back
@@ -549,6 +571,7 @@ export default function ProjectionCalibrationPage() {
                       <>
                         <th style={{color:'#64748b'}}>Min/G</th>
                         <th style={{color:'#64748b'}}>GP</th>
+                        <th>Usage ✎</th>
                         <th>Points</th><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
                         <th>3PM</th><th>Δ%</th>
                         <th>3PA ✎</th><th>3P% ✎</th>
@@ -686,6 +709,9 @@ export default function ProjectionCalibrationPage() {
                           const pg3pa = +(( inp.three_pa_rate || 0) * mpg).toFixed(1)
                           const pg2pa = +((inp.two_pa_rate   || 0) * mpg).toFixed(1)
                           const pgFta = +((inp.fta_rate      || 0) * mpg).toFixed(1)
+                          // Usage% = shooting share + TOV share (see handleUsage)
+                          const usgShoot = ((inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)) * 48 / (teamPace || 98)
+                          const usagePct = +(((usgShoot) + (inp.tov_rate || 0) * (inp.usage_rate || 0)) * 100).toFixed(1)
                           const mkInput = (val, onChange, onBlur, step = 0.1, max = 99) => (
                             <input className="pcal-input" type="number" step={step} min="0" max={max}
                               value={val ?? ''} onChange={onChange} onBlur={onBlur} />
@@ -695,6 +721,14 @@ export default function ProjectionCalibrationPage() {
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
                             {/* GP read-only */}
                             <td className="pcal-actual">{inp.projected_gp ?? '—'}</td>
+                            {/* Usage — master volume lever; editing scales 2PA/3PA/FTA proportionally */}
+                            <td>
+                              <input className="pcal-input" type="number" step="0.5" min="0" max="60"
+                                key={`usg-${p.player_id}-${usagePct}`}
+                                defaultValue={usagePct}
+                                title="Usage% — editing scales this player's shot volumes (2PA/3PA/FTA) together"
+                                onBlur={e => handleUsage(p, e.target.value)} />
+                            </td>
                             {/* Points */}
                             <td className="pcal-projected">{fmt(proj?.pts)}</td>
                             <td className="pcal-actual">{fmt(act.pts)}</td>
