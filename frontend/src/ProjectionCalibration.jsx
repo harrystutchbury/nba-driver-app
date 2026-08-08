@@ -155,6 +155,8 @@ export default function ProjectionCalibrationPage() {
   const [bulkApplying, setBulkApplying] = useState(false)
   const [bulkMsg, setBulkMsg]       = useState(null)
   const [search, setSearch]         = useState('')
+  const [sortKey, setSortKey]       = useState(null)   // null = default (name)
+  const [sortDir, setSortDir]       = useState('desc')
   const [loading, setLoading]       = useState(false)
   const [saving, setSaving]         = useState({})
   const [errors, setErrors]         = useState({})
@@ -188,6 +190,53 @@ export default function ProjectionCalibrationPage() {
   }, [team, stat, refreshKey])
 
   const teamPace = data?.pace || 98
+
+  // Reset sort when the team or stat view changes (not on edit-triggered reloads)
+  useEffect(() => { setSortKey(null) }, [team, stat])
+
+  // ── Column sorting ──────────────────────────────────────────────────────
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir(key === 'name' || key === 'team' ? 'asc' : 'desc') }
+  }
+  function sortValue(p, key) {
+    const inp  = localInputs[p.player_id] || p.inputs || {}
+    const proj = getProjected(p)
+    const mpg  = inp.minutes_per_game || 0
+    switch (key) {
+      case 'name':  return (p.full_name || '').toLowerCase()
+      case 'age':   return p.age ?? -1
+      case 'min':   return inp.minutes_per_game ?? -1
+      case 'gp':    return inp.projected_gp ?? -1
+      case 'pts':   return proj?.pts ?? -1
+      case 'reb':   return (proj?.oreb || 0) + (proj?.dreb || 0)
+      case 'ast':   return proj?.ast ?? -1
+      case 'stl':   return proj?.stl ?? -1
+      case 'blk':   return proj?.blk ?? -1
+      case 'tov':   return proj?.tov ?? -1
+      case 'fg3m':  return proj?.fg3m ?? -1
+      case '3pa':   return (inp.three_pa_rate || 0) * mpg
+      case '2pa':   return (inp.two_pa_rate || 0) * mpg
+      case 'fta':   return (inp.fta_rate || 0) * mpg
+      case 'usage': return ((inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)) * 48 / teamPace
+                         + (inp.tov_rate || 0) * (inp.usage_rate || 0)
+      default:      return 0
+    }
+  }
+  function sortPlayers(list) {
+    if (!sortKey) return list
+    return [...list].sort((a, b) => {
+      const av = sortValue(a, sortKey), bv = sortValue(b, sortKey)
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }
+  // Clickable sortable header cell
+  const SortTh = ({ label, k, style }) => (
+    <th onClick={() => toggleSort(k)} style={{ cursor: 'pointer', userSelect: 'none', ...style }}>
+      {label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  )
 
   // Live season minutes total: Σ(projected_gp × mpg) across roster
   const minutesTotal = data?.players
@@ -550,18 +599,18 @@ export default function ProjectionCalibrationPage() {
               <table className="pcal-table">
                 <thead>
                   <tr>
-                    <th>Player</th>
+                    <SortTh label="Player" k="name" />
                     {stat === 'GP' && <th>Team</th>}
-                    <th>Age</th>
+                    <SortTh label="Age" k="age" />
                     {stat === 'MIN' ? (
                       <>
-                        <th>Min/G ✎</th>
+                        <SortTh label="Min/G ✎" k="min" />
                         <th style={{ color: '#64748b' }}>Last yr MIN</th>
                         <th style={{ color: '#64748b' }}>2 yrs ago</th>
                       </>
                     ) : stat === 'GP' ? (
                       <>
-                        <th>Proj GP ✎</th>
+                        <SortTh label="Proj GP ✎" k="gp" />
                         <th style={{ color: '#64748b' }}>Last yr GP</th>
                         <th style={{ color: '#64748b' }}>2 yrs ago</th>
                         <th style={{ color: '#64748b' }}>3yr avg</th>
@@ -571,15 +620,15 @@ export default function ProjectionCalibrationPage() {
                       <>
                         <th style={{color:'#64748b'}}>Min/G</th>
                         <th style={{color:'#64748b'}}>GP</th>
-                        <th>Usage ✎</th><th style={{color:'#64748b'}}>25/26 Usg</th>
-                        <th>Points</th><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
-                        <th>3PM</th><th>Δ%</th>
-                        <th>3PA ✎</th><th>3P% ✎</th>
+                        <SortTh label="Usage ✎" k="usage" /><th style={{color:'#64748b'}}>25/26 Usg</th>
+                        <SortTh label="Points" k="pts" /><th style={{color:'#64748b'}}>25/26 Pts</th><th>Δ%</th>
+                        <SortTh label="3PM" k="fg3m" /><th>Δ%</th>
+                        <SortTh label="3PA ✎" k="3pa" /><th>3P% ✎</th>
                         <th style={{color:'#64748b'}}>25/26 3PM</th><th style={{color:'#64748b'}}>25/26 3PA</th><th style={{color:'#64748b'}}>25/26 3P%</th>
                         <th>2PM</th>
-                        <th>2PA ✎</th><th>2P% ✎</th>
+                        <SortTh label="2PA ✎" k="2pa" /><th>2P% ✎</th>
                         <th style={{color:'#64748b'}}>25/26 2PM</th><th style={{color:'#64748b'}}>25/26 2PA</th><th style={{color:'#64748b'}}>25/26 2P%</th>
-                        <th>FTA ✎</th><th>FT% ✎</th>
+                        <SortTh label="FTA ✎" k="fta" /><th>FT% ✎</th>
                         <th style={{color:'#64748b'}}>25/26 FTA</th><th>Δ%</th>
                         <th style={{color:'#64748b'}}>25/26 FT%</th><th>Δ%</th>
                         <th>Base year</th><th>Age adj</th>
@@ -588,7 +637,7 @@ export default function ProjectionCalibrationPage() {
                       <>
                         <th style={{ color: '#64748b' }}>Min/G</th>
                         <th style={{ color: '#64748b' }}>GP</th>
-                        <th>Rebounds</th><th style={{ color: '#64748b' }}>25/26 REB</th><th>Δ%</th>
+                        <SortTh label="Rebounds" k="reb" /><th style={{ color: '#64748b' }}>25/26 REB</th><th>Δ%</th>
                         <th>OREB</th><th style={{ color: '#64748b' }}>25/26 OREB</th><th>Δ%</th><th>OREB/poss ✎</th>
                         <th>DREB</th><th style={{ color: '#64748b' }}>25/26 DREB</th><th>Δ%</th><th>DREB/poss ✎</th>
                         <th>Base year</th>
@@ -598,7 +647,7 @@ export default function ProjectionCalibrationPage() {
                       <>
                         <th style={{ color: '#64748b' }}>Min/G</th>
                         <th style={{ color: '#64748b' }}>GP</th>
-                        <th>{stat}</th><th style={{ color: '#64748b' }}>25/26 {stat}</th><th>Δ%</th>
+                        <SortTh label={stat} k={COUNTING_STAT[stat].projKey} /><th style={{ color: '#64748b' }}>25/26 {stat}</th><th>Δ%</th>
                         <th>{COUNTING_STAT[stat].rateLabel} ✎</th>
                         <th style={{ color: '#64748b' }}>25/26 {COUNTING_STAT[stat].rateLabel}</th><th>Δ%</th>
                         <th>Base year</th>
@@ -609,8 +658,8 @@ export default function ProjectionCalibrationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.players
-                    .filter(p => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase()))
+                  {sortPlayers(data.players
+                    .filter(p => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase())))
                     .map(p => {
                     const inp    = localInputs[p.player_id] || p.inputs
                     const proj   = getProjected(p)
