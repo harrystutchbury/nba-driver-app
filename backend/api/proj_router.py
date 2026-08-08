@@ -772,7 +772,9 @@ def get_team_calibration(
 
         inp      = get_or_init_inputs(conn, pid, season, team)
         proj     = compute_projected(inp, pace)
-        actual   = get_player_season_avgs(conn, pid, season)
+        # The "25/26" reference columns compare against the base (last completed)
+        # season, not the projection season — which post-roll has no games yet.
+        actual   = get_player_season_avgs(conn, pid, PREV_SEASON)
 
         # Available seasons this player has data for
         avail_rows = conn.execute(
