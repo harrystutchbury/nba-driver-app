@@ -16,6 +16,7 @@ import ChartDataLabels from 'chartjs-plugin-datalabels'
 import './App.css'
 import ProjectionCalibrationPage from './ProjectionCalibration'
 import ProjectionAuditPageNew from './ProjectionAudit'
+import TeamStatAuditPage from './TeamAudit'
 
 ChartJS.register(CategoryScale, LinearScale, RadialLinearScale, BarElement, LineElement, PointElement, Tooltip, Legend, Filler, ChartDataLabels)
 
@@ -8703,7 +8704,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0]
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     if (VALID.has(p0)) return p0
     return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
   })
@@ -8972,7 +8973,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0] || ''
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     const newPage = VALID.has(p0) ? p0 : 'dashboard'
     setPage(newPage)
     if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
@@ -9952,7 +9953,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation','proj-audit','proj-calibration'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation','proj-audit','proj-calibration','team-audit'].includes(page) ? ' active' : ''}`}>
                     Players <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
@@ -9963,6 +9964,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     <button className="nav-drop-item" onClick={() => go('transformation')}>Driver Breakdown</button>
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('proj-audit')}>Proj Audit</button>}
                     {isAdmin && <button className="nav-drop-item" onClick={() => go('proj-calibration')}>Proj Calibration</button>}
+                    {isAdmin && <button className="nav-drop-item" onClick={() => go('team-audit')}>Team Audit</button>}
                   </div>
                 </div>
 
@@ -10117,6 +10119,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {page === 'adjustments'      && <AdjustmentsPage />}
       {page === 'proj-audit'       && <AuditErrorBoundary><ProjectionAuditPageNew /></AuditErrorBoundary>}
       {page === 'proj-calibration' && <AuditErrorBoundary><ProjectionCalibrationPage /></AuditErrorBoundary>}
+      {page === 'team-audit'       && <AuditErrorBoundary><TeamStatAuditPage /></AuditErrorBoundary>}
 
       {page === 'moderation' && <ModerationPage />}
 

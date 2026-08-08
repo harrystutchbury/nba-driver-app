@@ -629,6 +629,73 @@ def get_teams(current_user: str = Depends(_get_user)):
 
 
 # ---------------------------------------------------------------------------
+# Team-total helpers (shared by /team and /audit-all-teams)
+# ---------------------------------------------------------------------------
+
+def _team_proj_total(pdata, stat_key):
+    """Projected season total of one stat across a list of a team's players
+    ([{inputs, projected}, ...]). GP-weighted; FG%/FT% return a rate."""
+    if stat_key == "FG%":
+        fgm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fgm") or 0) for pd in pdata)
+        fga = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fga") or 0) for pd in pdata)
+        return round(fgm / fga, 3) if fga > 0 else None
+    if stat_key == "FT%":
+        ftm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("ftm") or 0) for pd in pdata)
+        fta = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fta") or 0) for pd in pdata)
+        return round(ftm / fta, 3) if fta > 0 else None
+    if stat_key == "MIN":
+        return round(sum((pd["inputs"].get("projected_gp") or 0) * (pd["inputs"].get("minutes_per_game") or 0)
+                         for pd in pdata), 1)
+    if stat_key == "GP":
+        return round(sum((pd["inputs"].get("projected_gp") or 0) for pd in pdata), 1)
+    if stat_key == "REB":
+        return round(sum((pd["inputs"].get("projected_gp") or 0) *
+                         ((pd["projected"].get("oreb") or 0) + (pd["projected"].get("dreb") or 0))
+                         for pd in pdata), 1)
+    col = _STAT_COL.get(stat_key)
+    if not col:
+        return None
+    return round(sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get(col) or 0)
+                     for pd in pdata), 1)
+
+
+def _all_team_totals(conn, season, stat):
+    """Projected total of `stat` for every real team in the season -> {team: total}."""
+    teams = conn.execute(
+        "SELECT DISTINCT team FROM players WHERE season=? AND team IS NOT NULL AND team != 'FA'",
+        [season],
+    ).fetchall()
+    out = {}
+    for tr in teams:
+        t   = tr["team"]
+        tps = conn.execute("SELECT slug FROM players WHERE team=? AND season=?", [t, season]).fetchall()
+        pace = get_team_pace(conn, t, season)
+        pdata = []
+        for tp in tps:
+            inp = get_or_init_inputs(conn, tp["slug"], season, t)
+            pdata.append({"inputs": inp, "projected": compute_projected(inp, pace)})
+        out[t] = _team_proj_total(pdata, stat)
+    return out
+
+
+def _all_team_last_season(conn, stat):
+    """Last-season (PREV_SEASON) actual team total of `stat` -> {team: total}, one query."""
+    col = _STAT_COL.get(stat)
+    if col:
+        q = f"SELECT team, SUM({col}) tot FROM game_logs WHERE season=? GROUP BY team"
+    elif stat == "MIN":
+        q = "SELECT team, SUM(min) tot FROM game_logs WHERE season=? GROUP BY team"
+    elif stat == "GP":
+        q = "SELECT team, COUNT(*) tot FROM game_logs WHERE season=? AND min>0 GROUP BY team"
+    else:
+        return {}
+    out = {}
+    for r in conn.execute(q, [PREV_SEASON]).fetchall():
+        out[r["team"]] = round(r["tot"], 1) if r["tot"] else None
+    return out
+
+
+# ---------------------------------------------------------------------------
 # GET /team/{team}?stat=PTS
 # ---------------------------------------------------------------------------
 
@@ -774,37 +841,8 @@ def get_team_calibration(
         for pd in player_data
     ), 1)
 
-    # Team projected total for selected stat — all counting stats are GP-weighted season totals.
-    # FG%/FT% remain rates (GP-weighted fgm/fga ratio).
-    def _team_proj_total(pdata, stat_key):
-        if stat_key == "FG%":
-            total_fgm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fgm") or 0) for pd in pdata)
-            total_fga = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fga") or 0) for pd in pdata)
-            return round(total_fgm / total_fga, 3) if total_fga > 0 else None
-        if stat_key == "FT%":
-            total_ftm = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("ftm") or 0) for pd in pdata)
-            total_fta = sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fta") or 0) for pd in pdata)
-            return round(total_ftm / total_fta, 3) if total_fta > 0 else None
-        if stat_key == "MIN":
-            return round(sum(
-                (pd["inputs"].get("projected_gp") or 0) * (pd["inputs"].get("minutes_per_game") or 0)
-                for pd in pdata
-            ), 1)
-        if stat_key == "GP":
-            return round(sum((pd["inputs"].get("projected_gp") or 0) for pd in pdata), 1)
-        if stat_key == "REB":
-            return round(sum(
-                (pd["inputs"].get("projected_gp") or 0) *
-                ((pd["projected"].get("oreb") or 0) + (pd["projected"].get("dreb") or 0))
-                for pd in pdata
-            ), 1)
-        col = _STAT_COL.get(stat_key)
-        if not col:
-            return None
-        return round(sum(
-            (pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get(col) or 0)
-            for pd in pdata
-        ), 1)
+    # Team projected total for selected stat — all counting stats are GP-weighted
+    # season totals (see module-level _team_proj_total).
 
     team_proj_total = _team_proj_total(player_data, stat)
 
@@ -845,27 +883,8 @@ def get_team_calibration(
         if row and row[0]:
             last_season_team_total = round(row[0], 3)
 
-    # League IQR: compute projected totals for all 30 teams in one pass
-    all_teams = conn.execute(
-        "SELECT DISTINCT team FROM players WHERE season=? AND team IS NOT NULL", [season]
-    ).fetchall()
-
-    league_totals: list[float] = []
-    for t_row in all_teams:
-        t = t_row["team"]
-        t_players = conn.execute(
-            "SELECT slug FROM players WHERE team=? AND season=?", [t, season]
-        ).fetchall()
-        t_pace = get_team_pace(conn, t, season)
-        t_pdata = []
-        for tp in t_players:
-            t_inp  = get_or_init_inputs(conn, tp["slug"], season, t)
-            t_proj = compute_projected(t_inp, t_pace)
-            t_pdata.append({"inputs": t_inp, "projected": t_proj})
-        t_total = _team_proj_total(t_pdata, stat)
-        if t_total is not None:
-            league_totals.append(t_total)
-
+    # League IQR: projected totals for all 30 teams (shared helper, excludes FA)
+    league_totals = [v for v in _all_team_totals(conn, season, stat).values() if v is not None]
     league_totals_sorted = sorted(league_totals)
     n = len(league_totals_sorted)
     league_avg    = round(statistics.mean(league_totals_sorted), 1) if league_totals_sorted else None
@@ -898,6 +917,50 @@ def get_team_calibration(
         "team_rank":            team_rank,
         "team_count":           len(league_totals),
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /audit-all-teams?stat=  — every team as a row on the league bar
+# ---------------------------------------------------------------------------
+
+@proj_router.get("/audit-all-teams")
+def audit_all_teams(
+    stat:         str = Query("MIN"),
+    current_user: str = Depends(_get_user),
+):
+    """
+    One stat across every team: each team's GP-weighted projected total, its
+    rank, and the league distribution (min / p25 / median / p75 / max) — powers
+    the single-view audit where every team is a row on the same league bar.
+    """
+    conn = get_conn()
+    _require_admin(current_user, conn)
+    season = _current_season(conn)
+    stat   = stat.upper()
+
+    totals = _all_team_totals(conn, season, stat)
+    last   = _all_team_last_season(conn, stat)
+    conn.close()
+
+    vals = sorted(v for v in totals.values() if v is not None)
+    n    = len(vals)
+    league = {
+        "league_min":    round(vals[0], 1)        if vals    else None,
+        "league_p25":    round(vals[n // 4], 1)    if n >= 4  else None,
+        "league_median": round(statistics.median(vals), 1) if vals else None,
+        "league_p75":    round(vals[3 * n // 4], 1) if n >= 4 else None,
+        "league_max":    round(vals[-1], 1)        if vals    else None,
+        "league_avg":    round(statistics.mean(vals), 1) if vals else None,
+    }
+    rows = []
+    for t, total in totals.items():
+        rank = (sum(1 for v in totals.values() if v is not None and v > total) + 1) \
+            if total is not None else None
+        rows.append({"team": t, "total": total, "rank": rank,
+                     "last_season_total": last.get(t)})
+    rows.sort(key=lambda r: r["total"] if r["total"] is not None else -1e9, reverse=True)
+
+    return {"stat": stat, "season": season, "count": n, **league, "teams": rows}
 
 
 # ---------------------------------------------------------------------------
