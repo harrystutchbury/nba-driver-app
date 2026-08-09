@@ -829,9 +829,14 @@ export default function ProjectionCalibrationPage() {
                             const aFga = (act.fg2a || 0) + (act.fg3a || 0)
                             return +(((aFga + 0.44 * (act.fta || 0) + (act.tov || 0)) / aPoss) * 100).toFixed(1)
                           })()
-                          const mkInput = (val, onChange, onBlur, step = 0.1, max = 99) => (
+                          // Shot volume is per-game (rate × Min/G), so it can't be set until
+                          // the player has minutes — disable those inputs with a hint at 0 mpg.
+                          const noMin = mpg <= 0
+                          const mkInput = (val, onChange, onBlur, step = 0.1, max = 99, disabled = false) => (
                             <input className="pcal-input" type="number" step={step} min="0" max={max}
-                              value={val ?? ''} onChange={onChange} onBlur={onBlur} />
+                              value={val ?? ''} onChange={onChange} onBlur={onBlur}
+                              disabled={disabled} style={disabled ? { opacity: 0.45 } : undefined}
+                              title={disabled ? 'Set Min/G first — shot volume is per-game' : undefined} />
                           )
                           return (<>
                             {/* Min/G read-only */}
@@ -843,7 +848,8 @@ export default function ProjectionCalibrationPage() {
                               <input className="pcal-input" type="number" step="0.5" min="0" max="60"
                                 key={`usg-${p.player_id}-${usagePct}`}
                                 defaultValue={usagePct}
-                                title="Usage% — editing scales this player's shot volumes (2PA/3PA/FTA) together"
+                                disabled={noMin} style={noMin ? { opacity: 0.45 } : undefined}
+                                title={noMin ? 'Set Min/G first — shot volume is per-game' : 'Usage% — editing scales this player\'s shot volumes (2PA/3PA/FTA) together'}
                                 onBlur={e => handleUsage(p, e.target.value)} />
                             </td>
                             {/* 25/26 Usage (read-only reference) */}
@@ -859,7 +865,7 @@ export default function ProjectionCalibrationPage() {
                             <td>{mkInput(pg3pa,
                               e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'three_pa_rate', mpg > 0 ? v / mpg : 0) },
                               e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'three_pa_rate', r, p.inputs.three_pa_rate, season) },
-                              0.1
+                              0.1, 99, noMin
                             )}</td>
                             <td>{mkInput(inp.three_p_pct != null ? +(inp.three_p_pct * 100).toFixed(1) : '',
                               e => setField(p.player_id, 'three_p_pct', (parseFloat(e.target.value) || 0) / 100),
@@ -876,7 +882,7 @@ export default function ProjectionCalibrationPage() {
                             <td>{mkInput(pg2pa,
                               e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'two_pa_rate', mpg > 0 ? v / mpg : 0) },
                               e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'two_pa_rate', r, p.inputs.two_pa_rate, season) },
-                              0.1
+                              0.1, 99, noMin
                             )}</td>
                             <td>{mkInput(inp.two_p_pct != null ? +(inp.two_p_pct * 100).toFixed(1) : '',
                               e => setField(p.player_id, 'two_p_pct', (parseFloat(e.target.value) || 0) / 100),
@@ -891,7 +897,7 @@ export default function ProjectionCalibrationPage() {
                             <td>{mkInput(pgFta,
                               e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'fta_rate', mpg > 0 ? v / mpg : 0) },
                               e => { const v = parseFloat(e.target.value) || 0; const r = mpg > 0 ? v / mpg : 0; saveField(p.player_id, 'fta_rate', r, p.inputs.fta_rate, season) },
-                              0.1
+                              0.1, 99, noMin
                             )}</td>
                             <td>{mkInput(inp.ft_pct != null ? +(inp.ft_pct * 100).toFixed(1) : '',
                               e => setField(p.player_id, 'ft_pct', (parseFloat(e.target.value) || 0) / 100),
