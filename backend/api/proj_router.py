@@ -652,6 +652,9 @@ def _team_proj_total(pdata, stat_key):
         return round(sum((pd["inputs"].get("projected_gp") or 0) *
                          ((pd["projected"].get("oreb") or 0) + (pd["projected"].get("dreb") or 0))
                          for pd in pdata), 1)
+    if stat_key == "FGA":
+        return round(sum((pd["inputs"].get("projected_gp") or 0) * (pd["projected"].get("fga") or 0)
+                         for pd in pdata), 1)
     col = _STAT_COL.get(stat_key)
     if not col:
         return None
@@ -687,6 +690,8 @@ def _all_team_last_season(conn, stat):
         q = "SELECT team, SUM(min) tot FROM game_logs WHERE season=? GROUP BY team"
     elif stat == "GP":
         q = "SELECT team, COUNT(*) tot FROM game_logs WHERE season=? AND min>0 GROUP BY team"
+    elif stat == "FGA":
+        q = "SELECT team, SUM(fga) tot FROM game_logs WHERE season=? GROUP BY team"
     else:
         return {}
     out = {}
@@ -901,6 +906,23 @@ def get_team_calibration(
     if team_proj_total is not None and league_totals:
         team_rank = sum(1 for t in league_totals if t > team_proj_total) + 1
 
+    # Secondary FGA bar (PTS view only): team's projected FGA total vs last
+    # season and the rest of the league.
+    fga_block = None
+    if stat == "PTS":
+        fga_totals = _all_team_totals(conn, season, "FGA")
+        fga_vals   = sorted(v for v in fga_totals.values() if v is not None)
+        m = len(fga_vals)
+        fga_block = {
+            "total":  fga_totals.get(team),
+            "min":    round(fga_vals[0], 1)        if fga_vals   else None,
+            "p25":    round(fga_vals[m // 4], 1)    if m >= 4     else None,
+            "median": round(statistics.median(fga_vals), 1) if fga_vals else None,
+            "p75":    round(fga_vals[3 * m // 4], 1) if m >= 4    else None,
+            "max":    round(fga_vals[-1], 1)        if fga_vals   else None,
+            "last":   _all_team_last_season(conn, "FGA").get(team),
+        }
+
     conn.close()
     return {
         "team":                 team,
@@ -918,6 +940,7 @@ def get_team_calibration(
         "league_p75":           league_p75,
         "team_rank":            team_rank,
         "team_count":           len(league_totals),
+        "fga":                  fga_block,
     }
 
 

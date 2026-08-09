@@ -145,6 +145,54 @@ function fmtPct(val) {
   return (val * 100).toFixed(1) + '%'
 }
 
+// A league-position bar: team value (coloured vs the IQR), Min/P25/Med/P75/Max
+// ticks, and a distinct last-season marker. Values shown per game (÷82).
+function LeagueBar({ label, value, last, min, p25, median, p75, max }) {
+  if (min == null || max == null) return null
+  const lo = min, range = (max - min) || 1
+  const pct  = v => Math.max(0, Math.min(100, ((v - lo) / range) * 100))
+  const disp = v => v == null ? '—' : fmt(v / TEAM_GAMES)
+  const color = value == null ? '#64748b'
+    : (p25 != null && p75 != null && (value < p25 || value > p75)) ? '#ef4444'
+    : (median && Math.abs(value - median) / median > 0.08) ? '#f59e0b'
+    : '#22c55e'
+  const ticks = [
+    { v: min, label: 'Min' }, { v: p25, label: 'P25' }, { v: median, label: 'Med' },
+    { v: p75, label: 'P75' }, { v: max, label: 'Max' },
+  ].filter(t => t.v != null)
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 6 }}>
+        <span className="pcal-minutes-label" style={{ margin: 0 }}>
+          {label}: {disp(value)}/g{last != null && <> · Last yr: {disp(last)}/g</>}
+        </span>
+      </div>
+      <div className="pcal-minutes-track" style={{ position: 'relative', overflow: 'visible', marginBottom: 36 }}>
+        {value != null && <div className="pcal-minutes-fill" style={{ width: `${pct(value)}%`, background: color }} />}
+        {last != null && (
+          <div style={{ position: 'absolute', top: -4, bottom: -4, left: `${pct(last)}%`, width: '2px', background: '#e2e8f0', transform: 'translateX(-50%)' }}
+               title={`Last season: ${disp(last)}/g`}>
+            <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 9, color: '#e2e8f0', whiteSpace: 'nowrap' }}>Last yr</div>
+          </div>
+        )}
+        {ticks.map((m, i) => {
+          const tf = i === 0 ? 'translateX(0)' : i === ticks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)'
+          return (
+            <div key={m.label}>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${pct(m.v)}%`, width: '2px', background: '#475569', transform: tf }} />
+              <div style={{ position: 'absolute', top: '100%', left: `${pct(m.v)}%`, transform: tf, marginTop: 4,
+                            textAlign: i === 0 ? 'left' : i === ticks.length - 1 ? 'right' : 'center', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10, color: '#64748b' }}>{m.label}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{disp(m.v)}</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectionCalibrationPage() {
   const [teams, setTeams]           = useState([])
   const [team, setTeam]             = useState('')
@@ -590,6 +638,13 @@ export default function ProjectionCalibrationPage() {
             </div>
           )
         })()}
+
+        {/* Secondary FGA bar — PTS view only */}
+        {data && stat === 'PTS' && data.fga && (
+          <LeagueBar label="Team FGA" value={data.fga.total} last={data.fga.last}
+            min={data.fga.min} p25={data.fga.p25} median={data.fga.median}
+            p75={data.fga.p75} max={data.fga.max} />
+        )}
 
         {loading && <div className="pcal-loading">Loading…</div>}
 
