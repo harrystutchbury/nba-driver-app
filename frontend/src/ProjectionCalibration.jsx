@@ -60,10 +60,10 @@ const STAT_PROJ_KEY = {
 // Single-rate counting stats that share the canonical layout:
 // Stat / 25-26 Stat / Δ, then Rate / 25-26 Rate / Δ.
 const COUNTING_STAT = {
-  AST: { projKey: 'ast', rateKey: 'ast_rate',   rateLabel: 'AST/poss', step: 0.0001 },
-  STL: { projKey: 'stl', rateKey: 'steal_rate', rateLabel: 'STL/poss', step: 0.0001 },
-  BLK: { projKey: 'blk', rateKey: 'block_rate', rateLabel: 'BLK/poss', step: 0.0001 },
-  TOV: { projKey: 'tov', rateKey: 'tov_rate',   rateLabel: 'TOV/poss', step: 0.0001 },
+  AST: { projKey: 'ast', rateKey: 'ast_rate',   rateLabel: 'AST/36', step: 0.01 },
+  STL: { projKey: 'stl', rateKey: 'steal_rate', rateLabel: 'STL/36', step: 0.01 },
+  BLK: { projKey: 'blk', rateKey: 'block_rate', rateLabel: 'BLK/36', step: 0.01 },
+  TOV: { projKey: 'tov', rateKey: 'tov_rate',   rateLabel: 'TOV/36', step: 0.01 },
 }
 
 
@@ -238,6 +238,12 @@ export default function ProjectionCalibrationPage() {
   }, [team, stat, refreshKey])
 
   const teamPace = data?.pace || 98
+
+  // Per-possession rates are edited as per-36-minute values (rate × poss-per-36,
+  // where poss-per-36 = pace × 36/48). Shown to 2 dp; stored per-possession.
+  const per36Factor = teamPace * 0.75
+  const toPer36   = r => r == null ? null : r * per36Factor
+  const fromPer36 = v => per36Factor > 0 ? (v / per36Factor) : 0
 
   // Reset sort when the team or stat view changes (not on edit-triggered reloads)
   useEffect(() => { setSortKey(null) }, [team, stat])
@@ -693,8 +699,8 @@ export default function ProjectionCalibrationPage() {
                         <th style={{ color: '#64748b' }}>Min/G</th>
                         <th style={{ color: '#64748b' }}>GP</th>
                         <SortTh label="Rebounds" k="reb" /><th style={{ color: '#64748b' }}>25/26 REB</th><th>Δ%</th>
-                        <th>OREB</th><th style={{ color: '#64748b' }}>25/26 OREB</th><th>Δ%</th><th>OREB/poss ✎</th>
-                        <th>DREB</th><th style={{ color: '#64748b' }}>25/26 DREB</th><th>Δ%</th><th>DREB/poss ✎</th>
+                        <th>OREB</th><th style={{ color: '#64748b' }}>25/26 OREB</th><th>Δ%</th><th>OREB/36 ✎</th>
+                        <th>DREB</th><th style={{ color: '#64748b' }}>25/26 DREB</th><th>Δ%</th><th>DREB/36 ✎</th>
                         <th>Base year</th>
                         <th>Age adjustment</th>
                       </>
@@ -925,11 +931,12 @@ export default function ProjectionCalibrationPage() {
                           const drebProj = proj?.dreb, drebAct = act.dreb
                           const totProj = (orebProj != null || drebProj != null) ? (orebProj || 0) + (drebProj || 0) : null
                           const totAct  = (orebAct  != null || drebAct  != null) ? (orebAct  || 0) + (drebAct  || 0) : null
+                          // Edited as per-36 (2 dp); stored per-possession.
                           const rateInput = (key) => (
-                            <input className="pcal-input pcal-input-wide" type="number" step={0.0001} min="0"
-                              value={inp[key] ?? ''}
-                              onChange={e => setField(p.player_id, key, parseFloat(e.target.value) || 0)}
-                              onBlur={e => saveField(p.player_id, key, parseFloat(e.target.value) || 0, p.inputs[key], season)} />
+                            <input className="pcal-input pcal-input-wide" type="number" step={0.01} min="0"
+                              value={inp[key] != null ? +toPer36(inp[key]).toFixed(2) : ''}
+                              onChange={e => setField(p.player_id, key, fromPer36(parseFloat(e.target.value) || 0))}
+                              onBlur={e => saveField(p.player_id, key, fromPer36(parseFloat(e.target.value) || 0), p.inputs[key], season)} />
                           )
                           return (<>
                             {/* Min/G, GP read-only */}
@@ -985,14 +992,14 @@ export default function ProjectionCalibrationPage() {
                             <td className="pcal-projected">{fmt(statProj)}</td>
                             <td className="pcal-actual">{fmt(statAct)}</td>
                             <td className={mkClass(mkDelta(statProj, statAct))}>{fmtDelta(mkDelta(statProj, statAct))}</td>
-                            {/* Driving rate (editable) */}
+                            {/* Driving rate (editable) — per-36, 2 dp; stored per-poss */}
                             <td>
                               <input className="pcal-input pcal-input-wide" type="number" step={cfg.step} min="0"
-                                value={rateProj ?? ''}
-                                onChange={e => setField(p.player_id, cfg.rateKey, parseFloat(e.target.value) || 0)}
-                                onBlur={e => saveField(p.player_id, cfg.rateKey, parseFloat(e.target.value) || 0, p.inputs[cfg.rateKey], season)} />
+                                value={rateProj != null ? +toPer36(rateProj).toFixed(2) : ''}
+                                onChange={e => setField(p.player_id, cfg.rateKey, fromPer36(parseFloat(e.target.value) || 0))}
+                                onBlur={e => saveField(p.player_id, cfg.rateKey, fromPer36(parseFloat(e.target.value) || 0), p.inputs[cfg.rateKey], season)} />
                             </td>
-                            <td className="pcal-actual">{rateAct != null ? rateAct.toFixed(4) : '—'}</td>
+                            <td className="pcal-actual">{rateAct != null ? toPer36(rateAct).toFixed(2) : '—'}</td>
                             <td className={mkClass(mkDelta(rateProj, rateAct))}>{fmtDelta(mkDelta(rateProj, rateAct))}</td>
                             {/* Base year */}
                             <td><select className="pcal-mini-select" value={inp.base_year || ''}
