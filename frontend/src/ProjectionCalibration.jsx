@@ -1002,6 +1002,14 @@ export default function ProjectionCalibrationPage() {
                           const statAct  = p.actual?.[cfg.projKey]
                           const rateProj = inp[cfg.rateKey]
                           const rateAct  = rates[cfg.rateKey]
+                          // TOV is stored usage-normalised (tov/(usage·poss)), so its real
+                          // per-poss rate is tov_rate·usage. Fold that in for the /36 view.
+                          const isTov  = cfg.rateKey === 'tov_rate'
+                          const usg    = inp.usage_rate || 0
+                          const actUsg = rates.usage_rate || 0
+                          const rateProj36 = rateProj != null ? toPer36(isTov ? rateProj * usg    : rateProj) : null
+                          const rateAct36  = rateAct  != null ? toPer36(isTov ? rateAct  * actUsg : rateAct)  : null
+                          const per36ToRate = v => { const eff = fromPer36(v); return isTov ? (usg > 0 ? eff / usg : 0) : eff }
                           return (<>
                             {/* Min/G, GP read-only */}
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
@@ -1013,12 +1021,12 @@ export default function ProjectionCalibrationPage() {
                             {/* Driving rate (editable) — per-36, 2 dp; stored per-poss */}
                             <td>
                               <input className="pcal-input pcal-input-wide" type="number" step={cfg.step} min="0"
-                                value={rateProj != null ? +toPer36(rateProj).toFixed(2) : ''}
-                                onChange={e => setField(p.player_id, cfg.rateKey, fromPer36(parseFloat(e.target.value) || 0))}
-                                onBlur={e => saveField(p.player_id, cfg.rateKey, fromPer36(parseFloat(e.target.value) || 0), p.inputs[cfg.rateKey], season)} />
+                                value={rateProj36 != null ? +rateProj36.toFixed(2) : ''}
+                                onChange={e => setField(p.player_id, cfg.rateKey, per36ToRate(parseFloat(e.target.value) || 0))}
+                                onBlur={e => saveField(p.player_id, cfg.rateKey, per36ToRate(parseFloat(e.target.value) || 0), p.inputs[cfg.rateKey], season)} />
                             </td>
-                            <td className="pcal-actual">{rateAct != null ? toPer36(rateAct).toFixed(2) : '—'}</td>
-                            <td className={mkClass(mkDelta(rateProj, rateAct))}>{fmtDelta(mkDelta(rateProj, rateAct))}</td>
+                            <td className="pcal-actual">{rateAct36 != null ? rateAct36.toFixed(2) : '—'}</td>
+                            <td className={mkClass(mkDelta(rateProj36, rateAct36))}>{fmtDelta(mkDelta(rateProj36, rateAct36))}</td>
                             {/* Base year */}
                             <td><select className="pcal-mini-select" value={inp.base_year || ''}
                               onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}>
