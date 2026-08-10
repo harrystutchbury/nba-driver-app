@@ -891,7 +891,11 @@ def get_team_calibration(
             last_season_team_total = round(row[0], 3)
 
     # League IQR: projected totals for all 30 teams (shared helper, excludes FA)
-    league_totals = [v for v in _all_team_totals(conn, season, stat).values() if v is not None]
+    all_team_totals   = _all_team_totals(conn, season, stat)
+    league_totals     = [v for v in all_team_totals.values() if v is not None]
+    # Other teams' totals (excl. this team) so the frontend can recompute this
+    # team's rank live as its projection changes, without a refetch.
+    other_team_totals = [v for t, v in all_team_totals.items() if t != team and v is not None]
     league_totals_sorted = sorted(league_totals)
     n = len(league_totals_sorted)
     league_avg    = round(statistics.mean(league_totals_sorted), 1) if league_totals_sorted else None
@@ -940,6 +944,7 @@ def get_team_calibration(
         "league_p75":           league_p75,
         "team_rank":            team_rank,
         "team_count":           len(league_totals),
+        "other_team_totals":    other_team_totals,
         "fga":                  fga_block,
     }
 

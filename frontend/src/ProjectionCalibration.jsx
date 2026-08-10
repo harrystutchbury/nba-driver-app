@@ -495,6 +495,15 @@ export default function ProjectionCalibrationPage() {
             }, 0)
     : null
 
+  // Live team FGA total (PTS view secondary bar) — recomputes from localInputs
+  const teamFgaTotal = data?.players
+    ? data.players.reduce((sum, p) => {
+        const proj = getProjected(p)
+        const inp = localInputs[p.player_id] || p.inputs
+        return sum + (inp.projected_gp || 0) * ((proj?.fg2a || 0) + (proj?.fg3a || 0))
+      }, 0)
+    : null
+
   const mBar = minutesBadge(minutesTotal)
   const mColor = minutesColor(minutesTotal)
   const fillPct = Math.min((minutesTotal / SEASON_MINUTES_TARGET) * 100, 100)
@@ -587,7 +596,10 @@ export default function ProjectionCalibrationPage() {
             { v: data.league_p75,    label: 'P75',  val: pg(data.league_p75) },
             { v: data.league_max,    label: 'Max',  val: pg(data.league_max) },
           ].filter(m => m.v != null)
-          const rank = data.team_rank
+          // Recompute rank live from the other teams' totals as this team's projection changes
+          const rank = (data.other_team_totals && proj != null)
+            ? data.other_team_totals.filter(t => t > proj).length + 1
+            : data.team_rank
           const count = data.team_count || 30
           return (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
@@ -647,7 +659,7 @@ export default function ProjectionCalibrationPage() {
 
         {/* Secondary FGA bar — PTS view only */}
         {data && stat === 'PTS' && data.fga && (
-          <LeagueBar label="Team FGA" value={data.fga.total} last={data.fga.last}
+          <LeagueBar label="Team FGA" value={teamFgaTotal} last={data.fga.last}
             min={data.fga.min} p25={data.fga.p25} median={data.fga.median}
             p75={data.fga.p75} max={data.fga.max} />
         )}
