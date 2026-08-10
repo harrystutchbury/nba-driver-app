@@ -1879,9 +1879,10 @@ const PROJ_COLS = [
   { key: 'tov',    label: 'TOV', lowerBetter: true },
   { key: 'fg3m',   label: '3PM' },
   { key: 'fg_pct', label: 'FG%', pct: true },
+  { key: 'ft_pct', label: 'FT%', pct: true },
 ]
 
-const PROJ_PCT_KEYS   = new Set(['fg_pct'])
+const PROJ_PCT_KEYS   = new Set(['fg_pct', 'ft_pct'])
 const PROJ_PUNT_COLS  = PROJ_COLS.filter(c => !c.noZ)   // puntable = cols with Z-scores
 const PROJ_COUNTING   = PROJ_PUNT_COLS.filter(c => !PROJ_PCT_KEYS.has(c.key)).map(c => c.key)
 
