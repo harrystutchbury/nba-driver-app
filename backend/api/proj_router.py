@@ -197,8 +197,9 @@ def derive_rates(avgs: dict, pace: float) -> dict:
         "dreb_rate":  round((avgs.get("dreb") or 0) / poss, 4) if poss > 0 else 0,
         "steal_rate": round((avgs.get("stl")  or 0) / poss, 4) if poss > 0 else 0,
         "block_rate": round((avgs.get("blk") or 0) / poss, 4) if poss > 0 else 0,
-        # TOV per possession used (usage_used guards zero division)
-        "tov_rate":   round(tov / (usage_used * poss), 4) if poss > 0 else 0,
+        # TOV per possession (plain rate, like the other counting stats — not
+        # usage-normalised, so it stays editable for players with no usage_rate)
+        "tov_rate":   round(tov / poss, 4) if poss > 0 else 0,
     }
 
 
@@ -230,7 +231,7 @@ def compute_projected(inp: dict, pace: float) -> dict:
         "ast":    round((inp.get("ast_rate") or 0) * poss, 1),
         "stl":    round((inp.get("steal_rate") or 0) * poss, 2),
         "blk":    round((inp.get("block_rate") or 0) * poss, 2),
-        "tov":    round((inp.get("tov_rate") or 0) * (inp.get("usage_rate") or 0) * poss, 1),
+        "tov":    round((inp.get("tov_rate") or 0) * poss, 1),
         "fg3m":   round(three_pm, 1),
         "fg_pct": round(fgm / fga, 3) if fga > 0 else None,
         "ft_pct": round(inp.get("ft_pct") or 0, 3),

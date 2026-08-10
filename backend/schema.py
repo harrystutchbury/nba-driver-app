@@ -610,6 +610,16 @@ def init_db():
     # Seed age curves from piecewise linear params if table is empty
     _seed_age_curves(conn)
 
+    # One-time: TOV was stored usage-normalised (tov/(usage·poss)); convert to a
+    # plain per-possession rate (tov/poss) so it no longer depends on usage_rate.
+    # Value-preserving: new tov_rate × poss == old tov_rate × usage × poss.
+    conn.execute("CREATE TABLE IF NOT EXISTS applied_migrations (name TEXT PRIMARY KEY, applied_at TEXT)")
+    if not conn.execute("SELECT 1 FROM applied_migrations WHERE name='tov_rate_decouple_v1'").fetchone():
+        conn.execute("UPDATE projection_inputs SET tov_rate = COALESCE(tov_rate, 0) * COALESCE(usage_rate, 0)")
+        conn.execute(
+            "INSERT INTO applied_migrations (name, applied_at) VALUES ('tov_rate_decouple_v1', datetime('now'))"
+        )
+
     conn.commit()
     conn.close()
     print(f"DB initialised at {DB_PATH}")

@@ -97,7 +97,7 @@ function computeProjected(inp, pace = 98) {
     ast:    +((inp.ast_rate    || 0) * poss).toFixed(1),
     stl:    +((inp.steal_rate  || 0) * poss).toFixed(2),
     blk:    +((inp.block_rate  || 0) * poss).toFixed(2),
-    tov:    +((inp.tov_rate    || 0) * (inp.usage_rate || 0) * poss).toFixed(1),
+    tov:    +((inp.tov_rate    || 0) * poss).toFixed(1),
     fg3m:    +three_pm.toFixed(1),
     fg3a:    +three_pa.toFixed(1),
     fg2m:    +two_pm.toFixed(1),
@@ -362,16 +362,20 @@ export default function ProjectionCalibrationPage() {
     const inp  = localInputs[player.player_id] || player.inputs
     const pace = teamPace || 98
     const u    = (parseFloat(newUsagePct) || 0) / 100
-    const T    = (inp.tov_rate || 0) * (inp.usage_rate || 0)          // TOV contribution (held)
+    // Usage = shooting share + TOV share (both per-possession). Scale ALL volume
+    // — 2PA/3PA/FTA and TOV — by one factor so the mix is preserved.
     const shootRate = (inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)
-    const C = pace > 0 ? shootRate * 48 / pace : 0                    // current shooting contribution
-    if (C <= 0) return
-    let k = (u - T) / C
+    const C = pace > 0 ? shootRate * 48 / pace : 0   // shooting share
+    const T = inp.tov_rate || 0                      // TOV share (plain per-poss)
+    const cur = C + T
+    if (cur <= 0) return
+    let k = u / cur
     if (!isFinite(k) || k < 0) k = 0
     const fields = {
       two_pa_rate:   +((inp.two_pa_rate   || 0) * k).toFixed(6),
       three_pa_rate: +((inp.three_pa_rate || 0) * k).toFixed(6),
       fta_rate:      +((inp.fta_rate      || 0) * k).toFixed(6),
+      tov_rate:      +((inp.tov_rate      || 0) * k).toFixed(6),
     }
     setLocalInputs(prev => ({ ...prev, [player.player_id]: { ...(prev[player.player_id] || {}), ...fields } }))
     await saveMultipleFields(player.player_id, fields, data?.season || '2025-26')
@@ -704,6 +708,7 @@ export default function ProjectionCalibrationPage() {
                         <SortTh label="FTA ✎" k="fta" /><th>FT% ✎</th>
                         <th style={{color:'#64748b'}}>25/26 FTA</th><th>Δ%</th>
                         <th style={{color:'#64748b'}}>25/26 FT%</th><th>Δ%</th>
+                        <th>TOV ✎</th><th style={{color:'#64748b'}}>25/26 TOV</th><th>Δ%</th>
                         <th>Base year</th><th>Age adj</th>
                       </>
                     ) : stat === 'REB' ? (
@@ -831,9 +836,12 @@ export default function ProjectionCalibrationPage() {
                           const pg3pa = +(( inp.three_pa_rate || 0) * mpg).toFixed(1)
                           const pg2pa = +((inp.two_pa_rate   || 0) * mpg).toFixed(1)
                           const pgFta = +((inp.fta_rate      || 0) * mpg).toFixed(1)
-                          // Usage% = shooting share + TOV share (see handleUsage)
+                          // Usage% = shooting share + TOV share (both per-possession)
                           const usgShoot = ((inp.two_pa_rate || 0) + (inp.three_pa_rate || 0) + 0.44 * (inp.fta_rate || 0)) * 48 / (teamPace || 98)
-                          const usagePct = +(((usgShoot) + (inp.tov_rate || 0) * (inp.usage_rate || 0)) * 100).toFixed(1)
+                          const usagePct = +(((usgShoot) + (inp.tov_rate || 0)) * 100).toFixed(1)
+                          // TOV per game (tov_rate is per-poss now); editable after the FT section
+                          const poss  = (teamPace || 98) * (mpg / 48)
+                          const pgTov = +((inp.tov_rate || 0) * poss).toFixed(1)
                           // Last-season usage from 25/26 actuals, same pace basis so it's comparable
                           const usg2526 = (() => {
                             const aPoss = (teamPace || 98) * ((act.min || 0) / 48)
@@ -922,6 +930,14 @@ export default function ProjectionCalibrationPage() {
                             {/* 25/26 FT% + Δ% */}
                             <td className="pcal-actual">{act.ft_pct != null ? fmtPct(act.ft_pct) : '—'}</td>
                             <td className={deltaClass(mkPct(inp.ft_pct, act.ft_pct))}>{fmtDelta(mkPct(inp.ft_pct, act.ft_pct))}</td>
+                            {/* TOV editable (per-game), 25/26 TOV + Δ% */}
+                            <td>{mkInput(pgTov,
+                              e => { const v = parseFloat(e.target.value) || 0; setField(p.player_id, 'tov_rate', poss > 0 ? v / poss : 0) },
+                              e => { const v = parseFloat(e.target.value) || 0; const r = poss > 0 ? v / poss : 0; saveField(p.player_id, 'tov_rate', r, p.inputs.tov_rate, season) },
+                              0.1, 99, noMin
+                            )}</td>
+                            <td className="pcal-actual">{fmt(act.tov)}</td>
+                            <td className={deltaClass(mkPct(pgTov, act.tov))}>{fmtDelta(mkPct(pgTov, act.tov))}</td>
                             {/* Base year */}
                             <td><select className="pcal-mini-select" value={inp.base_year || ''}
                               onChange={e => handleBaseYearChange(p.player_id, e.target.value, season)}>
@@ -1002,14 +1018,10 @@ export default function ProjectionCalibrationPage() {
                           const statAct  = p.actual?.[cfg.projKey]
                           const rateProj = inp[cfg.rateKey]
                           const rateAct  = rates[cfg.rateKey]
-                          // TOV is stored usage-normalised (tov/(usage·poss)), so its real
-                          // per-poss rate is tov_rate·usage. Fold that in for the /36 view.
-                          const isTov  = cfg.rateKey === 'tov_rate'
-                          const usg    = inp.usage_rate || 0
-                          const actUsg = rates.usage_rate || 0
-                          const rateProj36 = rateProj != null ? toPer36(isTov ? rateProj * usg    : rateProj) : null
-                          const rateAct36  = rateAct  != null ? toPer36(isTov ? rateAct  * actUsg : rateAct)  : null
-                          const per36ToRate = v => { const eff = fromPer36(v); return isTov ? (usg > 0 ? eff / usg : 0) : eff }
+                          // All counting rates (incl. TOV, now plain per-poss) use the same /36 view
+                          const rateProj36 = rateProj != null ? toPer36(rateProj) : null
+                          const rateAct36  = rateAct  != null ? toPer36(rateAct)  : null
+                          const per36ToRate = v => fromPer36(v)
                           return (<>
                             {/* Min/G, GP read-only */}
                             <td className="pcal-actual">{fmt(inp.minutes_per_game)}</td>
