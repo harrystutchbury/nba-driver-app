@@ -1977,7 +1977,9 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     return +((v - s.mean) / s.std).toFixed(2)
   }
 
-  // Effective Value: per-game = Σ unpunted z × gp; totals = Σ unpunted totals-Z
+  // Effective Value follows the Per Game / Totals toggle:
+  //   Per Game = Σ unpunted per-game z (a per-game rating)
+  //   Totals   = Σ unpunted totals-Z (volume already baked into the totals-Z)
   const getEffectiveValue = (p) => {
     if (p.unprojected) return -Infinity   // not projected yet → sort to bottom
     let sum = 0
@@ -1989,7 +1991,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
       if (z == null) continue
       sum += c.lowerBetter ? -z : z
     }
-    return viewMode === 'totals' ? +sum.toFixed(2) : +(sum * (p.gp ?? 0)).toFixed(2)
+    return +sum.toFixed(2)
   }
 
   const getSortVal = (p, key) => {
