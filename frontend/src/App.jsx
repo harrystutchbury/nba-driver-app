@@ -2058,7 +2058,6 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
           <div className="rank-pills">
             <button className={`rank-pill${viewMode === 'pg' ? ' active' : ''}`} onClick={() => setViewMode('pg')}>Per Game</button>
             <button className={`rank-pill${viewMode === 'totals' ? ' active' : ''}`} onClick={() => setViewMode('totals')}>Totals</button>
-            <button className={`rank-pill${showRanges ? ' active' : ''}`} onClick={() => setShowRanges(r => !r)}>Ranges</button>
           </div>
         </div>
         <div className="rank-filter-group">
