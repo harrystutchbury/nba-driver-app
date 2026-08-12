@@ -445,7 +445,7 @@ function LoginPage({ onLogin, onClose, initialMode }) {
 }
 
 const STAT_OPTIONS = [
-  { value: 'stats',   label: 'Stats' },
+  { value: 'stats',   label: 'Stat table' },
   { value: 'z_scores', label: 'Z-Scores (all cats)' },
   { value: 'pts',    label: 'Points' },
   { value: 'reb',    label: 'Rebounds' },
