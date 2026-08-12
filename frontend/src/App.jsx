@@ -8713,7 +8713,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [fantasyTab, setFantasyTab]   = useState(() => {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const TABS = new Set(['dashboard','standings','roster','trade','matchup','history'])
-    return parts[0] === 'fantasy' && TABS.has(parts[1]) ? parts[1] : 'dashboard'
+    // Dashboard tab is hidden (parked), so the fantasy page lands on Standings.
+    return parts[0] === 'fantasy' && TABS.has(parts[1]) ? parts[1] : 'standings'
   })
   const [boxScoreDate, setBoxScoreDate] = useState(null)
 
@@ -8777,6 +8778,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [playerStats, setPlayerStats] = useState(null)
   const [projection, setProjection]   = useState(null)
   const [projLoading, setProjLoading] = useState(false)
+  const [ourProj, setOurProj]           = useState(null)   // our calibration 2026/27 projection (top row)
+  const [ourProjLoading, setOurProjLoading] = useState(false)
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [histMode, setHistMode]       = useState('pg')   // 'pg' | 'p36'
@@ -8917,6 +8920,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setPlayerStats(null)
     setProjection(null)
     setProjLoading(true)
+    setOurProj(null)
+    setOurProjLoading(true)
     setPlayerGames(null)
     setMaRangeStart(0); setMaRangeEnd(null)
     setMaZoneGames(null); setMaZoneSlug(null)
@@ -8939,6 +8944,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       })
       .catch(() => {})
       .finally(() => setProjLoading(false))
+    apiFetch(`/api/player-projection?player=${encodeURIComponent(p.slug)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setOurProj(d) })
+      .catch(() => {})
+      .finally(() => setOurProjLoading(false))
     apiFetch(`/api/player-games?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
@@ -9183,6 +9193,32 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       ft_pct: projRowData.ft_pct != null ? zFor('ft_pct', projRowData.ft_pct) : null,
     }
   }, [projRowData, playerStats])
+
+  // Our calibration-backed 2026/27 projection (top row of the table)
+  const ourProjRowZ = useMemo(() => {
+    if (!ourProj || !playerStats?.z_params) return null
+    const zp = playerStats.z_params
+    const fgaPg = ourProj.fga_pg ?? 10
+    const ftaPg = ourProj.fta_pg ?? 3
+    const zFor = (key, val) => {
+      const p = zp?.[key]
+      if (!p || !p.std || val == null) return null
+      if (key === 'fg_pct') return ((val - p.league_avg) * fgaPg - p.mean) / p.std
+      if (key === 'ft_pct') return ((val - p.league_avg) * ftaPg - p.mean) / p.std
+      return (val - p.mean) / p.std
+    }
+    return {
+      pts:    zFor('pts',    ourProj.pts),
+      reb:    zFor('reb',    ourProj.reb),
+      ast:    zFor('ast',    ourProj.ast),
+      stl:    zFor('stl',    ourProj.stl),
+      blk:    zFor('blk',    ourProj.blk),
+      tov:    zFor('tov',    ourProj.tov),
+      fg3m:   zFor('fg3m',   ourProj.fg3m),
+      fg_pct: zFor('fg_pct', ourProj.fg_pct),
+      ft_pct: zFor('ft_pct', ourProj.ft_pct),
+    }
+  }, [ourProj, playerStats])
 
   // Trend chart — historical seasons + all projected years
   const trendSeasons = playerStats ? [...playerStats.seasons].reverse() : []
@@ -9874,9 +9910,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     )
   }
 
-  function ProjectionRow({ label, data, zScores, note, scenario, projRank, projRankN, currentMpg }) {
+  function ProjectionRow({ label, data, zScores, note, scenario, projRank, projRankN, currentMpg, badge }) {
     if (!data) return null
-    const scenarioLabel = scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Forecast'
+    const scenarioLabel = badge || (scenario === 'optimistic' ? 'Optimistic' : scenario === 'pessimistic' ? 'Pessimistic' : 'Forecast')
     const scenarioColor = scenario === 'optimistic' ? '#7c8cff' : scenario === 'pessimistic' ? '#ff6b6b' : isDark() ? '#00e676' : '#0a7a36'
     const dark = isDark()
     const rankColor = projRank && projRankN
@@ -9892,8 +9928,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           <div>{label}{note && <span className="archetype-transition" title={`Projected archetype: ${note}`}> ↓</span>}</div>
           <div><span className="forecast-badge" style={{ color: scenarioColor, borderColor: scenarioColor }}>{scenarioLabel}</span></div>
         </td>
-        <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>—</td>
-        <td className="num mono stat-cell muted" style={{ borderLeft: 'none' }}>—</td>
+        <td className="stats-period-cell muted" style={{ fontSize: '11px', fontFamily: 'var(--mono)' }}>{data.team ? teamAbbr(data.team) : '—'}</td>
+        <td className="num mono stat-cell muted" style={{ borderLeft: 'none' }}>{data.gp != null ? data.gp : '—'}</td>
         {(() => { const zt = zScores ? Object.entries(zScores).reduce((s, [k, v]) => s + (v != null ? (k === 'tov' ? -v : v) : 0), 0) : null; return (
           <td className="num mono stats-ztotal-cell" style={{ color: scenarioColor }}>
             {zt != null ? `${zt > 0 ? '+' : ''}${zt.toFixed(1)}` : '—'}
@@ -9987,7 +10023,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     Fantasy <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
+                    {/* Hidden 2026-08 — Fantasy Dashboard parked (not deleted); restore this button to bring it back.
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'dashboard' })}>Dashboard</button>
+                    */}
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'standings' })}>Projected Standings</button>
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'roster' })}>Roster Analysis</button>
                     <button className="nav-drop-item" onClick={() => navigate('fantasy', { tab: 'trade' })}>Trade Analysis</button>
@@ -10205,14 +10243,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   </tr>
                 </thead>
                 <tbody>
-                  <StatsRow label={playerStats.seasons[0]?.period} data={playerStats.seasons[0]} />
-                  {playerStats.seasons[1] && (
-                    <StatsRow label={playerStats.seasons[1].period} data={playerStats.seasons[1]} highlight="prev-season" />
-                  )}
-                  <StatsRow label="Per 30 min" data={playerStats.p30} highlight="p30" />
-                  <StatsRow label="Last 14 days" data={playerStats.l14} highlight="recent" />
-                  <StatsRow label="Last 30 days" data={playerStats.l30} highlight="recent" />
-                  {projLoading && !projection
+                  {/* Our 2026/27 projection (calibration-sourced) — pinned to the top */}
+                  {ourProjLoading && !ourProj
                     ? (
                       <tr className="stats-row-projection stats-row-skeleton">
                         <td className="stats-period-cell"><div className="skel-line" style={{width:64}} /></td>
@@ -10227,17 +10259,23 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         ))}
                       </tr>
                     )
-                    : <ProjectionRow
-                        label={activeProj ? activeProj.season : 'Projected'}
-                        data={projRowData}
-                        zScores={projRowZ}
-                        note={activeProj && activeProj.archetype !== projection.archetype ? activeProj.archetype : null}
-                        scenario={projScenario}
-                        projRank={activeProjSrc?.proj_rank}
-                        projRankN={activeProjSrc?.proj_rank_n}
-                        currentMpg={playerStats.seasons[0]?.min_pg}
+                    : ourProj && (
+                      <ProjectionRow
+                        label={ourProj.season ? ourProj.season.replace('-', '/') : '2026/27'}
+                        badge="Projection"
+                        data={ourProj}
+                        zScores={ourProjRowZ}
+                        scenario="baseline"
                       />
+                    )
                   }
+                  <StatsRow label={playerStats.seasons[0]?.period} data={playerStats.seasons[0]} />
+                  {playerStats.seasons[1] && (
+                    <StatsRow label={playerStats.seasons[1].period} data={playerStats.seasons[1]} highlight="prev-season" />
+                  )}
+                  <StatsRow label="Per 30 min" data={playerStats.p30} highlight="p30" />
+                  <StatsRow label="Last 14 days" data={playerStats.l14} highlight="recent" />
+                  <StatsRow label="Last 30 days" data={playerStats.l30} highlight="recent" />
                   <StatsRow label="Career" data={{ ...playerStats.career, rank: null }} highlight="career" />
                 </tbody>
               </table>
@@ -11448,7 +11486,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
 
 
             {/* ── Projection controls + trend chart ────────── */}
-            {(projection || projLoading) && (
+            {/* Hidden 2026-08 — "Next Season Projection" panel parked (not deleted); remove the `false &&` to restore. */}
+            {false && (projection || projLoading) && (
               <div className="projection-section">
                 <div className="projection-header" onClick={() => setProjExpanded(e => !e)} style={{ cursor: 'pointer' }}>
                   <h3 className="panel-title">Next Season Projection</h3>

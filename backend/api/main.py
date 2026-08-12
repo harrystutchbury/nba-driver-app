@@ -3521,6 +3521,60 @@ def get_projections(
 
 
 # -----------------------------------------------------------------------
+# GET /player-projection  — our hand-built projection for a single player,
+# sourced from the calibration inputs (feeds the top row of the player page).
+# -----------------------------------------------------------------------
+
+@router.get("/player-projection")
+def get_player_projection(player: str = Query(..., description="Player br_slug")):
+    """
+    Our 2026/27 projection for one player, straight from the calibration inputs
+    (projection_inputs -> compute_projected) rather than the old trend model.
+    Percent stats are returned on a 0-100 scale so the player-stats table can
+    render them unchanged. Returns null if the player isn't on the projection
+    roster or has no minutes set yet.
+    """
+    from api.proj_router import (
+        get_or_init_inputs, compute_projected, get_team_pace, PREV_SEASON,
+    )
+    conn = get_conn()
+    try:
+        srow = conn.execute("SELECT MAX(season) FROM players").fetchone()
+        season = srow[0] if srow and srow[0] else None
+        if not season:
+            return None
+        prow = conn.execute(
+            "SELECT team FROM players WHERE slug=? AND season=? ORDER BY team LIMIT 1",
+            (player, season),
+        ).fetchone()
+        if not prow:
+            return None
+        team = prow["team"]
+        pace = get_team_pace(conn, team, season)
+        inp  = get_or_init_inputs(conn, player, season, team, base_year=PREV_SEASON)
+        proj = compute_projected(inp, pace)
+        if not proj:
+            return None
+        fg3a = proj["fg3a"] or 0
+        return {
+            "season":  season,
+            "team":    team,
+            "gp":      int(round(inp.get("projected_gp") or 0)),
+            "min_pg":  round(inp.get("minutes_per_game") or 0, 1),
+            "pts":     proj["pts"],
+            "reb":     round((proj["oreb"] or 0) + (proj["dreb"] or 0), 1),
+            "ast":     proj["ast"], "stl": proj["stl"], "blk": proj["blk"],
+            "tov":     proj["tov"], "fg3m": proj["fg3m"],
+            "fga_pg":  proj["fga"], "fg3a_pg": fg3a, "fta_pg": proj["fta"],
+            "fg_pct":  round(proj["fg_pct"] * 100, 1) if proj["fg_pct"] is not None else None,
+            "fg3_pct": round(proj["fg3m"] / fg3a * 100, 1) if fg3a > 0 else None,
+            "ft_pct":  round((proj["ft_pct"] or 0) * 100, 1),
+        }
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # GET /projections-calibrated  — public Projections page, sourced from the
 # hand-built calibration projections instead of live game logs.
 # -----------------------------------------------------------------------
