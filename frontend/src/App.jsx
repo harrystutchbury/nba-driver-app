@@ -8354,11 +8354,8 @@ function ModerationPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BREAKDOWN_PRESETS = [
-  { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-06-30' }, b: { start: '2025-10-22', end: '2026-06-30' } },
-  { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-06-30' } },
-  { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-  { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-  { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-06-30' } },
+  { label: '2024/25 v 2025/26', a: { start: '2024-10-22', end: '2025-06-30' }, b: { start: '2025-10-22', end: '2026-06-30' } },
+  { label: 'First half v second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-06-30' } },
 ]
 
 function formatDriverValue(key, value) {
@@ -10188,9 +10185,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
               {playerStats.player.age && (
                 <span className="player-age">Age {playerStats.player.age}</span>
               )}
-              {projection?.archetype && (
-                <span className="archetype-badge">{projection.archetype}</span>
-              )}
+              {/* Archetype badge hidden 2026-08 — not surfaced on the player page (parked, not deleted). */}
               {playerStats.player.injury && (
                 <InjuryBadge injury={playerStats.player.injury} compact={false} />
               )}
@@ -10485,11 +10480,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       <span className="ctrl-label">Presets</span>
                       <div className="preset-btns">
                         {[
-                          { label: 'This Season vs Last Season', a: { start: '2024-10-22', end: '2025-06-30' }, b: { start: '2025-10-22', end: '2026-06-30' } },
-                          { label: 'Pre/Post All-Star', a: { start: '2025-10-22', end: '2026-02-13' }, b: { start: '2026-02-21', end: '2026-06-30' } },
-                          { label: 'Jan vs Mar',        a: { start: '2026-01-01', end: '2026-01-31' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-                          { label: 'Feb vs Mar',        a: { start: '2026-02-01', end: '2026-02-28' }, b: { start: '2026-03-01', end: '2026-03-31' } },
-                          { label: 'First half vs Second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-06-30' } },
+                          { label: '2024/25 v 2025/26', a: { start: '2024-10-22', end: '2025-06-30' }, b: { start: '2025-10-22', end: '2026-06-30' } },
+                          { label: 'First half v second half', a: { start: '2025-10-22', end: '2026-01-15' }, b: { start: '2026-01-16', end: '2026-06-30' } },
                         ].map(p => (
                           <button key={p.label} className="preset-btn" onClick={() => { setPeriodA(p.a); setPeriodB(p.b) }}>{p.label}</button>
                         ))}
