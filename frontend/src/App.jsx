@@ -10821,64 +10821,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
                     </div>
 
-                    {/* ── Driver table + Insights ───────────────────── */}
-                    <div className="analysis-row">
-                      <div className="breakdown-panel">
-                        <h2 className="panel-title">Driver breakdown</h2>
-                        <table className="drivers-table">
-                          <thead>
-                            <tr>
-                              <th>Driver</th>
-                              <th className="num">Change</th>
-                              <th className="num">Attribution</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[...result.drivers]
-                              .sort((a, b) => (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99))
-                              .map((d) => {
-                                const catColor = CATEGORY_COLORS[d.category] ?? '#888'
-                                const barColor = CATEGORY_COLORS[d.category] ?? '#888'
-                                const barPct   = (Math.abs(d.contribution) / maxContrib) * 100
-                                return (
-                                  <tr key={d.key}>
-                                    <td className="driver-cell">
-                                      <span className="driver-name">{d.label}</span>
-                                      <span
-                                        className="cat-pill"
-                                        style={{ background: catColor + '20', color: catColor, borderColor: catColor + '40' }}
-                                      >
-                                        {CATEGORY_DISPLAY[d.category] ?? d.category}
-                                      </span>
-                                    </td>
-                                    <td className={`num change-val ${d.contribution >= 0 ? 'pos' : 'neg'}`}>
-                                      {d.contribution >= 0 ? '+' : ''}{d.contribution.toFixed(2)}
-                                    </td>
-                                    <td className="attribution-cell">
-                                      <div
-                                        className="attr-bar"
-                                        style={{ width: `${barPct}%`, background: barColor }}
-                                      />
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="insights-panel">
-                        <h2 className="panel-title">Key insights</h2>
-                        <ul className="insights-list">
-                          {insights.map((ins, i) => (
-                            <li key={i}>
-                              <span className="insight-dot" />
-                              {ins}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
                     {shotDiet && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (() => {
                       const zoneRows = ZONE_ORDER.map(zk => {
                         const z = shotDiet.zones.find(r => r.zone === zk) || {
@@ -10944,28 +10886,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <div className="shot-diet-chart-wrap"><div className="shot-chart-title">FG% by zone</div><Bar data={fgChartData} options={zoneChartOpts('FG%')} /></div>
                           </div>
 
-                          <div className="shot-zone-courts-row">
-                            <ShotZoneCourt id="freq" title="Shot distribution change" zones={zoneRows.map(z => ({ zone: z.zone, delta: z.freq_b - z.freq_a, unit: 'pct', label: `${(z.freq_b - z.freq_a) >= 0 ? '+' : ''}${((z.freq_b - z.freq_a)*100).toFixed(1)}%` }))} />
-                            <ShotZoneCourt id="fg" title="FG% change by zone" zones={zoneRows.map(z => ({ zone: z.zone, delta: (z.fga_a > 0 || z.fga_b > 0) ? z.fg_pct_b - z.fg_pct_a : 0, unit: 'pp', label: (z.fga_a > 0 || z.fga_b > 0) ? `${(z.fg_pct_b - z.fg_pct_a) >= 0 ? '+' : ''}${((z.fg_pct_b - z.fg_pct_a)*100).toFixed(1)}pp` : '' }))} />
-                          </div>
-
-                          <table className="shot-table">
-                            <thead><tr><th>Zone</th><th className="num">Baseline FG%</th><th className="num">Selection impact</th><th className="num">Efficiency impact</th><th className="num">Comp FG%</th></tr></thead>
-                            <tbody>
-                              {zoneRows.filter(z => z.fga_a > 0 || z.fga_b > 0).map(z => {
-                                const fgShift = Math.round((z.fg_pct_b - z.fg_pct_a) * 100)
-                                return (
-                                  <tr key={z.zone}>
-                                    <td>{ZONE_LABELS[z.zone]}</td>
-                                    <td className="num mono">{z.fga_a > 0 ? `${Math.round(z.fg_pct_a * 100)}%` : '—'}</td>
-                                    <td className={`num mono ${z.diet_effect >= 0 ? 'pos' : 'neg'}`}>{z.diet_effect >= 0 ? '+' : ''}{(z.diet_effect * 100).toFixed(1)}</td>
-                                    <td className={`num mono ${z.efficiency_effect >= 0 ? 'pos' : 'neg'}`}>{z.efficiency_effect >= 0 ? '+' : ''}{(z.efficiency_effect * 100).toFixed(1)}</td>
-                                    <td className="num mono">{z.fga_b > 0 ? `${Math.round(z.fg_pct_b * 100)}% (${fgShift >= 0 ? '+' : ''}${fgShift}pp)` : '—'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
                         </div>
                       )
                     })()}
