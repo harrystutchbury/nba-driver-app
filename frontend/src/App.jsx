@@ -444,6 +444,53 @@ function LoginPage({ onLogin, onClose, initialMode }) {
   )
 }
 
+// Compact numeric stepper: [−] [editable box] [+]. Keeps a local text buffer so
+// typing decimals doesn't fight the controlled/clamped external value; +/- and
+// blur/Enter commit the clamped result.
+function StepperField({ label, value, min, max, step, dp, pinned, onChange, onReset }) {
+  const [buf, setBuf] = useState((+value).toFixed(dp))
+  const [editing, setEditing] = useState(false)
+  useEffect(() => { if (!editing) setBuf((+value).toFixed(dp)) }, [value, dp, editing])
+  const clamp = v => Math.min(max, Math.max(min, v))
+  const commit = () => {
+    const v = parseFloat(String(buf).replace('%', '').trim())
+    // Only commit a genuine change — a bare focus/blur must not pin the field.
+    if (!Number.isNaN(v)) {
+      const nv = +clamp(v).toFixed(4)
+      if (nv !== +(+value).toFixed(4)) onChange(nv)
+    }
+    setEditing(false)
+  }
+  const dec = () => onChange(+clamp(+(value - step).toFixed(4)).toFixed(4))
+  const inc = () => onChange(+clamp(+(value + step).toFixed(4)).toFixed(4))
+  return (
+    <div className={`stepper-field${pinned ? ' pinned' : ''}`}>
+      <span className="ctrl-label">{label}</span>
+      <div className="stepper-ctrl">
+        <button type="button" className="stepper-btn" onClick={dec} aria-label={`decrease ${label}`}>−</button>
+        <input
+          className="stepper-input"
+          type="text"
+          inputMode="decimal"
+          value={buf}
+          onFocus={() => setEditing(true)}
+          onChange={e => setBuf(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') { commit(); e.target.blur() } }}
+        />
+        <button type="button" className="stepper-btn" onClick={inc} aria-label={`increase ${label}`}>+</button>
+      </div>
+      <button
+        type="button"
+        className="stepper-reset"
+        style={{ visibility: pinned ? 'visible' : 'hidden' }}
+        onClick={onReset}
+        aria-label={`reset ${label}`}
+      >↩</button>
+    </div>
+  )
+}
+
 const STAT_OPTIONS = [
   { value: 'stats',   label: 'Stat table' },
   { value: 'z_scores', label: 'Z-Scores (all cats)' },
@@ -11270,6 +11317,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 { key: 'tov',    label: 'TOV',  pct: false, zKey: 'tov',    negZ: true  },
               ]
 
+              const fmtVal = (v, isPct) => v == null ? '—' : isPct ? `${v.toFixed(1)}%` : v.toFixed(1)
+              const fmtZ   = z => z == null ? '—' : `${z >= 0 ? '+' : ''}${z.toFixed(2)}`
+              const zCls   = z => z == null ? '' : z >= 0.1 ? ' z-pos' : z <= -0.1 ? ' z-neg' : ''
+
               return (
                 <div className="projection-section">
                   <div className="projection-header" onClick={() => setUsageExpanded(e => !e)} style={{ cursor: 'pointer' }}>
@@ -11305,89 +11356,84 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       {SLIDER_GROUPS.map(({ label: gLabel, fields }) => (
                         <div key={gLabel} className="proj-slider-group">
                           <div className="proj-slider-group-label">{gLabel}</div>
-                          {fields.map(({ key, label, eff, base: bv, min, max, step, fmt }) => {
-                            const snapped = Math.round(eff / step) * step
-                            const basePct = Math.min(1, Math.max(0, (bv - min) / (max - min)))
-                            return (
-                            <div key={key} className={`mpg-slider-row${pinned(key) ? ' pinned' : ''}`}>
-                              <span className="ctrl-label">{label}</span>
-                              <div className="mpg-slider-wrap">
-                                <input
-                                  type="range" min={min} max={max} step={step}
-                                  value={snapped}
-                                  onChange={e => setOvr(key, +e.target.value)}
-                                  className="mpg-slider"
-                                />
-                                {pinned(key) && (
-                                  <div
-                                    className="mpg-baseline-tick"
-                                    style={{ left: `calc(7px + ${basePct.toFixed(4)} * (100% - 14px))` }}
-                                  />
-                                )}
-                              </div>
-                              <span className="mpg-value">{fmt(snapped)}</span>
-                              <button
-                                className="usage-reset-btn"
-                                style={{ visibility: pinned(key) ? 'visible' : 'hidden' }}
-                                onClick={() => resetOvr(key)}
-                              >↩</button>
-                            </div>
-                            )
-                          })}
+                          <div className="stepper-fields">
+                            {fields.map(({ key, label, eff, min, max, step }) => (
+                              <StepperField
+                                key={key}
+                                label={label}
+                                value={eff}
+                                min={min}
+                                max={max}
+                                step={step}
+                                dp={step < 0.1 ? 2 : 1}
+                                pinned={pinned(key)}
+                                onChange={v => setOvr(key, v)}
+                                onReset={() => resetOvr(key)}
+                              />
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
 
-                    <table className="usage-table">
+                    <div className="usage-table-wrap">
+                    <table className="usage-table usage-table-pivot">
                       <thead>
                         <tr>
                           <th className="usage-th-stat"></th>
-                          <th className="usage-th-num">Base</th>
-                          <th className="usage-th-num usage-th-z">Z</th>
-                          <th className="usage-th-num">Projected</th>
-                          <th className="usage-th-num usage-th-z">Z</th>
-                          <th className="usage-th-num">Δ</th>
+                          {STAT_ROWS.map(s => (
+                            <th key={s.key} className="usage-th-num">{s.label}</th>
+                          ))}
+                          <th className="usage-th-num usage-th-z">Total</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {STAT_ROWS.map(({ key, label, pct, zKey, negZ }) => {
-                          const bv = base[key] ?? null
-                          const pv = projDisplay[key] ?? null
-                          if (bv === null || pv === null) return null
-                          const delta = pv - bv
-                          const fmt  = v => pct ? `${v.toFixed(1)}%` : v.toFixed(1)
-                          const fmtD = d => `${d >= 0 ? '+' : ''}${pct ? d.toFixed(1) + '%' : d.toFixed(1)}`
-                          const bz = baseZ[zKey] != null ? (negZ ? -baseZ[zKey] : baseZ[zKey]) : null
-                          const pz = projZ && projZ[zKey] != null ? (negZ ? -projZ[zKey] : projZ[zKey]) : null
-                          const fmtZ = z => z == null ? '—' : `${z >= 0 ? '+' : ''}${z.toFixed(2)}`
-                          const zCls = z => z == null ? '' : z >= 0.1 ? ' z-pos' : z <= -0.1 ? ' z-neg' : ''
-                          return (
-                            <tr key={key}>
-                              <td className="usage-td-stat">{label}</td>
-                              <td className="usage-td-num muted">{fmt(bv)}</td>
-                              <td className={`usage-td-num usage-td-z${zCls(bz)}`}>{fmtZ(bz)}</td>
-                              <td className="usage-td-num">{fmt(pv)}</td>
-                              <td className={`usage-td-num usage-td-z${zCls(pz)}`}>{changed ? fmtZ(pz) : '—'}</td>
-                              <td className="usage-td-num usage-delta">{changed ? fmtD(delta) : '—'}</td>
-                            </tr>
-                          )
-                        })}
-                        {zp && (
-                          <tr className="usage-tr-total">
-                            <td className="usage-td-stat">Z-Total</td>
-                            <td className="usage-td-num"></td>
-                            <td className="usage-td-num usage-td-z muted">{baseZTotal.toFixed(2)}</td>
-                            <td className="usage-td-num"></td>
-                            <td className={`usage-td-num usage-td-z${effectiveZTotal >= 0.1 ? ' z-pos' : effectiveZTotal <= -0.1 ? ' z-neg' : ''}`}>
-                              {effectiveZTotal.toFixed(2)}
-                            </td>
-                            <td className="usage-td-num usage-delta">
-                              {changed ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}` : '—'}
-                            </td>
-                          </tr>
-                        )}
+                        <tr>
+                          <td className="usage-td-stat">Base</td>
+                          {STAT_ROWS.map(({ key, pct: isPct }) => (
+                            <td key={key} className="usage-td-num muted">{fmtVal(base[key] ?? null, isPct)}</td>
+                          ))}
+                          <td className="usage-td-num"></td>
+                        </tr>
+                        <tr>
+                          <td className="usage-td-stat">Z</td>
+                          {STAT_ROWS.map(({ key, zKey, negZ }) => {
+                            const z = baseZ[zKey] != null ? (negZ ? -baseZ[zKey] : baseZ[zKey]) : null
+                            return <td key={key} className={`usage-td-num usage-td-z${zCls(z)}`}>{fmtZ(z)}</td>
+                          })}
+                          <td className="usage-td-num usage-td-z muted">{baseZTotal.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                          <td className="usage-td-stat">Adjusted Projection</td>
+                          {STAT_ROWS.map(({ key, pct: isPct }) => (
+                            <td key={key} className="usage-td-num">{fmtVal(projDisplay[key] ?? null, isPct)}</td>
+                          ))}
+                          <td className="usage-td-num"></td>
+                        </tr>
+                        <tr>
+                          <td className="usage-td-stat">Adjusted Z</td>
+                          {STAT_ROWS.map(({ key, zKey, negZ }) => {
+                            const z = projZ && projZ[zKey] != null ? (negZ ? -projZ[zKey] : projZ[zKey]) : null
+                            return <td key={key} className={`usage-td-num usage-td-z${changed ? zCls(z) : ''}`}>{changed ? fmtZ(z) : '—'}</td>
+                          })}
+                          <td className={`usage-td-num usage-td-z${effectiveZTotal >= 0.1 ? ' z-pos' : effectiveZTotal <= -0.1 ? ' z-neg' : ''}`}>{effectiveZTotal.toFixed(2)}</td>
+                        </tr>
+                        <tr className="usage-tr-total">
+                          <td className="usage-td-stat">Delta</td>
+                          {STAT_ROWS.map(({ key, pct: isPct }) => {
+                            const bv = base[key] ?? null, pv = projDisplay[key] ?? null
+                            const d  = (bv != null && pv != null) ? pv - bv : null
+                            return (
+                              <td key={key} className="usage-td-num usage-delta">
+                                {changed && d != null ? `${d >= 0 ? '+' : ''}${isPct ? d.toFixed(1) + '%' : d.toFixed(1)}` : '—'}
+                              </td>
+                            )
+                          })}
+                          <td className="usage-td-num usage-delta">{changed ? `${deltaZTotal >= 0 ? '+' : ''}${deltaZTotal.toFixed(2)}` : '—'}</td>
+                        </tr>
                       </tbody>
                     </table>
+                    </div>
                     <p className="usage-note">Base: {base.period} avg · {baseMpg.toFixed(1)} min/g · REB/STL/BLK rates scale sub-linearly with minutes (α=0.75)</p>
                     </>
                   ) : <SectionLock onUpgrade={onOpenAccount} />)}

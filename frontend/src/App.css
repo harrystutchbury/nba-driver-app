@@ -1891,6 +1891,75 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .mpg-slider-row.pinned .ctrl-label { color: var(--accent); }
 .mpg-slider-row.pinned .mpg-value  { color: var(--accent); }
 
+/* ── Compact numeric steppers (Stat Line Projector) ───────────────── */
+.stepper-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 7px 14px;
+  margin-top: 2px;
+}
+.stepper-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.stepper-field .ctrl-label {
+  font-size: 11px;
+  color: var(--label);
+  white-space: nowrap;
+}
+.stepper-field.pinned .ctrl-label { color: var(--accent); }
+.stepper-ctrl {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.stepper-field.pinned .stepper-ctrl { border-color: var(--accent); }
+.stepper-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  width: 20px;
+  height: 24px;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  user-select: none;
+}
+.stepper-btn:hover { color: var(--text); background: var(--border); }
+.stepper-input {
+  width: 40px;
+  border: none;
+  background: transparent;
+  color: var(--skill);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 3px 2px;
+}
+.stepper-input:focus { outline: none; }
+.stepper-field.pinned .stepper-input { color: var(--accent); }
+.stepper-reset {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.stepper-reset:hover { color: var(--text); }
+
 .usage-rank-pill {
   display: flex;
   flex-direction: column;
@@ -2017,6 +2086,17 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-weight: 600;
   letter-spacing: 0.5px;
 }
+
+/* Pivoted Stat Line Projector table (stats as columns) */
+.usage-table-wrap { overflow-x: auto; }
+.usage-table-pivot th,
+.usage-table-pivot td {
+  padding-left: 6px;
+  padding-right: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.usage-table-pivot .usage-td-stat { white-space: nowrap; }
 
 .usage-tag-min {
   background: rgba(255,255,255,0.07);
