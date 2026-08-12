@@ -8,14 +8,15 @@ const STYLES = `
 .tsa-sub { color: #64748b; font-size: 13px; margin-bottom: 16px; }
 .tsa-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
 .tsa-select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
-.tsa-axis { display: grid; grid-template-columns: 44px 210px 96px 1fr; gap: 14px; margin-bottom: 10px; color: #64748b; font-size: 11px; }
-.tsa-row { display: grid; grid-template-columns: 44px 210px 96px 1fr; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px solid #1e293b; }
+.tsa-axis { display: grid; grid-template-columns: 44px 210px 60px 76px 96px 1fr; gap: 14px; margin-bottom: 10px; color: #64748b; font-size: 11px; }
+.tsa-row { display: grid; grid-template-columns: 44px 210px 60px 76px 96px 1fr; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px solid #1e293b; }
 .tsa-row:hover { background: #16202e; }
 .tsa-rank { color: #64748b; font-size: 13px; text-align: right; }
 .tsa-team { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tsa-total { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; font-size: 13px; }
+.tsa-ly { color: #64748b; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.tsa-total { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; font-size: 13px; color: #e2e8f0; }
 .tsa-track { position: relative; height: 12px; background: #1e293b; border-radius: 6px; }
-.tsa-fill { height: 100%; border-radius: 6px; transition: width .2s; }
+.tsa-fill { height: 100%; border-radius: 6px; transition: width .2s; background: #3b82f6; }
 .tsa-tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: #475569; }
 `
 
@@ -43,15 +44,6 @@ export default function TeamStatAuditPage() {
   const range = (hi != null && lo != null && hi !== lo) ? hi - lo : 1
   const pct = v => v == null ? 0 : Math.max(0, Math.min(100, ((v - lo) / range) * 100))
 
-  // green in the middle of the pack, amber for a moderate outlier, red outside the IQR
-  const colorFor = v => {
-    if (v == null || !data) return '#64748b'
-    if (data.league_p25 != null && data.league_p75 != null && (v < data.league_p25 || v > data.league_p75)) return '#ef4444'
-    const med = data.league_median || data.league_avg
-    if (med && Math.abs(v - med) / med > 0.08) return '#f59e0b'
-    return '#22c55e'
-  }
-
   const ticks = data ? [
     { v: data.league_min,    label: 'Min' },
     { v: data.league_p25,    label: 'P25' },
@@ -65,7 +57,7 @@ export default function TeamStatAuditPage() {
       <style>{STYLES}</style>
       <div className="tsa-page">
         <h2 className="tsa-title">Team Audit</h2>
-        <div className="tsa-sub">Every team's projected total for one stat, on the shared league bar. Red = outside the middle 50%, amber = notable outlier.</div>
+        <div className="tsa-sub">Every team's projected total for one stat on the shared league bar, alongside last season's rank and total for comparison.</div>
 
         <div className="tsa-controls">
           <select className="tsa-select" value={stat} onChange={e => setStat(e.target.value)}>
@@ -82,6 +74,8 @@ export default function TeamStatAuditPage() {
           <>
             <div className="tsa-axis">
               <div></div><div></div>
+              <div style={{ textAlign: 'right' }}>LY Rk</div>
+              <div style={{ textAlign: 'right' }}>LY Tot</div>
               <div style={{ textAlign: 'right' }}>Proj</div>
               <div style={{ position: 'relative', height: 14 }}>
                 {ticks.map((t, i) => (
@@ -98,9 +92,11 @@ export default function TeamStatAuditPage() {
               <div key={t.team} className="tsa-row">
                 <div className="tsa-rank">#{t.rank ?? '—'}</div>
                 <div className="tsa-team">{t.team}</div>
-                <div className="tsa-total" style={{ color: colorFor(t.total) }}>{fmt(t.total)}</div>
-                <div className="tsa-track" title={`Last season: ${fmt(t.last_season_total)}`}>
-                  <div className="tsa-fill" style={{ width: `${pct(t.total)}%`, background: colorFor(t.total) }} />
+                <div className="tsa-ly">{t.last_season_rank != null ? `#${t.last_season_rank}` : '—'}</div>
+                <div className="tsa-ly">{fmt(t.last_season_total)}</div>
+                <div className="tsa-total">{fmt(t.total)}</div>
+                <div className="tsa-track">
+                  <div className="tsa-fill" style={{ width: `${pct(t.total)}%` }} />
                   {ticks.map(tk => (
                     <div key={tk.label} className="tsa-tick" style={{ left: `${pct(tk.v)}%` }} />
                   ))}

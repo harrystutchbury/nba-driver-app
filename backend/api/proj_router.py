@@ -987,8 +987,11 @@ def audit_all_teams(
     for t, total in totals.items():
         rank = (sum(1 for v in totals.values() if v is not None and v > total) + 1) \
             if total is not None else None
+        lst = last.get(t)
+        last_rank = (sum(1 for v in last.values() if v is not None and v > lst) + 1) \
+            if lst is not None else None
         rows.append({"team": t, "total": total, "rank": rank,
-                     "last_season_total": last.get(t)})
+                     "last_season_total": lst, "last_season_rank": last_rank})
     rows.sort(key=lambda r: r["total"] if r["total"] is not None else -1e9, reverse=True)
 
     return {"stat": stat, "season": season, "count": n, **league, "teams": rows}
