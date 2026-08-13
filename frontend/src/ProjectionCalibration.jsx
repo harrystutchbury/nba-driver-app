@@ -47,9 +47,10 @@ const STYLES = `
 .pcal-reset-btn:disabled { opacity: 0.4; cursor: default; }
 `
 
-// 3PM, FG% and FT% are omitted: their inputs (3PA/3P%, 2PA/2P%, FTA/FT%)
-// are all set within the PTS workflow, so standalone views would be redundant.
-const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV']
+// 3PM, FG%, FT% and TOV are omitted from the menu: their inputs (3PA/3P%,
+// 2PA/2P%, FTA/FT%, and TOV) are all set within the PTS/usage workflow, so
+// standalone views would be redundant. (The PTS option is labelled "USAGE".)
+const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK']
 
 // Map display stat to projected key (MIN/GP/REB use special handling)
 const STAT_PROJ_KEY = {
@@ -542,7 +543,7 @@ export default function ProjectionCalibrationPage() {
           )}
 
           <select className="pcal-select" value={stat} onChange={e => setStat(e.target.value)}>
-            {STATS.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATS.map(s => <option key={s} value={s}>{s === 'PTS' ? 'USAGE' : s}</option>)}
           </select>
 
           {/* Bulk age-curve: apply one curve to every player on this team+stat */}
@@ -619,7 +620,7 @@ export default function ProjectionCalibrationPage() {
                   <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
                     of {count} teams
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>{stat}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>{stat === 'PTS' ? 'USAGE' : stat}</div>
                 </div>
               )}
               {/* Bar */}
