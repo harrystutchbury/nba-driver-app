@@ -4130,6 +4130,39 @@ def admin_sync_injuries(current_user: str = Depends(get_current_user)):
         conn.close()
 
 
+@router.post("/admin/reingest-player-games")
+def admin_reingest_player_games(
+    player: str,
+    season: str = "2025-26",
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Backfill one player's game logs for a season from Tank01 — for players who
+    slipped through the roster-gated daily ingest and are missing a season
+    (e.g. Keldon Johnson's 2025-26). player = br_slug, season = 'YYYY-YY'.
+    Requires RAPIDAPI_KEY on the server.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+    finally:
+        conn.close()
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    try:
+        end_year = int(season.split("-")[0]) + 1
+    except Exception:
+        raise HTTPException(400, "season must look like '2025-26'")
+    try:
+        import ingest_tank01
+        result = ingest_tank01.ingest_player(player, end_year)
+    except Exception:
+        logger.exception("admin_reingest_player_games failed")
+        raise HTTPException(500, "Internal server error")
+    return {"status": "ok", **result}
+
+
 @router.post("/admin/sync-rosters")
 def admin_sync_rosters(
     dry_run: bool = False,

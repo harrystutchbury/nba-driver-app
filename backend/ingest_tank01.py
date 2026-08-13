@@ -349,32 +349,14 @@ def upsert_game_logs(conn, rows: list[dict]):
 # Main ingestion
 # ---------------------------------------------------------------------------
 
-def ingest(season_end_year: int, since_date=None):
-    conn = get_conn()
-    init_db()
-    ensure_tank01_map_table(conn)
-
-    # Refresh positions from Tank01 player list (one API call, keeps positions current)
-    refresh_positions(conn)
-
-    # Load player map — only players with game_logs in this season
-    season = season_label(season_end_year)
-    mapped = conn.execute("""
-        SELECT DISTINCT t.br_slug, t.tank01_id
-        FROM tank01_player_map t
-        JOIN game_logs g ON g.player_slug = t.br_slug
-        WHERE g.season = ?
-    """, (season,)).fetchall()
-    if not mapped:
-        log.warning("No player mappings found. Run with --build-map first.")
-        return
-
-    log.info(f"Ingesting season {season_end_year} for {len(mapped)} players…")
-
+def _ingest_players(conn, mapped, season_end_year: int, since_date=None) -> int:
+    """Fetch + upsert game logs for a list of (br_slug, tank01_id) rows. Returns rows upserted."""
     total_inserted = 0
     for row in mapped:
         br_slug   = row["br_slug"]
         tank01_id = row["tank01_id"]
+        if not tank01_id:
+            continue
 
         log.info(f"  Fetching {br_slug} ({tank01_id})…")
         try:
@@ -401,9 +383,62 @@ def ingest(season_end_year: int, since_date=None):
             total_inserted += len(rows)
         else:
             log.info(f"    → no new games")
+    return total_inserted
 
+
+def ingest(season_end_year: int, since_date=None):
+    conn = get_conn()
+    init_db()
+    ensure_tank01_map_table(conn)
+
+    # Refresh positions from Tank01 player list (one API call, keeps positions current)
+    refresh_positions(conn)
+
+    season = season_label(season_end_year)
+
+    # Skip pre-season: nothing to fetch before opening night, and with the roster-
+    # based query below we'd otherwise make one empty API call per rostered player.
+    season_start = date(season_end_year - 1, 10, 1)
+    if date.today() < season_start:
+        log.info(f"Season {season} hasn't started (opens {season_start}); skipping ingest.")
+        conn.close()
+        return
+
+    # Every rostered player that season who has a Tank01 mapping — NOT only players
+    # who already have game logs. The old game_logs-gated query could never recover a
+    # player who was missing from a season (mid-season add, an early mapping gap, etc.)
+    # — e.g. Keldon Johnson had zero 2025-26 rows and was skipped on every run.
+    mapped = conn.execute("""
+        SELECT DISTINCT t.br_slug, t.tank01_id
+        FROM tank01_player_map t
+        JOIN players p ON p.slug = t.br_slug
+        WHERE p.season = ?
+    """, (season,)).fetchall()
+    if not mapped:
+        log.warning("No player mappings found. Run with --build-map first.")
+        conn.close()
+        return
+
+    log.info(f"Ingesting season {season_end_year} for {len(mapped)} players…")
+    total_inserted = _ingest_players(conn, mapped, season_end_year, since_date)
     log.info(f"Done. Total game rows upserted: {total_inserted}")
     conn.close()
+
+
+def ingest_player(br_slug: str, season_end_year: int, since_date=None) -> dict:
+    """Targeted re-ingest of one player's season game logs — used to backfill gaps."""
+    conn = get_conn()
+    init_db()
+    ensure_tank01_map_table(conn)
+    row = conn.execute(
+        "SELECT br_slug, tank01_id FROM tank01_player_map WHERE br_slug = ?", (br_slug,)
+    ).fetchone()
+    if not row or not row["tank01_id"]:
+        conn.close()
+        return {"player": br_slug, "error": "no Tank01 mapping for this player", "upserted": 0}
+    inserted = _ingest_players(conn, [row], season_end_year, since_date)
+    conn.close()
+    return {"player": br_slug, "season": season_label(season_end_year), "upserted": inserted}
 
 
 # ---------------------------------------------------------------------------
