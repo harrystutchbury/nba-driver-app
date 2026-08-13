@@ -441,6 +441,34 @@ def ingest_player(br_slug: str, season_end_year: int, since_date=None) -> dict:
     return {"player": br_slug, "season": season_label(season_end_year), "upserted": inserted}
 
 
+def ingest_missing(season_end_year: int, dry_run: bool = False) -> dict:
+    """
+    Backfill every player rostered that season who has a Tank01 mapping but zero
+    game logs — the silent gaps that self-gating left behind (e.g. teams whose
+    last-season totals are undercounted). dry_run lists them without fetching.
+    """
+    conn = get_conn()
+    init_db()
+    ensure_tank01_map_table(conn)
+    season = season_label(season_end_year)
+    missing = conn.execute("""
+        SELECT DISTINCT t.br_slug, t.tank01_id, p.full_name
+        FROM tank01_player_map t
+        JOIN players p ON p.slug = t.br_slug AND p.season = ?
+        WHERE t.tank01_id IS NOT NULL
+          AND t.br_slug NOT IN (SELECT DISTINCT player_slug FROM game_logs WHERE season = ?)
+        ORDER BY p.full_name
+    """, (season, season)).fetchall()
+    players = [{"slug": r["br_slug"], "name": r["full_name"]} for r in missing]
+    log.info(f"{len(missing)} rostered players missing {season} game logs")
+    if dry_run:
+        conn.close()
+        return {"season": season, "dry_run": True, "missing_players": len(missing), "players": players}
+    inserted = _ingest_players(conn, missing, season_end_year)
+    conn.close()
+    return {"season": season, "missing_players": len(missing), "upserted": inserted, "players": players}
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

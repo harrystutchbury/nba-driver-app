@@ -4164,6 +4164,44 @@ def admin_reingest_player_games(
     return {"status": "ok", **result}
 
 
+@router.post("/admin/reingest-missing-games")
+def admin_reingest_missing_games(
+    season:  str = "2025-26",
+    dry_run: bool = False,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Sweep: backfill every player rostered `season` who has a Tank01 mapping but
+    no game logs (the silent gaps that undercount last-season team totals).
+    Pass ?dry_run=true to list who would be fetched without spending API calls.
+    season = 'YYYY-YY'. Requires RAPIDAPI_KEY on the server.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+    finally:
+        conn.close()
+    try:
+        end_year = int(season.split("-")[0]) + 1
+    except Exception:
+        raise HTTPException(400, "season must look like '2025-26'")
+    if not dry_run and not os.environ.get("RAPIDAPI_KEY"):
+        raise HTTPException(503, "RAPIDAPI_KEY not configured on server")
+    try:
+        import ingest_tank01
+        result = ingest_tank01.ingest_missing(end_year, dry_run=dry_run)
+    except Exception:
+        logger.exception("admin_reingest_missing_games failed")
+        raise HTTPException(500, "Internal server error")
+    if not dry_run:
+        try:
+            _proj_cache.clear()
+        except Exception:
+            pass
+    return {"status": "ok", **result}
+
+
 @router.post("/admin/sync-rosters")
 def admin_sync_rosters(
     dry_run: bool = False,
