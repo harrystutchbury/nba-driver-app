@@ -1911,7 +1911,7 @@ const PROJ_PERIODS = [
   { label: '7d',  days: 7 },
   { label: '14d', days: 14 },
   { label: '30d', days: 30 },
-  { label: 'ROS', fixedEnd: '2026-06-30' },
+  { label: 'ROS', fixedEnd: '2027-06-30' },   // end of the 2026-27 projection season
 ]
 
 const PROJ_POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
