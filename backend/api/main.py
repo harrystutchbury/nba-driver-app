@@ -3672,7 +3672,11 @@ def get_projections_calibrated(
         pace_cache = {}
         baselines = []
         unprojected_rows = []
+        seen_slugs = set()   # a slug can appear twice if a join (e.g. espn map) doubles it
         for r in roster:
+            if r["slug"] in seen_slugs:
+                continue
+            seen_slugs.add(r["slug"])
             team = r["team"]
             if team not in pace_cache:
                 pace_cache[team] = get_team_pace(conn, team, season)

@@ -1966,7 +1966,14 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     // (projection_inputs -> compute_projected), not live game logs.
     apiFetch(`/api/projections-calibrated?start=${start}&end=${end}`)
       .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Error')))
-      .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
+      .then(d => {
+        // Dedupe by slug — duplicate slugs would collide as React keys and make a
+        // row (e.g. Caruso) leak across every team filter.
+        const rows = Array.isArray(d) ? d : []
+        const seen = new Set()
+        setPlayers(rows.filter(p => !seen.has(p.slug) && seen.add(p.slug)))
+        setLoading(false)
+      })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [start, end])
 
