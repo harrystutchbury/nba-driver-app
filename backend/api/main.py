@@ -3707,13 +3707,6 @@ def get_projections_calibrated(
                 "fg_pct": round(proj["fg_pct"] * 100, 1) if proj["fg_pct"] is not None else None,
                 "ft_pct": round((proj["ft_pct"] or 0) * 100, 1),
                 "fga_pg": proj["fga"], "fta_pg": proj["fta"],
-                # Shooting-detail columns (per game) for the Projections table.
-                "fgm_pg":  round(proj["fgm"], 1),
-                "fg2a_pg": round((proj["fga"] or 0) - (proj["fg3a"] or 0), 1),
-                "fg2m_pg": round((proj["fgm"] or 0) - (proj["fg3m"] or 0), 1),
-                "fg3a_pg": round(proj["fg3a"], 1),
-                "fg3m_pg": proj["fg3m"],
-                "ftm_pg":  round(proj["ftm"], 1),
             })
         if len(baselines) < 2:
             return []
@@ -3826,12 +3819,6 @@ def get_projections_calibrated(
             proj["ft_pct"] = round(row["ft_pct"] * ha.get("ft_pct", 1.0), 1) if row["ft_pct"] is not None else None
             proj["fga_pg"] = row["fga_pg"] or 0.0
             proj["fta_pg"] = row["fta_pg"] or 0.0
-            proj["fgm_pg"]  = row.get("fgm_pg")  or 0.0
-            proj["fg2a_pg"] = row.get("fg2a_pg") or 0.0
-            proj["fg2m_pg"] = row.get("fg2m_pg") or 0.0
-            proj["fg3a_pg"] = row.get("fg3a_pg") or 0.0
-            proj["fg3m_pg"] = row.get("fg3m_pg") or 0.0
-            proj["ftm_pg"]  = row.get("ftm_pg")  or 0.0
             proj["min_pg"] = row["min_pg"]
 
             psd = sd_map.get(slug, {})

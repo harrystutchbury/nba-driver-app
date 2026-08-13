@@ -1927,15 +1927,6 @@ const PROJ_COLS = [
   { key: 'tov',    label: 'TOV', lowerBetter: true },
   { key: 'fg_pct', label: 'FG%', pct: true },
   { key: 'ft_pct', label: 'FT%', pct: true },
-  // Shooting-detail (display-only, per game / totals-aware, no Z)
-  { key: 'fga_pg',  label: 'FGA', noZ: true },
-  { key: 'fgm_pg',  label: 'FGM', noZ: true },
-  { key: 'fg2a_pg', label: '2PA', noZ: true },
-  { key: 'fg2m_pg', label: '2PM', noZ: true },
-  { key: 'fg3a_pg', label: '3PA', noZ: true },
-  { key: 'fg3m_pg', label: '3PM', noZ: true },
-  { key: 'fta_pg',  label: 'FTA', noZ: true },
-  { key: 'ftm_pg',  label: 'FTM', noZ: true },
 ]
 
 const PROJ_PCT_KEYS   = new Set(['fg_pct', 'ft_pct'])
