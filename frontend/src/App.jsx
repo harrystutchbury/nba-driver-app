@@ -1919,14 +1919,23 @@ const PROJ_POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
 const PROJ_COLS = [
   { key: 'min_pg', label: 'MIN',  noZ: true },
   { key: 'pts',    label: 'PTS' },
+  { key: 'fg3m',   label: '3PM' },
   { key: 'reb',    label: 'REB' },
   { key: 'ast',    label: 'AST' },
   { key: 'stl',    label: 'STL' },
   { key: 'blk',    label: 'BLK' },
   { key: 'tov',    label: 'TOV', lowerBetter: true },
-  { key: 'fg3m',   label: '3PM' },
   { key: 'fg_pct', label: 'FG%', pct: true },
   { key: 'ft_pct', label: 'FT%', pct: true },
+  // Shooting-detail (display-only, per game / totals-aware, no Z)
+  { key: 'fga_pg',  label: 'FGA', noZ: true },
+  { key: 'fgm_pg',  label: 'FGM', noZ: true },
+  { key: 'fg2a_pg', label: '2PA', noZ: true },
+  { key: 'fg2m_pg', label: '2PM', noZ: true },
+  { key: 'fg3a_pg', label: '3PA', noZ: true },
+  { key: 'fg3m_pg', label: '3PM', noZ: true },
+  { key: 'fta_pg',  label: 'FTA', noZ: true },
+  { key: 'ftm_pg',  label: 'FTM', noZ: true },
 ]
 
 const PROJ_PCT_KEYS   = new Set(['fg_pct', 'ft_pct'])
@@ -1942,7 +1951,8 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   }
 
   const [start, setStart]           = useState(todayStr)
-  const [end, setEnd]               = useState(() => addDays(14))
+  // Default window is Rest of Season (ROS), not the 14-day window.
+  const [end, setEnd]               = useState(() => PROJ_PERIODS.find(p => p.label === 'ROS')?.fixedEnd ?? addDays(14))
   const [position, setPosition]     = useState('all')
   const [sortKey, setSortKey]       = useState('period_value')
   const [sortAsc, setSortAsc]       = useState(false)
