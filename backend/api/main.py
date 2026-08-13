@@ -4296,6 +4296,91 @@ def admin_fix_slug_collisions(
         conn.close()
 
 
+@router.post("/admin/reslug-player")
+def admin_reslug_player(
+    old_slug: str,
+    season:   str = None,
+    new_slug: str = None,
+    dry_run:  bool = False,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Split a newly-added player who was conflated onto a historical player's slug
+    (e.g. rookie Christian Anderson landed on retired Chris Andersen's 'anderch01').
+    Moves ONLY the current-season roster row + its projection_inputs, Tank01/ESPN
+    mappings, and any current-season game logs to a fresh collision-free slug —
+    all historical data stays on old_slug. Pass ?dry_run=true to preview.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        import sync_rosters
+        if not season:
+            r = conn.execute("SELECT MAX(season) FROM players").fetchone()
+            season = r[0] if r and r[0] else None
+
+        row = conn.execute(
+            "SELECT slug, full_name, team FROM players WHERE slug=? AND season=?",
+            (old_slug, season),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, f"No {season} roster row for slug '{old_slug}'")
+        name = row["full_name"]
+
+        taken = {r[0] for r in conn.execute("SELECT DISTINCT slug FROM players").fetchall()}
+        taken |= {r[0] for r in conn.execute("SELECT DISTINCT player_slug FROM game_logs").fetchall()}
+        try:
+            taken |= {r[0] for r in conn.execute("SELECT br_slug FROM tank01_player_map").fetchall()}
+        except Exception:
+            pass
+
+        new = new_slug or sync_rosters.generate_br_slug(name, taken)
+        if not new or new == old_slug or new in taken:
+            raise HTTPException(400, f"Could not pick a free slug (got {new!r})")
+
+        # How many historical rows stay behind (sanity / transparency).
+        hist_logs = conn.execute(
+            "SELECT COUNT(*) FROM game_logs WHERE player_slug=? AND season<>?",
+            (old_slug, season)).fetchone()[0]
+        preview = {"name": name, "team": row["team"], "season": season,
+                   "old_slug": old_slug, "new_slug": new,
+                   "historical_game_logs_left_on_old": hist_logs}
+        if dry_run:
+            return {"dry_run": True, **preview}
+
+        moved = {}
+        cur = conn.execute("UPDATE players SET slug=? WHERE slug=? AND season=?",
+                           (new, old_slug, season)); moved["players"] = cur.rowcount
+        cur = conn.execute("UPDATE projection_inputs SET player_id=? WHERE player_id=? AND season=?",
+                           (new, old_slug, season)); moved["projection_inputs"] = cur.rowcount
+        cur = conn.execute("UPDATE game_logs SET player_slug=? WHERE player_slug=? AND season=?",
+                           (new, old_slug, season)); moved["game_logs_current_season"] = cur.rowcount
+        try:
+            cur = conn.execute("UPDATE tank01_player_map SET br_slug=? WHERE br_slug=?",
+                               (new, old_slug)); moved["tank01_player_map"] = cur.rowcount
+        except Exception:
+            moved["tank01_player_map"] = 0
+        try:
+            cur = conn.execute("UPDATE fantasy_player_map SET br_slug=? WHERE br_slug=?",
+                               (new, old_slug)); moved["fantasy_player_map"] = cur.rowcount
+        except Exception:
+            moved["fantasy_player_map"] = 0
+        conn.commit()
+        try:
+            _proj_cache.clear()
+        except Exception:
+            pass
+        return {"dry_run": False, **preview, "moved": moved}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_reslug_player failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.get("/admin/shots-status")
 def admin_shots_status(current_user: str = Depends(get_current_user)):
     """Return shot_logs row count, seasons present, and unmatched players per season."""
