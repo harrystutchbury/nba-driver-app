@@ -3664,6 +3664,7 @@ def get_projections_calibrated(
             LEFT JOIN fantasy_player_map fpm ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
             LEFT JOIN tank01_player_map t01 ON t01.br_slug = p.slug
             WHERE p.season = ?
+              AND UPPER(TRIM(COALESCE(p.team, ''))) <> 'FA'
         """, (season,)).fetchall()
         if not roster:
             return []
