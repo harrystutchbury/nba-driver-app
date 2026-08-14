@@ -1866,8 +1866,8 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .proj-sliders-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px 24px;
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+  gap: 18px 30px;
   margin-bottom: 16px;
 }
 
@@ -1893,18 +1893,19 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 /* ── Compact numeric steppers (Stat Line Projector) ───────────────── */
 .stepper-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 7px 14px;
-  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 6px;
 }
 .stepper-field {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 10px;
 }
 .stepper-field .ctrl-label {
+  min-width: 58px;
+  flex-shrink: 0;
   font-size: 11px;
   color: var(--label);
   white-space: nowrap;
