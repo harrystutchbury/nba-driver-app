@@ -1892,11 +1892,35 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .mpg-slider-row.pinned .mpg-value  { color: var(--accent); }
 
 /* ── Compact numeric steppers (Stat Line Projector) ───────────────── */
+/* Column layout: [Playing time & usage / Playmaking] · [Shooting, 2-wide] · [Reb & Def] */
+.proj-sliders-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px 34px;
+  margin-bottom: 16px;
+}
+.proj-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  flex: 1 1 185px;
+  min-width: 175px;
+}
+.proj-col-wide {
+  flex: 2 1 400px;
+}
 .stepper-fields {
   display: flex;
   flex-direction: column;
   gap: 9px;
   margin-top: 6px;
+}
+/* Shooting spreads its six fields across two columns */
+.stepper-fields.stepper-fields-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 28px;
 }
 .stepper-field {
   display: flex;

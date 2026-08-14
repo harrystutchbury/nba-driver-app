@@ -11360,12 +11360,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       )}
                     </div>
 
-                    <div className="proj-sliders-grid">
-                      {SLIDER_GROUPS.map(({ label: gLabel, fields }) => (
-                        <div key={gLabel} className="proj-slider-group">
-                          <div className="proj-slider-group-label">{gLabel}</div>
-                          <div className="stepper-fields">
-                            {fields.map(({ key, label, eff, min, max, step }) => (
+                    {(() => {
+                      const byLabel = Object.fromEntries(SLIDER_GROUPS.map(g => [g.label, g]))
+                      const renderGroup = (g, wide) => g && (
+                        <div key={g.label} className="proj-slider-group">
+                          <div className="proj-slider-group-label">{g.label}</div>
+                          <div className={`stepper-fields${wide ? ' stepper-fields-2col' : ''}`}>
+                            {g.fields.map(({ key, label, eff, min, max, step }) => (
                               <StepperField
                                 key={key}
                                 label={label}
@@ -11381,8 +11382,22 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             ))}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )
+                      return (
+                        <div className="proj-sliders-layout">
+                          <div className="proj-col">
+                            {renderGroup(byLabel['Playing time & usage'])}
+                            {renderGroup(byLabel['Playmaking'])}
+                          </div>
+                          <div className="proj-col proj-col-wide">
+                            {renderGroup(byLabel['Shooting'], true)}
+                          </div>
+                          <div className="proj-col">
+                            {renderGroup(byLabel['Rebounding & defense'])}
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     <div className="usage-table-wrap">
                     <table className="usage-table usage-table-pivot">
