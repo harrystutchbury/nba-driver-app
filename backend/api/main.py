@@ -525,7 +525,7 @@ def _avg_row(rows, team_game_map=None):
     }
 
 
-def _league_data(conn, season=None, cutoff=None, cutoff_end=None, min_games=20, min_mpg=20):
+def _league_data(conn, season=None, cutoff=None, cutoff_end=None, min_games=20, min_mpg=20, baseline_mpg=None):
     """
     Fetch per-player averages for all qualifying players in a period.
     Returns (stats_dict, player_rows) where:
@@ -570,7 +570,14 @@ def _league_data(conn, season=None, cutoff=None, cutoff_end=None, min_games=20, 
     """, params + [min_games, min_mpg]).fetchall()
     rows = [dict(r) for r in rows]
 
-    baseline_rows = rows
+    # z-reference is computed from the baseline population. By default that's the
+    # whole returned list; callers can pass a higher baseline_mpg to keep the
+    # z-baseline on starters while still returning a wider list (e.g. rankings
+    # returns a deep pool but scores everyone against the >=20-mpg baseline).
+    bmpg = baseline_mpg if baseline_mpg is not None else min_mpg
+    baseline_rows = [r for r in rows if (r.get("min_pg") or 0) >= bmpg] if bmpg > min_mpg else rows
+    if len(baseline_rows) < 2:
+        baseline_rows = rows
 
     if len(baseline_rows) < 2:
         return None, rows
@@ -2709,7 +2716,10 @@ def get_rankings(
             min_games = 5
             season    = None
 
-        league, player_rows = _league_data(conn, season=season, cutoff=cutoff, cutoff_end=cutoff_end, min_games=min_games)
+        # Wide pool (>=5 mpg) so the board can go ~450 deep, but keep the z-score
+        # baseline on the >=20-mpg starter population so rankings stay comparable.
+        league, player_rows = _league_data(conn, season=season, cutoff=cutoff, cutoff_end=cutoff_end,
+                                           min_games=min_games, min_mpg=5, baseline_mpg=20)
 
         if not player_rows:
             return []
@@ -2821,6 +2831,7 @@ def get_rankings(
             p["ctw_ft_pct"] = ctw["expected_wins_ft"]     if ctw else None
 
         results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
+        results = results[:450]   # top 450 board
         for i, p in enumerate(results):
             p["rank"] = i + 1
 
