@@ -3590,16 +3590,25 @@ def get_player_projection(player: str = Query(..., description="Player br_slug")
 # hand-built calibration projections instead of live game logs.
 # -----------------------------------------------------------------------
 
-def _projected_league_stats(lines):
+def _projected_league_stats(lines, baseline_mpg=20):
     """
-    League z-score reference built from the projected per-game lines themselves
-    (self-contained, so it works pre-season with no game_logs). Mirrors the
-    stats half of _league_data; fg_pct/ft_pct are on the 0-100 scale.
+    League z-score reference built from the projected per-game lines.
+
+    To stay aligned with the Rankings page, the means/stds are computed from the
+    >=baseline_mpg starter pool (not every rostered player) — otherwise the deep
+    bench drags the baseline down and inflates every projection z-score. fg/ft
+    impacts are attached to ALL lines so every player can still be scored.
+    fg_pct/ft_pct are on the 0-100 scale. Mirrors the stats half of _league_data.
     """
     if len(lines) < 2:
         return None
-    fg_vals = [l['fg_pct'] for l in lines if l.get('fg_pct') is not None]
-    ft_vals = [l['ft_pct'] for l in lines if l.get('ft_pct') is not None]
+    # Starter baseline (mirrors _league_data's baseline_mpg); fall back to the
+    # full pool pre-season if too few players clear the minutes bar.
+    base = [l for l in lines if (l.get('min_pg') or 0) >= baseline_mpg]
+    if len(base) < 2:
+        base = lines
+    fg_vals = [l['fg_pct'] for l in base if l.get('fg_pct') is not None]
+    ft_vals = [l['ft_pct'] for l in base if l.get('ft_pct') is not None]
     fg_mean = sum(fg_vals) / len(fg_vals) if fg_vals else None
     ft_mean = sum(ft_vals) / len(ft_vals) if ft_vals else None
     for l in lines:
@@ -3610,11 +3619,11 @@ def _projected_league_stats(lines):
     stats = {'_fg_mean': fg_mean, '_ft_mean': ft_mean}
     for key in Z_KEYS:
         if key == 'fg_pct':
-            vals = [l['fg_impact'] for l in lines if l.get('fg_impact') is not None]
+            vals = [l['fg_impact'] for l in base if l.get('fg_impact') is not None]
         elif key == 'ft_pct':
-            vals = [l['ft_impact'] for l in lines if l.get('ft_impact') is not None]
+            vals = [l['ft_impact'] for l in base if l.get('ft_impact') is not None]
         else:
-            vals = [l[key] for l in lines if l.get(key) is not None]
+            vals = [l[key] for l in base if l.get(key) is not None]
         if len(vals) < 2:
             stats[key] = (None, None)
             continue
