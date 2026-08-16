@@ -11548,6 +11548,7 @@ def mod_get_comments(
             SELECT c.id, c.body, c.created_at AS created_at,
                    COALESCE(c.is_hidden, 0) AS is_hidden,
                    COALESCE(u.display_name, c.username) AS author,
+                   COALESCE(u.is_admin, 0) AS author_is_admin,
                    c.username,
                    c.player_slug AS context_slug,
                    NULL AS post_title,
@@ -11559,6 +11560,7 @@ def mod_get_comments(
             SELECT bc.id, bc.body, bc.created_at AS created_at,
                    COALESCE(bc.is_hidden, 0) AS is_hidden,
                    COALESCE(u.display_name, bc.username) AS author,
+                   COALESCE(u.is_admin, 0) AS author_is_admin,
                    bc.username,
                    NULL AS context_slug,
                    bp.title AS post_title,
@@ -11697,6 +11699,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
     rows = conn.execute("""
         SELECT c.id, c.player_slug, c.body, c.created_at AS created_at,
                COALESCE(u.display_name, c.username) AS author,
+               COALESCE(u.is_admin, 0) AS author_is_admin,
                COALESCE(
                    (SELECT full_name FROM players WHERE slug = c.player_slug ORDER BY season DESC LIMIT 1),
                    c.player_slug
@@ -11708,6 +11711,7 @@ def get_recent_comments(limit: int = Query(20, le=50), current_user: str = Depen
         UNION ALL
         SELECT bc.id, NULL AS player_slug, bc.body, bc.created_at AS created_at,
                COALESCE(u.display_name, bc.username) AS author,
+               COALESCE(u.is_admin, 0) AS author_is_admin,
                NULL AS player_name,
                bp.slug AS post_slug, bp.title AS post_title, 'blog' AS comment_type
         FROM blog_comments bc
@@ -11727,6 +11731,7 @@ def get_comments(player: str = Query(...), current_user: str = Depends(get_curre
     rows = conn.execute("""
         SELECT c.id, c.body, c.created_at, c.game_date, c.username,
                COALESCE(u.display_name, c.username) AS author,
+               MAX(COALESCE(u.is_admin, 0)) AS author_is_admin,
                COALESCE(SUM(CASE WHEN v.vote = 1  THEN 1 ELSE 0 END), 0) AS thumbs_up,
                COALESCE(SUM(CASE WHEN v.vote = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
                MAX(CASE WHEN v.username = ? THEN v.vote ELSE 0 END) AS my_vote
@@ -11758,6 +11763,7 @@ def post_comment(body: dict = Body(...), current_user: str = Depends(get_current
     row = conn.execute("""
         SELECT c.id, c.body, c.created_at, c.game_date, c.username,
                COALESCE(u.display_name, c.username) AS author,
+               COALESCE(u.is_admin, 0) AS author_is_admin,
                0 AS thumbs_up, 0 AS thumbs_down, 0 AS my_vote
         FROM comments c
         LEFT JOIN users u ON u.username = c.username
@@ -11960,6 +11966,7 @@ def get_blog_post(slug: str, current_user: Optional[str] = Depends(get_optional_
     comments = conn.execute("""
         SELECT bc.id, bc.body, bc.created_at,
                COALESCE(u.display_name, bc.username) AS author,
+               MAX(COALESCE(u.is_admin, 0)) AS author_is_admin,
                COALESCE(SUM(CASE WHEN v.vote=1  THEN 1 ELSE 0 END), 0) AS thumbs_up,
                COALESCE(SUM(CASE WHEN v.vote=-1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
                MAX(CASE WHEN v.username=? THEN v.vote ELSE 0 END) AS my_vote
@@ -12085,6 +12092,7 @@ def post_blog_comment(post_id: int, body: dict = Body(...), current_user: str = 
     row = conn.execute("""
         SELECT bc.id, bc.body, bc.created_at,
                COALESCE(u.display_name, bc.username) AS author,
+               COALESCE(u.is_admin, 0) AS author_is_admin,
                0 AS thumbs_up, 0 AS thumbs_down, 0 AS my_vote
         FROM blog_comments bc
         LEFT JOIN users u ON u.username = bc.username

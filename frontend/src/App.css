@@ -396,6 +396,21 @@
 }
 .comment-delete-btn:hover { color: #ff6b6b; }
 
+.admin-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  background: rgba(124,140,255,0.16);
+  border: 1px solid rgba(124,140,255,0.4);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
 .comment-body {
   font-size: 0.88rem;
   color: var(--text);

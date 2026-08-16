@@ -2805,6 +2805,7 @@ function ForumComment({ comment, postId, onVote, onReply, onDelete, depth }) {
       <div className="forum-comment-body-wrap">
         <div className="forum-comment-meta">
           <span className="forum-author">{comment.author}</span>
+          <AdminBadge show={comment.author_is_admin} />
           <span className="forum-dot">·</span>
           <span>{timeAgo(comment.created_at)}</span>
           <button className="forum-text-btn" onClick={() => setShowReply(v => !v)}>
@@ -2972,6 +2973,7 @@ function ForumPage() {
               <div className="forum-post-preview">{post.body.slice(0, 120)}{post.body.length > 120 ? '…' : ''}</div>
               <div className="forum-post-meta">
                 <span className="forum-author">{post.author}</span>
+                <AdminBadge show={post.author_is_admin} />
                 <span className="forum-dot">·</span>
                 <span>{timeAgo(post.created_at)}</span>
                 <span className="forum-dot">·</span>
@@ -3003,6 +3005,7 @@ function ForumPage() {
               <h2 className="forum-detail-title">{currentPost.title}</h2>
               <div className="forum-post-meta">
                 <span className="forum-author">{currentPost.author}</span>
+                <AdminBadge show={currentPost.author_is_admin} />
                 <span className="forum-dot">·</span>
                 <span>{timeAgo(currentPost.created_at)}</span>
                 {currentPost.is_mine && (
@@ -3184,7 +3187,7 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
                       {c.player_name}
                     </span>
                 }
-                <span className="dash-comment-meta">{c.author} · {timeAgo(c.created_at)}</span>
+                <span className="dash-comment-meta">{c.author}<AdminBadge show={c.author_is_admin} /> · {timeAgo(c.created_at)}</span>
               </div>
               <p className="dash-comment-body">{c.body}</p>
             </div>
@@ -3266,6 +3269,11 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
 
 // ── Comments section ─────────────────────────────────────────────────────────
 
+function AdminBadge({ show }) {
+  if (!show) return null
+  return <span className="admin-badge" title="Site admin">Admin</span>
+}
+
 function CommentsSection({ playerSlug, isAdmin, myUsername }) {
   const [comments, setComments] = useState([])
   const [draft,    setDraft]    = useState('')
@@ -3342,6 +3350,7 @@ function CommentsSection({ playerSlug, isAdmin, myUsername }) {
           <div key={c.id} className="comment-row">
             <div className="comment-meta">
               <span className="comment-author">{c.author}</span>
+              <AdminBadge show={c.author_is_admin} />
               <span className="comment-time">{timeAgo(c.created_at)}</span>
               {c.game_date && <span className="comment-boxscore-badge">📋 Box Score · {c.game_date}</span>}
               {canDelete(c) && (
@@ -4693,6 +4702,7 @@ function BlogPage({ setPage, initSlug, onMount, onNavigate }) {
             <div key={c.id} className="comment-row">
               <div className="comment-meta">
                 <span className="comment-author">{c.author}</span>
+                <AdminBadge show={c.author_is_admin} />
                 <span className="comment-time">{timeAgo(c.created_at)}</span>
               </div>
               <p className="comment-body">{c.body}</p>
@@ -8382,7 +8392,7 @@ function ModerationPage() {
               {comments.map((c) => (
                 <tr key={`${c.comment_type}-${c.id}`} className={c.is_hidden ? 'mod-row-hidden' : ''}>
                   <td><span className={`mod-type-badge mod-type-${c.comment_type}`}>{c.comment_type}</span></td>
-                  <td className="mod-author">{c.author}</td>
+                  <td className="mod-author">{c.author} <AdminBadge show={c.author_is_admin} /></td>
                   <td className="mod-body">{c.body}</td>
                   <td className="mod-context">{c.context_slug || c.post_title || '—'}</td>
                   <td className="mod-date">{c.created_at?.slice(0, 16).replace('T', ' ')}</td>

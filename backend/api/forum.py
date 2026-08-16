@@ -80,6 +80,7 @@ def list_posts(user: str = Depends(_current_user)):
     rows = conn.execute("""
         SELECT
             p.id, p.title, p.body, p.display_name AS author, p.username, p.created_at,
+            (SELECT is_admin FROM users WHERE username = p.username) AS author_is_admin,
             COALESCE(SUM(v.vote), 0) AS score,
             COUNT(DISTINCT c.id)     AS comment_count
         FROM forum_posts p
@@ -104,6 +105,7 @@ def list_posts(user: str = Depends(_current_user)):
             "title":         r["title"],
             "body":          r["body"],
             "author":        r["author"],
+            "author_is_admin": bool(r["author_is_admin"]),
             "is_mine":       r["username"] == user,
             "created_at":    r["created_at"],
             "score":         r["score"],
@@ -145,7 +147,8 @@ def create_post(body: PostBody, user: str = Depends(_current_user)):
 def get_post(post_id: int, user: str = Depends(_current_user)):
     conn = get_conn()
     post = conn.execute(
-        """SELECT id, title, body, display_name AS author, username, created_at
+        """SELECT id, title, body, display_name AS author, username, created_at,
+                  (SELECT is_admin FROM users WHERE username = forum_posts.username) AS author_is_admin
            FROM forum_posts WHERE id = ? AND is_hidden = 0""",
         (post_id,),
     ).fetchone()
@@ -165,6 +168,7 @@ def get_post(post_id: int, user: str = Depends(_current_user)):
 
     comments_raw = conn.execute("""
         SELECT c.id, c.parent_id, c.display_name AS author, c.username, c.body, c.created_at,
+               (SELECT is_admin FROM users WHERE username = c.username) AS author_is_admin,
                COALESCE(SUM(v.vote), 0) AS score
         FROM forum_comments c
         LEFT JOIN forum_comment_votes v ON v.comment_id = c.id
@@ -186,6 +190,7 @@ def get_post(post_id: int, user: str = Depends(_current_user)):
             "id":         c["id"],
             "parent_id":  c["parent_id"],
             "author":     c["author"],
+            "author_is_admin": bool(c["author_is_admin"]),
             "is_mine":    c["username"] == user,
             "body":       c["body"],
             "created_at": c["created_at"],
@@ -200,6 +205,7 @@ def get_post(post_id: int, user: str = Depends(_current_user)):
         "title":      post["title"],
         "body":       post["body"],
         "author":     post["author"],
+        "author_is_admin": bool(post["author_is_admin"]),
         "is_mine":    post["username"] == user,
         "created_at": post["created_at"],
         "score":      score,
@@ -263,11 +269,15 @@ def add_comment(post_id: int, body: CommentBody, user: str = Depends(_current_us
         "SELECT id, parent_id, display_name AS author, body, created_at FROM forum_comments WHERE id = ?",
         (cid,),
     ).fetchone()
+    author_is_admin = bool((conn.execute(
+        "SELECT is_admin FROM users WHERE username = ?", (user,)
+    ).fetchone() or {"is_admin": 0})["is_admin"])
     conn.close()
     return {
         "id":         row["id"],
         "parent_id":  row["parent_id"],
         "author":     row["author"],
+        "author_is_admin": author_is_admin,
         "is_mine":    True,
         "body":       row["body"],
         "created_at": row["created_at"],
