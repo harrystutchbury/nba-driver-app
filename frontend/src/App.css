@@ -384,6 +384,18 @@
   white-space: nowrap;
 }
 
+.comment-delete-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+.comment-delete-btn:hover { color: #ff6b6b; }
+
 .comment-body {
   font-size: 0.88rem;
   color: var(--text);
@@ -6033,6 +6045,7 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .mod-action-btn { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer; border: 1px solid; transition: opacity 0.15s; white-space: nowrap; }
 .mod-action-btn.hide   { background: rgba(255,107,107,0.12); color: var(--neg); border-color: rgba(255,107,107,0.3); }
 .mod-action-btn.unhide { background: rgba(0,230,118,0.1);   color: var(--skill); border-color: rgba(0,230,118,0.3); }
+.mod-action-btn.delete { background: rgba(255,107,107,0.22); color: #fff; border-color: rgba(255,107,107,0.55); }
 .mod-action-btn:hover  { opacity: 0.75; }
 
 .mod-words-section { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 28px; }

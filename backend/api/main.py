@@ -11797,6 +11797,24 @@ def vote_comment(comment_id: int, body: dict = Body(...), current_user: str = De
     return dict(row)
 
 
+@router.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, current_user: str = Depends(get_current_user)):
+    """Permanently delete a player comment. Allowed for its author or an admin."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT username FROM comments WHERE id=?", [comment_id]).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Comment not found")
+        if row["username"] != current_user and not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Not allowed")
+        conn.execute("DELETE FROM comment_votes WHERE comment_id=?", [comment_id])
+        conn.execute("DELETE FROM comments WHERE id=?", [comment_id])
+        conn.commit()
+        return {"ok": True, "deleted": comment_id}
+    finally:
+        conn.close()
+
+
 app.include_router(router)
 
 

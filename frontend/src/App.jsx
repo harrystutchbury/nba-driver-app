@@ -3266,10 +3266,18 @@ function DashboardPage({ onSelectPlayer, onSelectBlogPost }) {
 
 // ── Comments section ─────────────────────────────────────────────────────────
 
-function CommentsSection({ playerSlug }) {
+function CommentsSection({ playerSlug, isAdmin, myUsername }) {
   const [comments, setComments] = useState([])
   const [draft,    setDraft]    = useState('')
   const [posting,  setPosting]  = useState(false)
+
+  const canDelete = (c) => isAdmin || (myUsername && c.username === myUsername)
+
+  async function handleDelete(commentId) {
+    if (!window.confirm('Delete this comment?')) return
+    const res = await apiFetch(`/api/comments/${commentId}`, { method: 'DELETE' }).catch(() => null)
+    if (res?.ok) setComments(prev => prev.filter(c => c.id !== commentId))
+  }
 
   useEffect(() => {
     if (!playerSlug) return
@@ -3336,6 +3344,14 @@ function CommentsSection({ playerSlug }) {
               <span className="comment-author">{c.author}</span>
               <span className="comment-time">{timeAgo(c.created_at)}</span>
               {c.game_date && <span className="comment-boxscore-badge">📋 Box Score · {c.game_date}</span>}
+              {canDelete(c) && (
+                <button
+                  className="comment-delete-btn"
+                  onClick={() => handleDelete(c.id)}
+                  title="Delete comment"
+                  aria-label="Delete comment"
+                >×</button>
+              )}
             </div>
             <p className="comment-body">{c.body}</p>
             <div className="comment-votes">
@@ -8304,6 +8320,15 @@ function ModerationPage() {
       })
   }
 
+  const deleteComment = (c) => {
+    if (!window.confirm('Permanently delete this comment? This cannot be undone.')) return
+    apiFetch(`/api/comments/${c.id}`, { method: 'DELETE' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.ok) setComments(prev => prev.filter(x => !(x.id === c.id && x.comment_type === c.comment_type)))
+      })
+  }
+
   const addWord = () => {
     const w = newWord.trim().toLowerCase()
     if (!w) return
@@ -8366,6 +8391,11 @@ function ModerationPage() {
                     <button className={`mod-action-btn${c.is_hidden ? ' unhide' : ' hide'}`} onClick={() => toggleHide(c)}>
                       {c.is_hidden ? 'Unhide' : 'Hide'}
                     </button>
+                    {c.comment_type !== 'blog' && (
+                      <button className="mod-action-btn delete" onClick={() => deleteComment(c)} style={{ marginLeft: 6 }}>
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -8802,6 +8832,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   })
   const [isAdmin, setIsAdmin]           = useState(false)
   const [tier,    setTier]              = useState('free')
+  const [myUsername, setMyUsername]     = useState(null)
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [showSugg, setShowSugg]       = useState(false)
@@ -8883,7 +8914,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   useEffect(() => {
     if (yahooConnected) window.history.replaceState({}, '', '/')
     apiFetch('/api/adjustments/is-admin').then(r => r.ok ? r.json() : null).then(d => { if (d?.is_admin) setIsAdmin(true) }).catch(() => {})
-    apiFetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.tier) setTier(d.tier) }).catch(() => {})
+    apiFetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.tier) setTier(d.tier); if (d?.email) setMyUsername(d.email) }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -10332,7 +10363,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             </div>
 
             {/* ── Comments ──────────────────────────────────────── */}
-            <CommentsSection playerSlug={selectedPlayer?.slug} />
+            <CommentsSection playerSlug={selectedPlayer?.slug} isAdmin={isAdmin} myUsername={myUsername} />
 
             {/* ── Compare ───────────────────────────────────────── */}
             <div className="projection-section">
