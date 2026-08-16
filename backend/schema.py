@@ -436,6 +436,22 @@ def init_db():
     except Exception:
         pass  # already exists
 
+    # Lightweight page-view analytics (self-hosted traffic tracking)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS page_views (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            path       TEXT,
+            session_id TEXT,
+            username   TEXT,
+            referrer   TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at)")
+    except Exception:
+        pass
+
     try:
         conn.execute("ALTER TABLE fantasy_player_map ADD COLUMN position TEXT")
     except Exception:

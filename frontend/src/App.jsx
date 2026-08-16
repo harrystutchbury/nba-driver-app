@@ -22,6 +22,32 @@ ChartJS.register(CategoryScale, LinearScale, RadialLinearScale, BarElement, Line
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
+function getVisitorId() {
+  try {
+    let id = localStorage.getItem('ri_visitor')
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() || (Math.random().toString(36).slice(2) + Date.now().toString(36)))
+      localStorage.setItem('ri_visitor', id)
+    }
+    return id
+  } catch { return 'anon' }
+}
+
+// Best-effort page-view beacon for self-hosted traffic stats. Never throws.
+function trackPageView() {
+  try {
+    apiFetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: window.location.pathname || '/',
+        session_id: getVisitorId(),
+        referrer: document.referrer || '',
+      }),
+    }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
 function apiFetch(url, opts = {}) {
   const token = localStorage.getItem('nba_token')
   const headers = { ...(opts.headers || {}) }
@@ -8445,6 +8471,136 @@ function ModerationPage() {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Admin console — accounts + self-hosted traffic (admin only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AdminConsolePage() {
+  const [tab, setTab]         = useState('users')
+  const [users, setUsers]     = useState(null)
+  const [traffic, setTraffic] = useState(null)
+  const [days, setDays]       = useState(30)
+  const [denied, setDenied]   = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/admin/users')
+      .then(r => { if (r.status === 403) { setDenied(true); return null } return r.ok ? r.json() : null })
+      .then(d => { if (d) setUsers(d) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    apiFetch(`/api/admin/traffic?days=${days}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setTraffic(d) })
+      .catch(() => {})
+  }, [days])
+
+  if (denied) return <div className="mod-page"><p className="adj-no-access">Admin access required.</p></div>
+
+  const short = s => (s || '').slice(0, 10)
+
+  return (
+    <div className="mod-page">
+      <h2 className="mod-title">Admin</h2>
+      <div className="mod-tabs">
+        <button className={`mod-tab${tab === 'users' ? ' active' : ''}`} onClick={() => setTab('users')}>
+          Accounts{users ? ` (${users.length})` : ''}
+        </button>
+        <button className={`mod-tab${tab === 'traffic' ? ' active' : ''}`} onClick={() => setTab('traffic')}>Traffic</button>
+      </div>
+
+      {tab === 'users' && (
+        !users ? <p className="mod-loading">Loading…</p> : (
+          <div className="mod-table-wrap">
+            <table className="mod-table">
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Tier</th><th>Role</th><th>Joined</th><th className="num">Comments</th></tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.username}>
+                    <td>{u.display_name || <span className="muted">—</span>}</td>
+                    <td className="mod-author">{u.username}</td>
+                    <td>{u.tier || 'free'}</td>
+                    <td>{u.is_admin ? <span className="admin-badge" style={{ marginLeft: 0 }}>Admin</span> : <span className="muted">user</span>}</td>
+                    <td className="mod-date">{short(u.created_at)}</td>
+                    <td className="num mono">{u.comment_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {tab === 'traffic' && (
+        !traffic ? <p className="mod-loading">Loading…</p> : (() => {
+          const dark = isDark()
+          const labels = traffic.daily.map(d => d.day.slice(5))
+          const chartData = {
+            labels,
+            datasets: [
+              { label: 'Views',    data: traffic.daily.map(d => d.views),    backgroundColor: '#3b82f6', borderRadius: 3 },
+              { label: 'Visitors', data: traffic.daily.map(d => d.visitors), backgroundColor: '#22c55e', borderRadius: 3 },
+            ],
+          }
+          const opts = {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { display: true, position: 'bottom', labels: { color: dark ? '#e2e8f0' : '#1a1d2e', font: { size: 11 }, boxWidth: 10, padding: 16 } },
+              datalabels: { display: false },
+            },
+            scales: {
+              x: { ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            },
+          }
+          const anonViews = Math.max(0, traffic.views - traffic.logged_in_views)
+          const pct = traffic.views ? Math.round(traffic.logged_in_views / traffic.views * 100) : 0
+          const newSignups = traffic.signups.reduce((s, x) => s + x.n, 0)
+          const card = (label, val, sub) => (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', minWidth: 130 }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)' }}>{label}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{val}</div>
+              {sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</div>}
+            </div>
+          )
+          return (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {[7, 30, 90].map(d => (
+                  <button key={d} className={`mod-tab${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{d}d</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 20 }}>
+                {card('Page views', (traffic.views || 0).toLocaleString(), `last ${traffic.days} days`)}
+                {card('Unique visitors', (traffic.visitors || 0).toLocaleString(), null)}
+                {card('Logged-in', `${pct}%`, `${anonViews.toLocaleString()} anon views`)}
+                {card('New signups', newSignups.toLocaleString(), `${traffic.total_users} total accounts`)}
+              </div>
+              <div style={{ height: 240, marginBottom: 24 }}>
+                {traffic.daily.length ? <Bar data={chartData} options={opts} /> : <p className="mod-empty">No traffic recorded yet.</p>}
+              </div>
+              <h3 className="panel-title" style={{ marginBottom: 8 }}>Top pages</h3>
+              <div className="mod-table-wrap">
+                <table className="mod-table">
+                  <thead><tr><th>Path</th><th className="num">Views</th><th className="num">Visitors</th></tr></thead>
+                  <tbody>
+                    {traffic.top_pages.map(p => (
+                      <tr key={p.path}><td className="mod-author">{p.path}</td><td className="num mono">{p.views}</td><td className="num mono">{p.visitors}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Driver Breakdown / Transformation Page
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -8798,7 +8954,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0]
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     if (VALID.has(p0)) return p0
     return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
   })
@@ -8823,6 +8979,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     blog:              'Blog',
     adjustments:       'Player Adjustments',
     moderation:        'Moderation',
+    admin:             'Admin',
     transformation:    'Driver Breakdown',
   }
   const FANTASY_TAB_TITLES = {
@@ -8926,6 +9083,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     apiFetch('/api/adjustments/is-admin').then(r => r.ok ? r.json() : null).then(d => { if (d?.is_admin) setIsAdmin(true) }).catch(() => {})
     apiFetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.tier) setTier(d.tier); if (d?.email) setMyUsername(d.email) }).catch(() => {})
   }, [])
+
+  // Page-view tracking (self-hosted traffic stats) — fires on each in-app navigation.
+  useEffect(() => { trackPageView() }, [page, selectedPlayer?.slug])
 
   useEffect(() => {
     apiFetch('/api/fantasy/ownership')
@@ -9078,7 +9238,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0] || ''
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
+      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     const newPage = VALID.has(p0) ? p0 : 'dashboard'
     setPage(newPage)
     if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
@@ -10191,6 +10351,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 {token
                   ? <>
                       <button className="nav-drop-item" onClick={onOpenAccount}>Account</button>
+                      {isAdmin && <button className="nav-drop-item" onClick={() => navigate('admin')}>Admin</button>}
                       {isAdmin && <button className="nav-drop-item" onClick={() => navigate('moderation')}>Moderation</button>}
                       <button className="nav-drop-item nav-drop-signout" onClick={onLogout}>Log out</button>
                     </>
@@ -10255,6 +10416,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {page === 'team-audit'       && <AuditErrorBoundary><TeamStatAuditPage /></AuditErrorBoundary>}
 
       {page === 'moderation' && <ModerationPage />}
+      {page === 'admin' && <AdminConsolePage />}
 
       {page === 'weekly-schedule' && <WeeklySchedulePage />}
       {page === 'season-schedule' && <SeasonSchedulePage />}

@@ -11821,6 +11821,95 @@ def delete_comment(comment_id: int, current_user: str = Depends(get_current_user
         conn.close()
 
 
+# ── Admin console: accounts + self-hosted traffic ────────────────────────────
+
+@router.post("/track")
+def track_page_view(body: dict = Body(...), current_user: Optional[str] = Depends(get_optional_user)):
+    """Record a page view for self-hosted traffic stats. Works anonymously; the
+    username is captured when a valid token is present. Best-effort — never errors."""
+    path = (body.get("path") or "").strip()[:300]
+    if not path:
+        return {"ok": False}
+    session_id = (body.get("session_id") or "").strip()[:64]
+    referrer   = ((body.get("referrer") or "").strip()[:300]) or None
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO page_views (path, session_id, username, referrer) VALUES (?,?,?,?)",
+            [path, session_id, current_user, referrer],
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@router.get("/admin/users")
+def admin_list_users(current_user: str = Depends(get_current_user)):
+    """Every account (admin-only): name, email, tier, admin flag, signup date, comment count."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        rows = conn.execute("""
+            SELECT u.username, u.display_name, u.tier, u.is_admin, u.created_at,
+                   (SELECT COUNT(*) FROM comments c WHERE c.username = u.username) AS comment_count
+            FROM users u
+            ORDER BY u.created_at DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+@router.get("/admin/traffic")
+def admin_traffic(days: int = Query(30, ge=1, le=365), current_user: str = Depends(get_current_user)):
+    """Aggregated self-hosted traffic (admin-only): totals, daily series, top pages, signups."""
+    from datetime import date, timedelta
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        since = (date.today() - timedelta(days=days - 1)).isoformat()
+        totals = conn.execute("""
+            SELECT COUNT(*) AS views,
+                   COUNT(DISTINCT session_id) AS visitors,
+                   SUM(CASE WHEN username IS NOT NULL THEN 1 ELSE 0 END) AS logged_in_views
+            FROM page_views WHERE date(created_at) >= ?
+        """, [since]).fetchone()
+        daily = conn.execute("""
+            SELECT date(created_at) AS day, COUNT(*) AS views,
+                   COUNT(DISTINCT session_id) AS visitors
+            FROM page_views WHERE date(created_at) >= ?
+            GROUP BY day ORDER BY day
+        """, [since]).fetchall()
+        top = conn.execute("""
+            SELECT path, COUNT(*) AS views, COUNT(DISTINCT session_id) AS visitors
+            FROM page_views WHERE date(created_at) >= ?
+            GROUP BY path ORDER BY views DESC LIMIT 20
+        """, [since]).fetchall()
+        signups = conn.execute("""
+            SELECT date(created_at) AS day, COUNT(*) AS n
+            FROM users WHERE date(created_at) >= ?
+            GROUP BY day ORDER BY day
+        """, [since]).fetchall()
+        total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        return {
+            "days": days,
+            "views": totals["views"] or 0,
+            "visitors": totals["visitors"] or 0,
+            "logged_in_views": totals["logged_in_views"] or 0,
+            "total_users": total_users,
+            "daily":      [dict(r) for r in daily],
+            "top_pages":  [dict(r) for r in top],
+            "signups":    [dict(r) for r in signups],
+        }
+    finally:
+        conn.close()
+
+
 app.include_router(router)
 
 
