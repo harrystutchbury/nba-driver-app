@@ -406,6 +406,7 @@
   border: 1px solid rgba(124,140,255,0.4);
   border-radius: 4px;
   padding: 1px 5px;
+  margin-left: 6px;
   white-space: nowrap;
   line-height: 1.4;
   vertical-align: middle;
