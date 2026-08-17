@@ -34,6 +34,7 @@ import sys
 import unicodedata
 import urllib.request
 import urllib.parse
+from datetime import datetime
 from typing import Optional
 
 from schema import get_conn
@@ -41,11 +42,49 @@ from schema import get_conn
 # Name suffixes that are not part of the family name for slug purposes
 _NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
+# Tank01 specific position → broad group used by player_bio.position_group
+_POS_GROUP = {
+    "PG": "Guard",   "SG": "Guard",   "G": "Guard",
+    "SF": "Forward", "PF": "Forward", "F": "Forward",
+    "C":  "Center",
+    "G-F": "Guard-Forward", "F-G": "Guard-Forward",
+    "F-C": "Forward-Center", "C-F": "Forward-Center",
+}
+
 
 def _norm(s: str) -> str:
     """Lowercase, strip accents to ASCII, drop everything but letters."""
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z]", "", s.lower())
+
+
+def _position_group(pos: Optional[str]) -> Optional[str]:
+    """Map a Tank01 position (e.g. 'SG', 'G-F') to a broad Guard/Forward/Center group."""
+    if not pos:
+        return None
+    key = pos.upper().strip()
+    if key in _POS_GROUP:
+        return _POS_GROUP[key]
+    if "G" in key:
+        return "Guard"
+    if "F" in key:
+        return "Forward"
+    if "C" in key:
+        return "Center"
+    return None
+
+
+def _iso_birthdate(bday: Optional[str]) -> Optional[str]:
+    """Normalise a Tank01 birthday (usually MM/DD/YYYY) to YYYY-MM-DD, or None."""
+    if not bday:
+        return None
+    s = str(bday).strip()
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except Exception:
+            continue
+    return None
 
 
 def generate_br_slug(full_name: str, taken: set) -> Optional[str]:
@@ -141,7 +180,30 @@ def fetch_current_rosters() -> list:
                 "name": (p.get("longName") or p.get("espnName") or "").strip(),
                 "team": team_name,
                 "exp":  (str(p.get("exp") or "")).strip(),   # "R" or "0" == rookie
+                "pos":  (p.get("pos") or "").strip() or None,
+                "bday": (p.get("bDay") or p.get("bday") or "").strip() or None,
+                "tank01_id": (str(p.get("playerID") or "")).strip() or None,
             })
+    return out
+
+
+def fetch_player_meta() -> dict:
+    """
+    {tank01_id: {"pos", "bday"}} from Tank01's full player list — the authoritative
+    source for position + birthday, used to backfill bio when the roster feed omits it.
+    """
+    data = _get("getNBAPlayerList", {})
+    body = data.get("body", [])
+    players = list(body.values()) if isinstance(body, dict) else (body or [])
+    out = {}
+    for p in players:
+        pid = (str(p.get("playerID") or "")).strip()
+        if not pid:
+            continue
+        out[pid] = {
+            "pos":  (p.get("pos") or "").strip() or None,
+            "bday": (p.get("bDay") or p.get("bday") or "").strip() or None,
+        }
     return out
 
 
@@ -220,6 +282,63 @@ def sync(season: str = None, dry_run: bool = False, conn=None) -> dict:
             )
             conn.commit()
 
+        # ── Backfill position + birthdate for rostered players. Fixes rookies that
+        #    otherwise render as "Guard" with no age (they never got a bio / Tank01
+        #    position row). Repairs existing rows too; non-destructive (COALESCE). ──
+        bio_backfill = {"positions": 0, "bios": 0}
+        if not dry_run:
+            try:
+                conn.execute("ALTER TABLE player_bio ADD COLUMN position_group TEXT")
+                conn.commit()
+            except Exception:
+                pass  # column already exists
+            try:
+                meta = fetch_player_meta()
+            except Exception as e:
+                meta = {}
+                log.warning("bio backfill: could not fetch player meta: %s", e)
+
+            name_to_slug = {}
+            for r in conn.execute("SELECT slug, full_name FROM players WHERE season=?", [season]).fetchall():
+                name_to_slug.setdefault(_norm(r[1]), r[0])
+
+            for p in roster:
+                slug = p["slug"] or name_to_slug.get(_norm(p["name"]))
+                if not slug:
+                    continue
+                tid  = p.get("tank01_id")
+                m    = meta.get(tid, {}) if tid else {}
+                pos  = p.get("pos")  or m.get("pos")
+                bday = _iso_birthdate(p.get("bday") or m.get("bday"))
+                pgrp = _position_group(pos)
+
+                if pos and tid:
+                    conn.execute("""
+                        INSERT INTO tank01_player_map (br_slug, tank01_id, tank01_name, position)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(br_slug) DO UPDATE SET
+                            tank01_id   = excluded.tank01_id,
+                            tank01_name = excluded.tank01_name,
+                            position    = COALESCE(excluded.position, tank01_player_map.position)
+                    """, [slug, tid, p["name"], pos])
+                    bio_backfill["positions"] += 1
+
+                if bday or pgrp:
+                    exists = conn.execute("SELECT 1 FROM player_bio WHERE br_slug=?", [slug]).fetchone()
+                    if exists:
+                        conn.execute(
+                            "UPDATE player_bio SET birthdate=COALESCE(?, birthdate), "
+                            "position_group=COALESCE(?, position_group) WHERE br_slug=?",
+                            [bday, pgrp, slug])
+                    else:
+                        conn.execute(
+                            "INSERT INTO player_bio (br_slug, birthdate, position_group) VALUES (?, ?, ?)",
+                            [slug, bday, pgrp])
+                    bio_backfill["bios"] += 1
+            conn.commit()
+            log.info("[%s] bio backfill: %d positions, %d bios",
+                     season, bio_backfill["positions"], bio_backfill["bios"])
+
         gen_n = sum(1 for p in added if p["generated"])
         log.info("[%s] roster=%d, already=%d, %s=%d (%d generated slugs), unmapped=%d",
                  season, len(roster), already,
@@ -231,6 +350,7 @@ def sync(season: str = None, dry_run: bool = False, conn=None) -> dict:
             "already_present": already,
             "added":          added,
             "unmapped":       unmapped,
+            "bio_backfill":   bio_backfill,
         }
     finally:
         if own_conn:
