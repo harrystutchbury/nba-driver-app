@@ -865,6 +865,18 @@ function ordinal(n) {
 
 // ─── Rankings Page ────────────────────────────────────────────────────────────
 
+// makes/attempts formatter for FGM/A + FTM/A columns (per game, or season in Totals).
+function maFmt(attKey, pctKey) {
+  return (p, totals) => {
+    const a = p[attKey], pct = p[pctKey]
+    if (a == null || pct == null) return '—'
+    const m = a * pct / 100
+    return totals
+      ? `${Math.round(m * (p.gp ?? 0))}/${Math.round(a * (p.gp ?? 0))}`
+      : `${m.toFixed(1)}/${a.toFixed(1)}`
+  }
+}
+
 const RANK_COLS = [
   { key: 'pts',    label: 'PTS' },
   { key: 'reb',    label: 'REB' },
@@ -874,7 +886,9 @@ const RANK_COLS = [
   { key: 'tov',    label: 'TOV', lowerBetter: true },
   { key: 'fg3m',   label: '3PM' },
   { key: 'fg_pct', label: 'FG%', pct: true },
+  { key: 'fgm_a',  label: 'FGM/A', zRef: 'fg_pct', fmt: maFmt('fga_pg', 'fg_pct') },
   { key: 'ft_pct', label: 'FT%', pct: true },
+  { key: 'ftm_a',  label: 'FTM/A', zRef: 'ft_pct', fmt: maFmt('fta_pg', 'ft_pct') },
 ]
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C']
@@ -1108,9 +1122,9 @@ function RankingsPage({ onSelectPlayer, ownership }) {
     const rows = sorted.map(p => {
       const row = [p.rank, p.name, p.team, p.position || '', p.gp ?? '', p.min_pg != null ? p.min_pg.toFixed(1) : '']
       RANK_COLS.forEach(c => {
-        const raw = isTotalsKey(c.key) ? (totalsVal(p, c.key) ?? '') : (p[c.key] != null ? (c.pct ? `${p[c.key]}%` : p[c.key].toFixed(1)) : '')
-        const z   = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? (getTotalsZ(p, c.key) ?? '') : (p[`z_${c.key}`] ?? '')
-        const ctw = p[`ctw_${c.key}`]
+        const raw = c.fmt ? c.fmt(p, viewMode === 'totals') : isTotalsKey(c.key) ? (totalsVal(p, c.key) ?? '') : (p[c.key] != null ? (c.pct ? `${p[c.key]}%` : p[c.key].toFixed(1)) : '')
+        const z   = c.zRef ? (p[`z_${c.zRef}`] ?? '') : viewMode === 'totals' && !PCT_KEYS.has(c.key) ? (getTotalsZ(p, c.key) ?? '') : (p[`z_${c.key}`] ?? '')
+        const ctw = p[`ctw_${c.zRef || c.key}`]
         if (showRaw) row.push(raw)
         if (showZ)   row.push(z !== '' && z != null ? Number(z).toFixed(2) : '')
         if (showCTW) row.push(ctw != null ? ctw.toFixed(2) : '')
@@ -1143,12 +1157,14 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                   MIN <SortIcon col="min_pg" />
                 </th>
                 {RANK_COLS.map(c => (
-                  <th key={c.key} className="num" onClick={() => handleSort(c.key)}
+                  <th key={c.key} className="num" onClick={() => handleSort(c.zRef ? `z_${c.zRef}` : c.key)}
                       style={{ cursor: 'pointer', opacity: puntedCats.has(c.key) ? 0.3 : 1 }}>
-                    {c.label} <SortIcon col={c.key} />
-                    <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
-                      z <SortIcon col={`z_${c.key}`} />
-                    </div>
+                    {c.label} <SortIcon col={c.zRef ? `z_${c.zRef}` : c.key} />
+                    {!c.zRef && (
+                      <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
+                        z <SortIcon col={`z_${c.key}`} />
+                      </div>
+                    )}
                   </th>
                 ))}
                 <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
@@ -1183,13 +1199,17 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {
                       const punted = puntedCats.has(c.key)
-                      const z     = viewMode === 'totals' && !PCT_KEYS.has(c.key) ? getTotalsZ(p, c.key) : p[`z_${c.key}`]
+                      const z     = c.zRef
+                        ? p[`z_${c.zRef}`]
+                        : viewMode === 'totals' && !PCT_KEYS.has(c.key) ? getTotalsZ(p, c.key) : p[`z_${c.key}`]
                       const zAdj  = (z != null && c.lowerBetter) ? -z : z
                       const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? 'var(--skill)' : zAdj <= -1 ? '#ff6b6b' : '#888'
-                      const displayFmt = isTotalsKey(c.key)
-                        ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
-                        : fmt(p[c.key], c.pct)
-                      const ctwCatVal = showCTW ? p[`ctw_${c.key}`] : null
+                      const displayFmt = c.fmt
+                        ? c.fmt(p, viewMode === 'totals')
+                        : isTotalsKey(c.key)
+                          ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
+                          : fmt(p[c.key], c.pct)
+                      const ctwCatVal = showCTW ? p[`ctw_${c.zRef || c.key}`] : null
                       return (
                         <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                           {showRaw && <div>{displayFmt}</div>}
@@ -1952,23 +1972,13 @@ const PROJ_COLS = [
   { key: 'blk',    label: 'BLK' },
   { key: 'tov',    label: 'TOV', lowerBetter: true },
   { key: 'fg_pct', label: 'FG%', pct: true },
-  { key: 'fgm_a',  label: 'FGM/A', noZ: true, fmt: (p, totals) => {
-    const a = p.fga_pg, pct = p.fg_pct
-    if (a == null || pct == null) return '—'
-    const m = a * pct / 100
-    return totals ? `${Math.round(m * (p.gp ?? 0))}/${Math.round(a * (p.gp ?? 0))}` : `${m.toFixed(1)}/${a.toFixed(1)}`
-  }},
+  { key: 'fgm_a',  label: 'FGM/A', zRef: 'fg_pct', fmt: maFmt('fga_pg', 'fg_pct') },
   { key: 'ft_pct', label: 'FT%', pct: true },
-  { key: 'ftm_a',  label: 'FTM/A', noZ: true, fmt: (p, totals) => {
-    const a = p.fta_pg, pct = p.ft_pct
-    if (a == null || pct == null) return '—'
-    const m = a * pct / 100
-    return totals ? `${Math.round(m * (p.gp ?? 0))}/${Math.round(a * (p.gp ?? 0))}` : `${m.toFixed(1)}/${a.toFixed(1)}`
-  }},
+  { key: 'ftm_a',  label: 'FTM/A', zRef: 'ft_pct', fmt: maFmt('fta_pg', 'ft_pct') },
 ]
 
 const PROJ_PCT_KEYS   = new Set(['fg_pct', 'ft_pct'])
-const PROJ_PUNT_COLS  = PROJ_COLS.filter(c => !c.noZ)   // puntable = cols with Z-scores
+const PROJ_PUNT_COLS  = PROJ_COLS.filter(c => !c.noZ && !c.zRef)   // scored cats (excl. display mirrors)
 const PROJ_COUNTING   = PROJ_PUNT_COLS.filter(c => !PROJ_PCT_KEYS.has(c.key)).map(c => c.key)
 
 function ProjectionsPage({ onSelectPlayer, ownership }) {
@@ -2213,8 +2223,8 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     const rows = sorted.map((p, i) => {
       const row = [i+1, p.name, p.team, p.position || '', p.gp ?? '']
       PROJ_COLS.forEach(c => {
-        const raw = isTotalsKey(c.key) ? (totalsVal(p,c.key)??'') : (p[c.key]!=null ? (c.pct?`${p[c.key]}%`:p[c.key].toFixed(1)) : '')
-        const z = c.noZ ? '' : viewMode==='totals' && !PROJ_PCT_KEYS.has(c.key) ? (getTotalsZ(p,c.key)??'') : (p[`z_${c.key}`]??'')
+        const raw = c.fmt ? c.fmt(p, viewMode==='totals') : isTotalsKey(c.key) ? (totalsVal(p,c.key)??'') : (p[c.key]!=null ? (c.pct?`${p[c.key]}%`:p[c.key].toFixed(1)) : '')
+        const z = c.noZ ? '' : c.zRef ? (p[`z_${c.zRef}`]??'') : viewMode==='totals' && !PROJ_PCT_KEYS.has(c.key) ? (getTotalsZ(p,c.key)??'') : (p[`z_${c.key}`]??'')
         if (showRaw) row.push(raw)
         if (showZ && !c.noZ) row.push(z!==''&&z!=null?Number(z).toFixed(2):'')
         if (showRanges && !c.noZ && !c.pct) {
@@ -2248,10 +2258,10 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   GP <SortIcon col="gp" />
                 </th>
                 {PROJ_COLS.map(c => (
-                  <th key={c.key} className="num" onClick={() => handleSort(c.key)}
+                  <th key={c.key} className="num" onClick={() => handleSort(c.zRef ? `z_${c.zRef}` : c.key)}
                       style={{ cursor: 'pointer', opacity: puntedCats.has(c.key) ? 0.3 : 1 }}>
-                    {c.label} <SortIcon col={c.key} />
-                    {!c.noZ && (
+                    {c.label} <SortIcon col={c.zRef ? `z_${c.zRef}` : c.key} />
+                    {!c.noZ && !c.zRef && (
                       <div className="th-z" onClick={e => { e.stopPropagation(); handleSort(`z_${c.key}`) }}>
                         z <SortIcon col={`z_${c.key}`} />
                       </div>
@@ -2292,6 +2302,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   {PROJ_COLS.map(c => {
                     const punted = puntedCats.has(c.key)
                     const z = c.noZ ? null
+                      : c.zRef ? p[`z_${c.zRef}`]
                       : viewMode === 'totals' && !PROJ_PCT_KEYS.has(c.key)
                         ? getTotalsZ(p, c.key)
                         : p[`z_${c.key}`]
@@ -2302,12 +2313,12 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                       : isTotalsKey(c.key)
                         ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
                         : fmt(p[c.key], c.pct)
-                    const hasRange = showRanges && !c.noZ && !c.pct
+                    const hasRange = showRanges && !c.noZ && !c.zRef && !c.pct
                     const rangeLow  = p[`${c.key}_low`]
                     const rangeHigh = p[`${c.key}_high`]
                     const displayLow  = isTotalsKey(c.key) ? Math.round(rangeLow  * (p.gp ?? 0)) : rangeLow
                     const displayHigh = isTotalsKey(c.key) ? Math.round(rangeHigh * (p.gp ?? 0)) : rangeHigh
-                    const ctwCatVal = showCTW && !c.noZ ? p[`ctw_${c.key}`] : null
+                    const ctwCatVal = showCTW && !c.noZ ? p[`ctw_${c.zRef || c.key}`] : null
                     return (
                       <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                         {showRaw && <div>{displayFmt}</div>}
