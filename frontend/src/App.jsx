@@ -1952,7 +1952,19 @@ const PROJ_COLS = [
   { key: 'blk',    label: 'BLK' },
   { key: 'tov',    label: 'TOV', lowerBetter: true },
   { key: 'fg_pct', label: 'FG%', pct: true },
+  { key: 'fgm_a',  label: 'FGM/A', noZ: true, fmt: (p, totals) => {
+    const a = p.fga_pg, pct = p.fg_pct
+    if (a == null || pct == null) return '—'
+    const m = a * pct / 100
+    return totals ? `${Math.round(m * (p.gp ?? 0))}/${Math.round(a * (p.gp ?? 0))}` : `${m.toFixed(1)}/${a.toFixed(1)}`
+  }},
   { key: 'ft_pct', label: 'FT%', pct: true },
+  { key: 'ftm_a',  label: 'FTM/A', noZ: true, fmt: (p, totals) => {
+    const a = p.fta_pg, pct = p.ft_pct
+    if (a == null || pct == null) return '—'
+    const m = a * pct / 100
+    return totals ? `${Math.round(m * (p.gp ?? 0))}/${Math.round(a * (p.gp ?? 0))}` : `${m.toFixed(1)}/${a.toFixed(1)}`
+  }},
 ]
 
 const PROJ_PCT_KEYS   = new Set(['fg_pct', 'ft_pct'])
@@ -2285,9 +2297,11 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                         : p[`z_${c.key}`]
                     const zAdj   = (z != null && c.lowerBetter) ? -z : z
                     const zColor = punted ? '#333' : zAdj == null ? '' : zAdj >= 1 ? 'var(--skill)' : zAdj <= -1 ? '#ff6b6b' : '#888'
-                    const displayFmt = isTotalsKey(c.key)
-                      ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
-                      : fmt(p[c.key], c.pct)
+                    const displayFmt = c.fmt
+                      ? c.fmt(p, viewMode === 'totals')
+                      : isTotalsKey(c.key)
+                        ? (totalsVal(p, c.key) == null ? '—' : totalsVal(p, c.key))
+                        : fmt(p[c.key], c.pct)
                     const hasRange = showRanges && !c.noZ && !c.pct
                     const rangeLow  = p[`${c.key}_low`]
                     const rangeHigh = p[`${c.key}_high`]
