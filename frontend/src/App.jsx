@@ -544,18 +544,20 @@ const PROJ_STAT_OPTIONS = [
 ]
 
 const MA_STAT_OPTIONS = [
-  { value: 'z_sum',  label: 'Sum of Z scores' },
-  { value: 'min',    label: 'Minutes' },
-  { value: 'pts',    label: 'Points' },
-  { value: 'fg3m',   label: '3-Pointers' },
-  { value: 'reb',    label: 'Rebounds' },
-  { value: 'ast',    label: 'Assists' },
-  { value: 'stl',    label: 'Steals' },
-  { value: 'blk',    label: 'Blocks' },
-  { value: 'tov',    label: 'Turnovers' },
-  { value: 'fg_pct', label: 'FG%' },
-  { value: 'ft_pct', label: 'FT%' },
+  { value: 'statline',  label: 'Stat line' },
+  { value: 'scoring',   label: 'Scoring' },
+  { value: 'rebounds',  label: 'Rebounds' },
+  { value: 'assists',   label: 'Assists' },
+  { value: 'steals',    label: 'Steals' },
+  { value: 'blocks',    label: 'Blocks' },
+  { value: 'turnovers', label: 'Turnovers' },
 ]
+
+// Headline box stat each Form category charts in Line/Bar mode.
+const MA_HEADLINE = {
+  statline: 'pts', scoring: 'pts', rebounds: 'reb', assists: 'ast',
+  steals: 'stl', blocks: 'blk', turnovers: 'tov',
+}
 
 const Z_SUM_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov']
 const Z_SUM_INVERT = new Set(['tov'])
@@ -8936,6 +8938,81 @@ const FORM_ZONES = [
   { key: 'above_break_3',   label: 'AB3',   title: 'Above Break 3' },
 ]
 
+// ── Form table: per-category column configs ──────────────────────────────────
+const _fn1  = v => v == null ? '—' : (+v).toFixed(1)
+const _fpct = v => v == null ? '—' : (+v).toFixed(1) + '%'
+const _fpct0 = v => v == null ? '—' : Math.round(v) + '%'
+const _fpctFrac = v => v == null ? '—' : (v * 100).toFixed(1) + '%'   // 0-1 fraction → %
+const _fp36 = (b, k) => (b.min > 0 && b[k] != null) ? b[k] / b.min * 36 : null
+const _zoneGet = (zk, field) => b => {
+  const zz = (b.zones || []).find(x => x.zone === zk)
+  return zz && zz[field] != null ? _fpct0(zz[field]) : '—'
+}
+
+const FORM_COLUMNS = {
+  statline: [
+    { label: 'GP',  get: b => b.gp },
+    { label: 'Min', get: b => _fn1(b.min) },
+    { label: 'Pts', get: b => _fn1(b.pts) },
+    { label: '3PM', get: b => _fn1(b.fg3m) },
+    { label: 'Reb', get: b => _fn1(b.reb) },
+    { label: 'Ast', get: b => _fn1(b.ast) },
+    { label: 'Stl', get: b => _fn1(b.stl) },
+    { label: 'Blk', get: b => _fn1(b.blk) },
+    { label: 'TO',  get: b => _fn1(b.tov) },
+    { label: 'FG%', get: b => _fpct(b.fg_pct) },
+    { label: 'FGA', get: b => _fn1(b.fga) },
+    { label: 'FT%', get: b => _fpct(b.ft_pct) },
+    { label: 'FTA', get: b => _fn1(b.fta) },
+  ],
+  scoring: [
+    { label: 'Pts', get: b => _fn1(b.pts) },
+    { label: '3PM', get: b => _fn1(b.fg3m) },
+    { label: '3PA', get: b => _fn1(b.fg3a) },
+    { label: 'FG%', get: b => _fpct(b.fg_pct) },
+    { label: 'FGA', get: b => _fn1(b.fga) },
+    { label: 'FT%', get: b => _fpct(b.ft_pct) },
+    { label: 'FTA', get: b => _fn1(b.fta) },
+    { label: 'ToP', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Drv', title: 'Drives per game', get: b => _fn1(b.drives) },
+    ...FORM_ZONES.map(z => ({ label: `${z.label} %`, title: `Shot share — ${z.title}`, group: 'Shot distribution by zone', get: _zoneGet(z.key, 'freq') })),
+    ...FORM_ZONES.map(z => ({ label: `${z.label} FG`, title: `FG% — ${z.title}`, group: 'FG% by zone', get: _zoneGet(z.key, 'fg_pct') })),
+  ],
+  rebounds: [
+    { label: 'Reb',     get: b => _fn1(b.reb) },
+    { label: 'OReb',    get: b => _fn1(b.oreb) },
+    { label: 'OReb/36', title: 'Offensive rebounds per 36', get: b => _fn1(_fp36(b, 'oreb')) },
+    { label: 'DReb/36', title: 'Defensive rebounds per 36', get: b => _fn1(_fp36(b, 'dreb')) },
+    { label: 'RebCh%',  title: 'Rebound chance %', get: b => _fpctFrac(b.reb_chance_pct) },
+    { label: 'ORebCh%', title: 'Offensive rebound chance %', get: b => _fpctFrac(b.oreb_chance_pct) },
+    { label: 'DRebCh%', title: 'Defensive rebound chance %', get: b => _fpctFrac(b.dreb_chance_pct) },
+  ],
+  assists: [
+    { label: 'Ast',       get: b => _fn1(b.ast) },
+    { label: 'Ast/36',    title: 'Assists per 36', get: b => _fn1(_fp36(b, 'ast')) },
+    { label: 'PotAst',    title: 'Potential assists per game', get: b => _fn1(b.potential_ast) },
+    { label: 'PotAst/36', title: 'Potential assists per 36', get: b => _fn1(_fp36(b, 'potential_ast')) },
+    { label: 'ToP',       title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Sec/Tch',   title: 'Avg seconds per touch', get: b => _fn1(b.avg_sec_per_touch) },
+  ],
+  steals: [
+    { label: 'Stl',    get: b => _fn1(b.stl) },
+    { label: 'Stl/36', title: 'Steals per 36', get: b => _fn1(_fp36(b, 'stl')) },
+    { label: 'Defl',   title: 'Deflections per game', get: b => _fn1(b.deflections) },
+  ],
+  blocks: [
+    { label: 'Blk',    get: b => _fn1(b.blk) },
+    { label: 'Blk/36', title: 'Blocks per 36', get: b => _fn1(_fp36(b, 'blk')) },
+    { label: 'Cont',   title: 'Contested shots (total)', get: b => _fn1(b.contested_shots) },
+    { label: 'Cont 2', title: 'Contested 2pt shots', get: b => _fn1(b.contested_shots_2pt) },
+    { label: 'Cont 3', title: 'Contested 3pt shots', get: b => _fn1(b.contested_shots_3pt) },
+  ],
+  turnovers: [
+    { label: 'TO',    get: b => _fn1(b.tov) },
+    { label: 'TO/36', title: 'Turnovers per 36', get: b => _fn1(_fp36(b, 'tov')) },
+  ],
+}
+
 function maBucketKey(dateStr, period) {
   const y  = +dateStr.slice(0, 4)
   const mo = +dateStr.slice(5, 7)
@@ -9055,6 +9132,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [projLoading, setProjLoading] = useState(false)
   const [ourProj, setOurProj]           = useState(null)   // our calibration 2026/27 projection (top row)
   const [ourProjLoading, setOurProjLoading] = useState(false)
+  const [playerAdv, setPlayerAdv]       = useState(null)   // NBA.com tracking/hustle per-game (Form panel)
   const [projMpg, setProjMpg]         = useState(32)
   const [projStat, setProjStat]       = useState('pts')
   const [histMode, setHistMode]       = useState('pg')   // 'pg' | 'p36'
@@ -9065,7 +9143,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [projOverrides, setProjOverrides] = useState({})     // field → overridden value (empty = all auto)
 
   const [playerGames, setPlayerGames] = useState(null)
-  const [maStat, setMaStat]           = useState('pts')
+  const [maStat, setMaStat]           = useState('statline')
   const [maWindow, setMaWindow]       = useState(10)
   const [maChartType, setMaChartType] = useState('line')
   const [maTablePeriod, setMaTablePeriod] = useState('month')
@@ -9200,6 +9278,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     setProjLoading(true)
     setOurProj(null)
     setOurProjLoading(true)
+    setPlayerAdv(null)
     setPlayerGames(null)
     setMaRangeStart(0); setMaRangeEnd(null)
     setMaZoneGames(null); setMaZoneSlug(null)
@@ -9225,6 +9304,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     apiFetch(`/api/player-projection?player=${encodeURIComponent(p.slug)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setOurProj(d) })
+      .catch(() => {})
+    apiFetch(`/api/nbacom-stats/player/${encodeURIComponent(p.slug)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.game_log) setPlayerAdv(d.game_log) })
       .catch(() => {})
       .finally(() => setOurProjLoading(false))
     apiFetch(`/api/player-games?player=${encodeURIComponent(p.slug)}`)
@@ -9664,6 +9747,24 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const maEffEnd    = maRangeEnd   ?? (maAllGames.length - 1)
   const maGames     = maAllGames.slice(maRangeStart, maEffEnd + 1)
 
+  // NBA.com tracking/hustle flattened to {game_date: {stat: value}} (all measure
+  // types merged; gp/min dropped — box min is used instead).
+  const advByDate = useMemo(() => {
+    if (!playerAdv) return {}
+    const out = {}
+    for (const [date, measures] of Object.entries(playerAdv)) {
+      const flat = {}
+      for (const stats of Object.values(measures || {})) {
+        for (const [k, v] of Object.entries(stats || {})) {
+          if (k === 'gp' || k === 'min' || v == null) continue
+          flat[k] = v
+        }
+      }
+      out[date] = flat
+    }
+    return out
+  }, [playerAdv])
+
   const maTableBuckets = useMemo(() => {
     if (!maGames.length || !playerStats?.z_params) return []
     const zp = playerStats.z_params
@@ -9705,6 +9806,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           zoneMap[zr.zone] = zoneMap[zr.zone] || { fga: 0, fgm: 0 }
           zoneMap[zr.zone].fga += zr.fga; zoneMap[zr.zone].fgm += zr.fgm
         }
+        const zoneTotalFga = FORM_ZONES.reduce((s, { key: zk }) => s + (zoneMap[zk]?.fga || 0), 0)
         const zones = FORM_ZONES.map(({ key: zk }) => {
           const zd = zoneMap[zk]
           return {
@@ -9713,12 +9815,21 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             fga_pg: zd ? +(zd.fga / gp).toFixed(1) : 0,
             fgm_pg: zd ? +(zd.fgm / gp).toFixed(1) : 0,
             fg_pct: zd?.fga > 0 ? +(zd.fgm / zd.fga * 100).toFixed(1) : null,
+            freq: zoneTotalFga > 0 && zd ? +(zd.fga / zoneTotalFga * 100).toFixed(1) : (zd ? 0 : null),
           }
         })
+
+        // Advanced (NBA.com) — average each stat over the bucket's games that have data.
+        const advGames = played.map(g => advByDate[g.game_date]).filter(Boolean)
+        const advAvg = k => {
+          const vals = advGames.map(a => a[k]).filter(v => v != null)
+          return vals.length ? +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(2) : null
+        }
         return {
           key, label: maBucketLabel(key, maTablePeriod), gp,
           min: +avg('min').toFixed(1),
           pts: +avg('pts').toFixed(1), reb: +avg('reb').toFixed(1),
+          oreb: +avg('oreb').toFixed(1), dreb: +avg('dreb').toFixed(1),
           ast: +avg('ast').toFixed(1), stl: +avg('stl').toFixed(1),
           blk: +avg('blk').toFixed(1), tov: +avg('tov').toFixed(1),
           fg3m: +avg('fg3m').toFixed(1), fg3a: +avg('fg3a').toFixed(1),
@@ -9730,28 +9841,38 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
           z_total: +z_total.toFixed(2), z_pts, z_reb, z_ast, z_stl, z_blk, z_tov, z_fg3m,
           z_fg_pct: +fg_z.toFixed(2), z_ft_pct: +ft_z.toFixed(2),
           zones,
+          // Advanced (NBA.com tracking/hustle) — per game averages
+          time_of_poss:       advAvg('time_of_poss'),
+          avg_sec_per_touch:  advAvg('avg_sec_per_touch'),
+          drives:             advAvg('drives'),
+          potential_ast:      advAvg('potential_ast'),
+          deflections:        advAvg('deflections'),
+          contested_shots:    advAvg('contested_shots'),
+          contested_shots_2pt: advAvg('contested_shots_2pt'),
+          contested_shots_3pt: advAvg('contested_shots_3pt'),
+          reb_chance_pct:     advAvg('reb_chance_pct'),
+          oreb_chance_pct:    advAvg('oreb_chance_pct'),
+          dreb_chance_pct:    advAvg('dreb_chance_pct'),
         }
       })
       .filter(Boolean)
-  }, [maGames, maTablePeriod, maZoneGames, playerStats])
+  }, [maGames, maTablePeriod, maZoneGames, playerStats, advByDate])
 
-  const maIsZSum    = maStat === 'z_sum'
-  // Z-scores computed over full career so the baseline doesn't shift with the slider
-  const maAllZSums  = maIsZSum ? computeGameZSums(maAllGames) : null
+  // Line/Bar modes chart the category's headline box stat over recent games.
+  const maChartStat = MA_HEADLINE[maStat] || 'pts'
   const MA_PER30_STATS = new Set(['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fg3m'])
-  const maCanPer30  = MA_PER30_STATS.has(maStat)
+  const maCanPer30  = MA_PER30_STATS.has(maChartStat)
   const maGamesScaled = (maPer30 && maCanPer30)
     ? maGames.map(g => {
         const scale = (g.min && g.min > 0) ? 30 / g.min : 1
-        return { ...g, [maStat]: g[maStat] != null ? +(g[maStat] * scale).toFixed(2) : null }
+        return { ...g, [maChartStat]: g[maChartStat] != null ? +(g[maChartStat] * scale).toFixed(2) : null }
       })
     : maGames
-  const maRawVals   = maIsZSum
-    ? maAllZSums.slice(maRangeStart, maEffEnd + 1)
-    : maGamesScaled.map(g => g[maStat] ?? null)
-  const maSynthGames = maIsZSum ? maGames.map((g, i) => ({ ...g, z_sum: maRawVals[i] })) : maGamesScaled
-  const maVals      = rollingAverage(maSynthGames, maStat, maWindow)
-  const maStatLabel = (MA_STAT_OPTIONS.find(o => o.value === maStat)?.label ?? maStat) + (maPer30 && maCanPer30 ? ' / 30 min' : '')
+  const maRawVals   = maGamesScaled.map(g => g[maChartStat] ?? null)
+  const maSynthGames = maGamesScaled
+  const maVals      = rollingAverage(maSynthGames, maChartStat, maWindow)
+  const MA_STAT_NAME = { pts: 'Points', reb: 'Rebounds', ast: 'Assists', stl: 'Steals', blk: 'Blocks', tov: 'Turnovers', fg3m: '3PM' }
+  const maStatLabel = (MA_STAT_NAME[maChartStat] ?? maChartStat) + (maPer30 && maCanPer30 ? ' / 30 min' : '')
   const maTrendVals = linReg(maRawVals)
 
   // Smart x-axis: DD MMM when window ≤ 60 days, MMM 'YY otherwise
@@ -9768,8 +9889,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   }
 
   const MA_NO_DECIMAL  = new Set(['pts', 'fg3m', 'reb', 'ast', 'stl', 'blk', 'tov'])
-  const maFmtRaw  = v => v == null ? null : MA_NO_DECIMAL.has(maStat) ? ` ${Math.round(v)}` : (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(1)}`
-  const maFmtAvg  = v => v == null ? null : (maStat === 'fg_pct' || maStat === 'ft_pct') ? ` ${v.toFixed(1)}%` : ` ${v.toFixed(1)}`
+  const maFmtRaw  = v => v == null ? null : MA_NO_DECIMAL.has(maChartStat) ? ` ${Math.round(v)}` : ` ${v.toFixed(1)}`
+  const maFmtAvg  = v => v == null ? null : ` ${v.toFixed(1)}`
   const maEaseColor = (ease, alpha = 0.65) =>
     ease == null ? `rgba(150,150,255,${alpha})`
     : ease > 1.5  ? `rgba(0,230,118,${alpha})`
@@ -11778,7 +11899,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <div className="trend-controls">
                   <div className="trend-ctrl-item">
                     <span className="ctrl-label">Stat</span>
-                    <select className="ctrl-input" value={maStat} onChange={e => { setMaStat(e.target.value); if (!['pts','reb','ast','stl','blk','tov','fg3m'].includes(e.target.value)) setMaPer30(false) }}>
+                    <select className="ctrl-input" value={maStat} onChange={e => setMaStat(e.target.value)}>
                       {MA_STAT_OPTIONS.map(o => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
@@ -11847,109 +11968,20 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       <thead>
                         <tr>
                           <th>Period</th>
-                          <th className="num">G</th>
-                          <th className="num">MIN</th>
-                          <th className="num">Z</th>
-                          {maStat === 'z_sum' || maStat === 'min' ? (<>
-                            <th className="num form-driver-head" title="Points z-score">zPTS</th>
-                            <th className="num form-driver-head" title="Rebounds z-score">zREB</th>
-                            <th className="num form-driver-head" title="Assists z-score">zAST</th>
-                            <th className="num form-driver-head" title="Steals z-score">zSTL</th>
-                            <th className="num form-driver-head" title="Blocks z-score">zBLK</th>
-                            <th className="num form-driver-head" title="Turnovers z-score">zTOV</th>
-                            <th className="num form-driver-head" title="3PM z-score">z3PM</th>
-                            <th className="num form-driver-head" title="FG% z-score">zFG%</th>
-                            <th className="num form-driver-head" title="FT% z-score">zFT%</th>
-                            <th className="num">PTS</th>
-                            <th className="num">3PM</th>
-                            <th className="num">REB</th>
-                            <th className="num">AST</th>
-                            <th className="num">STL</th>
-                            <th className="num">BLK</th>
-                            <th className="num">TOV</th>
-                            <th className="num">FGA/M</th>
-                            <th className="num">FG%</th>
-                            {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
-                            <th className="num">FTA/M</th>
-                            <th className="num">FT%</th>
-                          </>) : maStat === 'fg_pct' ? (<>
-                            <th className="num form-driver-head">zFG%</th>
-                            <th className="num">FGA/M</th>
-                            <th className="num">FG%</th>
-                            {FORM_ZONES.map(z => <th key={z.key} className="num form-zone-head" title={z.title}>{z.label}</th>)}
-                          </>) : maStat === 'ft_pct' ? (<>
-                            <th className="num form-driver-head">zFT%</th>
-                            <th className="num">FTA/M</th>
-                            <th className="num">FT%</th>
-                          </>) : maStat === 'fg3m' ? (<>
-                            <th className="num form-driver-head">z3PM</th>
-                            <th className="num">3PM</th>
-                          </>) : (<>
-                            <th className="num form-driver-head">z{maStat.toUpperCase()}</th>
-                            <th className="num">{maStat.toUpperCase()}</th>
-                          </>)}
+                          {(FORM_COLUMNS[maStat] || []).map((c, i) => (
+                            <th key={i} className="num" title={c.title || undefined}>{c.label}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {maTableBuckets.map(b => {
-                          const ztCls = b.z_total > 0 ? ' z-pos' : b.z_total < 0 ? ' z-neg' : ''
-                          const dCls = (z, inv) => z == null ? '' : ((inv ? -z : z) > 0 ? ' z-pos' : (inv ? -z : z) < 0 ? ' z-neg' : '')
-                          const fz = z => z != null ? (z > 0 ? '+' : '') + z.toFixed(1) : '—'
-                          return (
-                            <tr key={b.key}>
-                              <td className="mono">{b.label}</td>
-                              <td className="num mono">{b.gp}</td>
-                              <td className="num mono">{b.min}</td>
-                              <td className={`num mono bs-ztotal${ztCls}`}>{b.z_total != null ? (b.z_total > 0 ? '+' : '') + b.z_total.toFixed(1) : '—'}</td>
-                              {maStat === 'z_sum' || maStat === 'min' ? (<>
-                                <td className={`num mono form-driver-cell${dCls(b.z_pts,    false)}`}>{fz(b.z_pts)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_reb,    false)}`}>{fz(b.z_reb)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_ast,    false)}`}>{fz(b.z_ast)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_stl,    false)}`}>{fz(b.z_stl)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_blk,    false)}`}>{fz(b.z_blk)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_tov,    true)}`}>{fz(b.z_tov)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_fg3m,   false)}`}>{fz(b.z_fg3m)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
-                                <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
-                                <td className="num mono">{b.pts}</td>
-                                <td className="num mono">{b.fg3m}</td>
-                                <td className="num mono">{b.reb}</td>
-                                <td className="num mono">{b.ast}</td>
-                                <td className="num mono">{b.stl}</td>
-                                <td className="num mono">{b.blk}</td>
-                                <td className="num mono">{b.tov}</td>
-                                <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
-                                <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
-                                {b.zones.map(z => (
-                                  <td key={z.zone} className="num mono form-zone-cell">
-                                    {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
-                                  </td>
-                                ))}
-                                <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
-                                <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
-                              </>) : maStat === 'fg_pct' ? (<>
-                                <td className={`num mono form-driver-cell${dCls(b.z_fg_pct, false)}`}>{fz(b.z_fg_pct)}</td>
-                                <td className="num mono">{b.fgm != null && b.fga != null ? `${b.fgm}/${b.fga}` : '—'}</td>
-                                <td className="num mono">{b.fg_pct != null ? b.fg_pct.toFixed(1) + '%' : '—'}</td>
-                                {b.zones.map(z => (
-                                  <td key={z.zone} className="num mono form-zone-cell">
-                                    {z.fga > 0 ? `${z.fgm_pg}/${z.fga_pg} (${z.fg_pct}%)` : '—'}
-                                  </td>
-                                ))}
-                              </>) : maStat === 'ft_pct' ? (<>
-                                <td className={`num mono form-driver-cell${dCls(b.z_ft_pct, false)}`}>{fz(b.z_ft_pct)}</td>
-                                <td className="num mono">{b.ftm != null && b.fta != null ? `${b.ftm}/${b.fta}` : '—'}</td>
-                                <td className="num mono">{b.ft_pct != null ? b.ft_pct.toFixed(1) + '%' : '—'}</td>
-                              </>) : maStat === 'fg3m' ? (<>
-                                <td className={`num mono form-driver-cell${dCls(b.z_fg3m, false)}`}>{fz(b.z_fg3m)}</td>
-                                <td className="num mono">{b.fg3m}</td>
-                              </>) : (<>
-                                <td className={`num mono form-driver-cell${dCls(b[`z_${maStat}`], maStat === 'tov')}`}>{fz(b[`z_${maStat}`])}</td>
-                                <td className="num mono">{b[maStat]}</td>
-                              </>)}
-                            </tr>
-                          )
-                        })}
+                        {maTableBuckets.map(b => (
+                          <tr key={b.key}>
+                            <td className="mono">{b.label}</td>
+                            {(FORM_COLUMNS[maStat] || []).map((c, i) => (
+                              <td key={i} className="num mono">{c.get(b)}</td>
+                            ))}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                     {!maZoneGames && maZoneSlug !== selectedPlayer?.slug && (

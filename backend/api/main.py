@@ -2256,7 +2256,7 @@ def get_player_games(player: str = Query(..., description="Player slug")):
         SELECT
             g.game_date, g.season, g.opponent, g.home_away,
             ROUND(g.min, 0) AS min,
-            g.pts, g.reb, g.ast, g.stl, g.blk, g.tov,
+            g.pts, g.reb, g.oreb, g.dreb, g.ast, g.stl, g.blk, g.tov,
             g.fgm, g.fga, g.fg3m, g.fg3a, g.ftm, g.fta,
             g.plus_minus,
             CASE WHEN g.fga > 0 THEN ROUND(g.fgm * 100.0 / g.fga, 1) ELSE NULL END AS fg_pct,
@@ -2303,7 +2303,7 @@ def get_player_games(player: str = Query(..., description="Player slug")):
                 "game_date": gd, "season": season, "injured": True,
                 "opponent": tm["opponent"] if tm else None,
                 "home_away": tm["home_away"] if tm else None,
-                "min": 0, "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
+                "min": 0, "pts": 0, "reb": 0, "oreb": 0, "dreb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
                 "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
                 "plus_minus": None, "fg_pct": None, "ft_pct": None,
                 "team_score": None, "opp_score": None,

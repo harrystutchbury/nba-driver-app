@@ -71,14 +71,15 @@ def get_player_nbacom_stats(
         mt = d.pop("measure_type")
         averages[mt] = d
 
-    # ── Recent game log (last 20 game entries across all measure types) ────
+    # ── Full-season per-game log across all measure types (nbacom data is
+    #    single-season, ~1k rows/player, so no practical limit needed) ────────
     game_log_raw = conn.execute(
         """
         SELECT game_date, measure_type, gp, min, *
         FROM nbacom_stats_game_log
         WHERE nba_com_player_id = ?
         ORDER BY game_date DESC
-        LIMIT 240
+        LIMIT 3000
         """,
         (nba_com_id,),
     ).fetchall() if nba_com_id else []
