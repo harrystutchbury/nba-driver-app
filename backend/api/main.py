@@ -4270,6 +4270,51 @@ def admin_backfill_hustle_status(current_user: str = Depends(get_current_user)):
     return _HUSTLE_BACKFILL
 
 
+_HUSTLE_UPLOAD_COLS = [
+    "player_id", "nba_com_player_id", "game_date", "measure_type", "gp", "min",
+    "contested_shots", "contested_shots_2pt", "contested_shots_3pt", "deflections",
+    "charges_drawn", "loose_balls_recovered", "screen_assists",
+]
+
+
+@router.post("/admin/upload-hustle")
+def admin_upload_hustle(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """
+    Route B: upsert NBA.com Hustle per-game rows fetched elsewhere (e.g. a
+    residential IP) into nbacom_stats_game_log, since this host can't reach the
+    hustle endpoint. Body: {rows: [{nba_com_player_id, game_date, deflections,
+    contested_shots, ...}, ...]}. Upsert key = (player, date, measure). Admin only.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        rows = body.get("rows") or []
+        if not rows:
+            return {"status": "ok", "upserted": 0}
+        cols = _HUSTLE_UPLOAD_COLS
+        ph   = ", ".join("?" * len(cols))
+        upd  = ", ".join(f"{c}=excluded.{c}" for c in cols
+                         if c not in ("nba_com_player_id", "game_date", "measure_type"))
+        sql = (f"INSERT INTO nbacom_stats_game_log ({', '.join(cols)}) VALUES ({ph}) "
+               f"ON CONFLICT(nba_com_player_id, game_date, measure_type) DO UPDATE SET {upd}")
+        params = [[r.get("player_id"), r.get("nba_com_player_id"), r.get("game_date"), "Hustle",
+                   r.get("gp"), r.get("min"),
+                   r.get("contested_shots"), r.get("contested_shots_2pt"), r.get("contested_shots_3pt"),
+                   r.get("deflections"), r.get("charges_drawn"), r.get("loose_balls_recovered"),
+                   r.get("screen_assists")] for r in rows]
+        conn.executemany(sql, params)
+        conn.commit()
+        return {"status": "ok", "upserted": len(rows)}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_upload_hustle failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.post("/admin/sync-rosters")
 def admin_sync_rosters(
     dry_run: bool = False,
