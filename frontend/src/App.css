@@ -6684,16 +6684,21 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 }
 
 /* Form Table view */
-/* Content-width (not stretched to 100%) so columns are evenly, tightly spaced */
+/* Fill available width with equal columns (fixed layout); a per-render min-width
+   lets many-column categories scroll instead of clipping. */
 .form-period-table {
-  width: auto;
-  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
 }
+.form-period-table th:first-child,
+.form-period-table td:first-child { width: 96px; text-align: left; }
 .form-period-table th,
 .form-period-table td {
   white-space: nowrap;
-  padding: 5px 15px;
+  padding: 5px 10px;
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .form-period-table td.num,
 .form-period-table th.num { text-align: right; }

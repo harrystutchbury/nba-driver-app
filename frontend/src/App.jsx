@@ -8967,6 +8967,7 @@ const FORM_COLUMNS = {
     { label: 'FTA', get: b => _fn1(b.fta) },
   ],
   scoring: [
+    { label: 'GP',  get: b => b.gp },
     { label: 'Pts', get: b => _fn1(b.pts) },
     { label: '3PM', get: b => _fn1(b.fg3m) },
     { label: '3P%', get: b => _fpct(b.fg3_pct) },
@@ -8975,12 +8976,13 @@ const FORM_COLUMNS = {
     { label: 'FGA', get: b => _fn1(b.fga) },
     { label: 'FT%', get: b => _fpct(b.ft_pct) },
     { label: 'FTA', get: b => _fn1(b.fta) },
-    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Time in Poss', title: 'Time in possession (min/game)', get: b => _fn1(b.time_of_poss) },
     { label: 'Drives',       title: 'Drives per game', get: b => _fn1(b.drives) },
     ...FORM_ZONES.map(z => ({ label: z.label, title: `Shot share — ${z.title}`, group: 'Shot distribution by zone', get: _zoneGet(z.key, 'freq') })),
     ...FORM_ZONES.map(z => ({ label: z.label, title: `FG% — ${z.title}`, group: 'FG% by zone', get: _zoneGet(z.key, 'fg_pct') })),
   ],
   rebounds: [
+    { label: 'GP',       get: b => b.gp },
     { label: 'Reb',      get: b => _fn1(b.reb) },
     { label: 'OReb',     get: b => _fn1(b.oreb) },
     { label: 'OReb/36',  title: 'Offensive rebounds per 36 min', get: b => _fn1(_fp36(b, 'oreb')) },
@@ -8990,20 +8992,23 @@ const FORM_COLUMNS = {
     { label: 'DReb Ch%', title: 'Defensive rebound chance %', get: b => _fpctFrac(b.dreb_chance_pct) },
   ],
   assists: [
+    { label: 'GP',          get: b => b.gp },
     { label: 'Ast',         get: b => _fn1(b.ast) },
     { label: 'Ast/36',      title: 'Assists per 36 min', get: b => _fn1(_fp36(b, 'ast')) },
     { label: 'Pot Ast',     title: 'Potential assists per game (passes that would be assists if the shot fell)', get: b => _fn1(b.potential_ast) },
     { label: 'Pot Ast/36',  title: 'Potential assists per 36 min', get: b => _fn1(_fp36(b, 'potential_ast')) },
     { label: 'Ast/Pot',     title: 'Assists ÷ potential assists (conversion ratio)', get: b => _fratio(b.ast, b.potential_ast) },
-    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Time in Poss', title: 'Time in possession (min/game)', get: b => _fn1(b.time_of_poss) },
     { label: 'Sec/Touch',   title: 'Average seconds per touch', get: b => _fn1(b.avg_sec_per_touch) },
   ],
   steals: [
+    { label: 'GP',          get: b => b.gp },
     { label: 'Stl',         get: b => _fn1(b.stl) },
     { label: 'Stl/36',      title: 'Steals per 36 min', get: b => _fn1(_fp36(b, 'stl')) },
     { label: 'Deflections', title: 'Deflections per game', get: b => _fn1(b.deflections) },
   ],
   blocks: [
+    { label: 'GP',          get: b => b.gp },
     { label: 'Blk',         get: b => _fn1(b.blk) },
     { label: 'Blk/36',      title: 'Blocks per 36 min', get: b => _fn1(_fp36(b, 'blk')) },
     { label: 'Contested',   title: 'Contested shots per game (total)', get: b => _fn1(b.contested_shots) },
@@ -9011,9 +9016,10 @@ const FORM_COLUMNS = {
     { label: 'Cont 3P',     title: 'Contested 3-point shots per game', get: b => _fn1(b.contested_shots_3pt) },
   ],
   turnovers: [
+    { label: 'GP',           get: b => b.gp },
     { label: 'TO',           get: b => _fn1(b.tov) },
     { label: 'TO/36',        title: 'Turnovers per 36 min', get: b => _fn1(_fp36(b, 'tov')) },
-    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Time in Poss', title: 'Time in possession (min/game)', get: b => _fn1(b.time_of_poss) },
   ],
 }
 
@@ -9149,7 +9155,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [playerGames, setPlayerGames] = useState(null)
   const [maStat, setMaStat]           = useState('statline')
   const [maWindow, setMaWindow]       = useState(10)
-  const [maChartType, setMaChartType] = useState('line')
+  const [maChartType, setMaChartType] = useState('table')
   const [maTablePeriod, setMaTablePeriod] = useState('month')
   const [maZoneGames, setMaZoneGames]     = useState(null)
   const [maZoneSlug,  setMaZoneSlug]      = useState(null)
@@ -11968,7 +11974,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 </div>
                 {maChartType === 'table' ? (
                   <div className="table-scroll" style={{ marginTop: 12 }}>
-                    <table className="gamelog-table form-period-table">
+                    <table className="gamelog-table form-period-table"
+                           style={{ minWidth: `${((FORM_COLUMNS[maStat]?.length || 0) + 1) * 84}px` }}>
                       <thead>
                         {(() => {
                           const cols = FORM_COLUMNS[maStat] || []

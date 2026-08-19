@@ -270,6 +270,55 @@ def _update_season_averages(conn, season: str = CURRENT_SEASON):
 # Main nightly pipeline
 # ---------------------------------------------------------------------------
 
+def backfill_hustle(limit: int | None = None):
+    """
+    Backfill ONLY the Hustle measure per game date (the other tracking measures
+    are already loaded). Repairs deflections/contested_shots on a host where the
+    hustle fetch never populated. Iterates the game dates already present in the
+    tracking log and upserts fresh hustle rows. `limit` runs only the N most
+    recent dates (use it as a quick 'can this host reach the endpoint' test).
+    Returns counts plus a sample of deflection values so callers can verify the
+    data actually came through (vs all-null).
+    """
+    conn = get_conn()
+    init_nbacom_tables()
+    id_map     = _load_id_map(conn)
+    name_index = _build_name_index(conn)
+
+    dates = [r[0] for r in conn.execute(
+        "SELECT DISTINCT game_date FROM nbacom_stats_game_log ORDER BY game_date"
+    ).fetchall()]
+    if limit:
+        dates = dates[-limit:]
+
+    total_rows, dates_with_data, sample = 0, 0, []
+    for gd_str in dates:
+        try:
+            gd = date.fromisoformat(gd_str)
+            api_rows = fetch_hustle(gd, gd)
+            enriched, got = [], False
+            for row in api_rows:
+                slug = _match_player(conn, row["nba_com_player_id"], row["player_name"],
+                                     row["team_abbreviation"], gd_str, id_map, name_index)
+                enriched.append({**row, "player_id": slug})
+                if row.get("deflections") is not None:
+                    got = True
+                    if len(sample) < 10:
+                        sample.append(row["deflections"])
+            if enriched:
+                _insert_game_log_rows(conn, enriched, "Hustle", gd_str)
+                conn.commit()
+                total_rows += len(enriched)
+                if got:
+                    dates_with_data += 1
+            log.info("backfill_hustle %s: %d rows (has_data=%s)", gd_str, len(enriched), got)
+        except Exception as exc:
+            log.error("backfill_hustle %s failed: %s", gd_str, exc)
+    conn.close()
+    return {"dates_processed": len(dates), "dates_with_deflections": dates_with_data,
+            "rows_upserted": total_rows, "sample_deflections": sample}
+
+
 def run_nightly(game_date: date | None = None, skip_avgs: bool = False):
     """
     Pull tracking/hustle stats for game_date (default: yesterday) and store

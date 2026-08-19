@@ -4222,6 +4222,38 @@ def admin_reingest_missing_games(
     return {"status": "ok", **result}
 
 
+@router.post("/admin/backfill-hustle")
+def admin_backfill_hustle(
+    limit: int = 0,
+    background: bool = False,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Backfill NBA.com Hustle per-game stats (deflections, contested shots) that
+    never populated on this host. Run ?limit=5 first (synchronous) to confirm
+    this server can reach the hustle endpoint — check sample_deflections in the
+    response; if it has real values, run ?background=true for the full season.
+    Admin only.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+    finally:
+        conn.close()
+    from nbacom.pipeline import backfill_hustle
+    if background:
+        import threading
+        threading.Thread(target=lambda: backfill_hustle(limit=limit or None), daemon=True).start()
+        return {"status": "started", "background": True, "limit": limit or None}
+    try:
+        result = backfill_hustle(limit=limit or None)
+    except Exception:
+        logger.exception("admin_backfill_hustle failed")
+        raise HTTPException(500, "Internal server error")
+    return {"status": "ok", **result}
+
+
 @router.post("/admin/sync-rosters")
 def admin_sync_rosters(
     dry_run: bool = False,
