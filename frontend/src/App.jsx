@@ -10693,6 +10693,152 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             {/* ── Comments ──────────────────────────────────────── */}
             <CommentsSection playerSlug={selectedPlayer?.slug} isAdmin={isAdmin} myUsername={myUsername} />
 
+            {/* ── Moving average chart ──────────────────────── */}
+            {playerGames && (
+              <div className="projection-section">
+                <div className="projection-header" onClick={() => setMaExpanded(e => !e)} style={{ cursor: 'pointer' }}>
+                  <h3 className="panel-title">Form {!isPro && <span className="pro-badge">PRO</span>}</h3>
+                  <span className="proj-toggle">{maExpanded ? '▲' : '▼'}</span>
+                </div>
+
+                {maExpanded && (isPro ? <>
+                <div className="trend-controls">
+                  <div className="trend-ctrl-item">
+                    <span className="ctrl-label">Stat</span>
+                    <select className="ctrl-input" value={maStat} onChange={e => setMaStat(e.target.value)}>
+                      {MA_STAT_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {maChartType === 'line' && (
+                    <div className="trend-ctrl-item">
+                      <span className="ctrl-label">Weighted Average Period</span>
+                      <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
+                        {MA_WINDOW_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {maAllGames.length > 0 && (
+                    <div className="trend-ctrl-item trend-ctrl-period">
+                      <span className="ctrl-label">Period</span>
+                      <div className="dual-range-wrap">
+                        <input
+                          type="range" className="dual-range dual-range-start"
+                          min={0} max={maAllGames.length - 1} step={1}
+                          value={maRangeStart}
+                          onChange={e => { const v = +e.target.value; setMaRangeStart(Math.min(v, maEffEnd - 1)) }}
+                        />
+                        <input
+                          type="range" className="dual-range dual-range-end"
+                          min={0} max={maAllGames.length - 1} step={1}
+                          value={maEffEnd}
+                          onChange={e => { const v = +e.target.value; setMaRangeEnd(Math.max(v, maRangeStart + 1)) }}
+                        />
+                        <div className="dual-range-track">
+                          <div className="dual-range-fill" style={{
+                            left:  `${(maRangeStart / (maAllGames.length - 1)) * 100}%`,
+                            right: `${((maAllGames.length - 1 - maEffEnd) / (maAllGames.length - 1)) * 100}%`,
+                          }} />
+                        </div>
+                      </div>
+                      <span className="mpg-value">
+                        {maAllGames[maRangeStart]?.game_date?.slice(0,7)} → {maAllGames[maEffEnd]?.game_date?.slice(0,7)}
+                      </span>
+                    </div>
+                  )}
+                  {maChartType === 'table' && (
+                    <div className="rank-pills">
+                      {[['week','Weeks'],['month','Months'],['quarter','Quarters']].map(([v, l]) => (
+                        <button key={v} className={`rank-pill${maTablePeriod === v ? ' active' : ''}`} onClick={() => setMaTablePeriod(v)}>{l}</button>
+                      ))}
+                    </div>
+                  )}
+                  {maCanPer30 && maChartType !== 'table' && (
+                    <div className="rank-pills">
+                      <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
+                      <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
+                    </div>
+                  )}
+                  <div className="rank-pills">
+                    <button className={`rank-pill${maChartType === 'line'  ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
+                    <button className={`rank-pill${maChartType === 'bar'   ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
+                    <button className={`rank-pill${maChartType === 'table' ? ' active' : ''}`} onClick={() => setMaChartType('table')}>Table</button>
+                  </div>
+                </div>
+                {maChartType === 'table' ? (
+                  <div className="table-scroll" style={{ marginTop: 12 }}>
+                    <table className="gamelog-table form-period-table"
+                           style={{ minWidth: `${((FORM_COLUMNS[maStat]?.length || 0) + 1) * 84}px` }}>
+                      <thead>
+                        {(() => {
+                          const cols = FORM_COLUMNS[maStat] || []
+                          if (!cols.some(c => c.group)) {
+                            return (
+                              <tr>
+                                <th>Period</th>
+                                {cols.map((c, i) => <th key={i} className="num" title={c.title || undefined}>{c.label}</th>)}
+                              </tr>
+                            )
+                          }
+                          const row1 = [], row2 = []
+                          let i = 0
+                          while (i < cols.length) {
+                            const c = cols[i]
+                            if (c.group) {
+                              let j = i
+                              while (j < cols.length && cols[j].group === c.group) j++
+                              row1.push(<th key={`g${i}`} className="num form-group-head" colSpan={j - i}>{c.group}</th>)
+                              for (let k = i; k < j; k++) row2.push(<th key={k} className="num" title={cols[k].title || undefined}>{cols[k].label}</th>)
+                              i = j
+                            } else {
+                              row1.push(<th key={i} className="num" rowSpan={2} title={c.title || undefined}>{c.label}</th>)
+                              i++
+                            }
+                          }
+                          return (<>
+                            <tr><th rowSpan={2}>Period</th>{row1}</tr>
+                            <tr>{row2}</tr>
+                          </>)
+                        })()}
+                      </thead>
+                      <tbody>
+                        {maTableBuckets.map(b => (
+                          <tr key={b.key}>
+                            <td className="mono">{b.label}</td>
+                            {(FORM_COLUMNS[maStat] || []).map((c, i) => (
+                              <td key={i} className="num mono">{c.get(b)}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!maZoneGames && maZoneSlug !== selectedPlayer?.slug && (
+                      <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Loading zone data…</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                  <div className="trend-chart-wrap" style={{ height: '260px' }}>
+                    {maChartType === 'line'
+                      ? maChartData && <Line data={maChartData} options={maChartOptions} />
+                      : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
+                  </div>
+                  {maChartType === 'bar' && (
+                    <div className="ease-legend">
+                      <span className="ease-legend-item ease-legend-easy">Easy matchup</span>
+                      <span className="ease-legend-item ease-legend-mid">Neutral</span>
+                      <span className="ease-legend-item ease-legend-hard">Hard matchup</span>
+                    </div>
+                  )}
+                  </>
+                )}
+                </> : <SectionLock onUpgrade={onOpenAccount} />)}
+              </div>
+            )}
+
             {/* ── Compare ───────────────────────────────────────── */}
             <div className="projection-section">
               <div className="projection-header" onClick={() => setCmpExpanded(e => !e)} style={{ cursor: 'pointer' }}>
@@ -11894,152 +12040,6 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   {trendChartData && <Line data={trendChartData} options={trendChartOptions} />}
                 </div>
                 </>}
-              </div>
-            )}
-
-            {/* ── Moving average chart ──────────────────────── */}
-            {playerGames && (
-              <div className="projection-section">
-                <div className="projection-header" onClick={() => setMaExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-                  <h3 className="panel-title">Form {!isPro && <span className="pro-badge">PRO</span>}</h3>
-                  <span className="proj-toggle">{maExpanded ? '▲' : '▼'}</span>
-                </div>
-
-                {maExpanded && (isPro ? <>
-                <div className="trend-controls">
-                  <div className="trend-ctrl-item">
-                    <span className="ctrl-label">Stat</span>
-                    <select className="ctrl-input" value={maStat} onChange={e => setMaStat(e.target.value)}>
-                      {MA_STAT_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {maChartType === 'line' && (
-                    <div className="trend-ctrl-item">
-                      <span className="ctrl-label">Weighted Average Period</span>
-                      <select className="ctrl-input" value={maWindow} onChange={e => setMaWindow(+e.target.value)}>
-                        {MA_WINDOW_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {maAllGames.length > 0 && (
-                    <div className="trend-ctrl-item trend-ctrl-period">
-                      <span className="ctrl-label">Period</span>
-                      <div className="dual-range-wrap">
-                        <input
-                          type="range" className="dual-range dual-range-start"
-                          min={0} max={maAllGames.length - 1} step={1}
-                          value={maRangeStart}
-                          onChange={e => { const v = +e.target.value; setMaRangeStart(Math.min(v, maEffEnd - 1)) }}
-                        />
-                        <input
-                          type="range" className="dual-range dual-range-end"
-                          min={0} max={maAllGames.length - 1} step={1}
-                          value={maEffEnd}
-                          onChange={e => { const v = +e.target.value; setMaRangeEnd(Math.max(v, maRangeStart + 1)) }}
-                        />
-                        <div className="dual-range-track">
-                          <div className="dual-range-fill" style={{
-                            left:  `${(maRangeStart / (maAllGames.length - 1)) * 100}%`,
-                            right: `${((maAllGames.length - 1 - maEffEnd) / (maAllGames.length - 1)) * 100}%`,
-                          }} />
-                        </div>
-                      </div>
-                      <span className="mpg-value">
-                        {maAllGames[maRangeStart]?.game_date?.slice(0,7)} → {maAllGames[maEffEnd]?.game_date?.slice(0,7)}
-                      </span>
-                    </div>
-                  )}
-                  {maChartType === 'table' && (
-                    <div className="rank-pills">
-                      {[['week','Weeks'],['month','Months'],['quarter','Quarters']].map(([v, l]) => (
-                        <button key={v} className={`rank-pill${maTablePeriod === v ? ' active' : ''}`} onClick={() => setMaTablePeriod(v)}>{l}</button>
-                      ))}
-                    </div>
-                  )}
-                  {maCanPer30 && maChartType !== 'table' && (
-                    <div className="rank-pills">
-                      <button className={`rank-pill${!maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(false)}>Totals</button>
-                      <button className={`rank-pill${ maPer30 ? ' active' : ''}`} onClick={() => setMaPer30(true)}>Per 30</button>
-                    </div>
-                  )}
-                  <div className="rank-pills">
-                    <button className={`rank-pill${maChartType === 'line'  ? ' active' : ''}`} onClick={() => setMaChartType('line')}>Line</button>
-                    <button className={`rank-pill${maChartType === 'bar'   ? ' active' : ''}`} onClick={() => setMaChartType('bar')}>Bar</button>
-                    <button className={`rank-pill${maChartType === 'table' ? ' active' : ''}`} onClick={() => setMaChartType('table')}>Table</button>
-                  </div>
-                </div>
-                {maChartType === 'table' ? (
-                  <div className="table-scroll" style={{ marginTop: 12 }}>
-                    <table className="gamelog-table form-period-table"
-                           style={{ minWidth: `${((FORM_COLUMNS[maStat]?.length || 0) + 1) * 84}px` }}>
-                      <thead>
-                        {(() => {
-                          const cols = FORM_COLUMNS[maStat] || []
-                          if (!cols.some(c => c.group)) {
-                            return (
-                              <tr>
-                                <th>Period</th>
-                                {cols.map((c, i) => <th key={i} className="num" title={c.title || undefined}>{c.label}</th>)}
-                              </tr>
-                            )
-                          }
-                          const row1 = [], row2 = []
-                          let i = 0
-                          while (i < cols.length) {
-                            const c = cols[i]
-                            if (c.group) {
-                              let j = i
-                              while (j < cols.length && cols[j].group === c.group) j++
-                              row1.push(<th key={`g${i}`} className="num form-group-head" colSpan={j - i}>{c.group}</th>)
-                              for (let k = i; k < j; k++) row2.push(<th key={k} className="num" title={cols[k].title || undefined}>{cols[k].label}</th>)
-                              i = j
-                            } else {
-                              row1.push(<th key={i} className="num" rowSpan={2} title={c.title || undefined}>{c.label}</th>)
-                              i++
-                            }
-                          }
-                          return (<>
-                            <tr><th rowSpan={2}>Period</th>{row1}</tr>
-                            <tr>{row2}</tr>
-                          </>)
-                        })()}
-                      </thead>
-                      <tbody>
-                        {maTableBuckets.map(b => (
-                          <tr key={b.key}>
-                            <td className="mono">{b.label}</td>
-                            {(FORM_COLUMNS[maStat] || []).map((c, i) => (
-                              <td key={i} className="num mono">{c.get(b)}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!maZoneGames && maZoneSlug !== selectedPlayer?.slug && (
-                      <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Loading zone data…</p>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                  <div className="trend-chart-wrap" style={{ height: '260px' }}>
-                    {maChartType === 'line'
-                      ? maChartData && <Line data={maChartData} options={maChartOptions} />
-                      : maBarData   && <Bar  data={maBarData}   options={maBarOptions} />}
-                  </div>
-                  {maChartType === 'bar' && (
-                    <div className="ease-legend">
-                      <span className="ease-legend-item ease-legend-easy">Easy matchup</span>
-                      <span className="ease-legend-item ease-legend-mid">Neutral</span>
-                      <span className="ease-legend-item ease-legend-hard">Hard matchup</span>
-                    </div>
-                  )}
-                  </>
-                )}
-                </> : <SectionLock onUpgrade={onOpenAccount} />)}
               </div>
             )}
 

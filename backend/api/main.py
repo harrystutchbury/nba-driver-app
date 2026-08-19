@@ -4222,18 +4222,18 @@ def admin_reingest_missing_games(
     return {"status": "ok", **result}
 
 
+_HUSTLE_BACKFILL = {"state": "idle"}   # single-process (uvicorn 1 worker) status store
+
+
 @router.post("/admin/backfill-hustle")
-def admin_backfill_hustle(
-    limit: int = 0,
-    background: bool = False,
-    current_user: str = Depends(get_current_user),
-):
+def admin_backfill_hustle(limit: int = 0, current_user: str = Depends(get_current_user)):
     """
     Backfill NBA.com Hustle per-game stats (deflections, contested shots) that
-    never populated on this host. Run ?limit=5 first (synchronous) to confirm
-    this server can reach the hustle endpoint — check sample_deflections in the
-    response; if it has real values, run ?background=true for the full season.
-    Admin only.
+    never populated on this host. Always runs in the background (the hustle
+    endpoint can be slow/blocked and would time the request out). Run ?limit=5
+    first as a reach test, then poll GET /admin/backfill-hustle-status and check
+    sample_deflections — if it has real values, run again with no limit for the
+    full season. Admin only.
     """
     conn = get_conn()
     try:
@@ -4241,17 +4241,33 @@ def admin_backfill_hustle(
             raise HTTPException(status_code=403, detail="Admin only")
     finally:
         conn.close()
-    from nbacom.pipeline import backfill_hustle
-    if background:
-        import threading
-        threading.Thread(target=lambda: backfill_hustle(limit=limit or None), daemon=True).start()
-        return {"status": "started", "background": True, "limit": limit or None}
+    if _HUSTLE_BACKFILL.get("state") == "running":
+        return {"status": "already_running", **_HUSTLE_BACKFILL}
+
+    def _run(lim):
+        _HUSTLE_BACKFILL.clear(); _HUSTLE_BACKFILL.update({"state": "running", "limit": lim})
+        try:
+            from nbacom.pipeline import backfill_hustle
+            res = backfill_hustle(limit=lim or None)
+            _HUSTLE_BACKFILL.clear(); _HUSTLE_BACKFILL.update({"state": "done", "limit": lim, **res})
+        except Exception as e:
+            logger.exception("backfill_hustle thread failed")
+            _HUSTLE_BACKFILL.clear(); _HUSTLE_BACKFILL.update({"state": "error", "error": str(e)})
+
+    import threading
+    threading.Thread(target=_run, args=(limit,), daemon=True).start()
+    return {"status": "started", "limit": limit or None, "poll": "/api/admin/backfill-hustle-status"}
+
+
+@router.get("/admin/backfill-hustle-status")
+def admin_backfill_hustle_status(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
     try:
-        result = backfill_hustle(limit=limit or None)
-    except Exception:
-        logger.exception("admin_backfill_hustle failed")
-        raise HTTPException(500, "Internal server error")
-    return {"status": "ok", **result}
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+    finally:
+        conn.close()
+    return _HUSTLE_BACKFILL
 
 
 @router.post("/admin/sync-rosters")
