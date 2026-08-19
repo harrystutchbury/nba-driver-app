@@ -8943,6 +8943,7 @@ const _fn1  = v => v == null ? '—' : (+v).toFixed(1)
 const _fpct = v => v == null ? '—' : (+v).toFixed(1) + '%'
 const _fpct0 = v => v == null ? '—' : Math.round(v) + '%'
 const _fpctFrac = v => v == null ? '—' : (v * 100).toFixed(1) + '%'   // 0-1 fraction → %
+const _fratio = (a, b) => (a == null || !b) ? '—' : (a / b).toFixed(2)
 const _fp36 = (b, k) => (b.min > 0 && b[k] != null) ? b[k] / b.min * 36 : null
 const _zoneGet = (zk, field) => b => {
   const zz = (b.zones || []).find(x => x.zone === zk)
@@ -8974,43 +8975,45 @@ const FORM_COLUMNS = {
     { label: 'FGA', get: b => _fn1(b.fga) },
     { label: 'FT%', get: b => _fpct(b.ft_pct) },
     { label: 'FTA', get: b => _fn1(b.fta) },
-    { label: 'ToP', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
-    { label: 'Drv', title: 'Drives per game', get: b => _fn1(b.drives) },
-    ...FORM_ZONES.map(z => ({ label: `${z.label} %`, title: `Shot share — ${z.title}`, group: 'Shot distribution by zone', get: _zoneGet(z.key, 'freq') })),
-    ...FORM_ZONES.map(z => ({ label: `${z.label} FG`, title: `FG% — ${z.title}`, group: 'FG% by zone', get: _zoneGet(z.key, 'fg_pct') })),
+    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Drives',       title: 'Drives per game', get: b => _fn1(b.drives) },
+    ...FORM_ZONES.map(z => ({ label: z.label, title: `Shot share — ${z.title}`, group: 'Shot distribution by zone', get: _zoneGet(z.key, 'freq') })),
+    ...FORM_ZONES.map(z => ({ label: z.label, title: `FG% — ${z.title}`, group: 'FG% by zone', get: _zoneGet(z.key, 'fg_pct') })),
   ],
   rebounds: [
-    { label: 'Reb',     get: b => _fn1(b.reb) },
-    { label: 'OReb',    get: b => _fn1(b.oreb) },
-    { label: 'OReb/36', title: 'Offensive rebounds per 36', get: b => _fn1(_fp36(b, 'oreb')) },
-    { label: 'DReb/36', title: 'Defensive rebounds per 36', get: b => _fn1(_fp36(b, 'dreb')) },
-    { label: 'RebCh%',  title: 'Rebound chance %', get: b => _fpctFrac(b.reb_chance_pct) },
-    { label: 'ORebCh%', title: 'Offensive rebound chance %', get: b => _fpctFrac(b.oreb_chance_pct) },
-    { label: 'DRebCh%', title: 'Defensive rebound chance %', get: b => _fpctFrac(b.dreb_chance_pct) },
+    { label: 'Reb',      get: b => _fn1(b.reb) },
+    { label: 'OReb',     get: b => _fn1(b.oreb) },
+    { label: 'OReb/36',  title: 'Offensive rebounds per 36 min', get: b => _fn1(_fp36(b, 'oreb')) },
+    { label: 'DReb/36',  title: 'Defensive rebounds per 36 min', get: b => _fn1(_fp36(b, 'dreb')) },
+    { label: 'Reb Ch%',  title: 'Rebound chance % — share of nearby rebounds secured', get: b => _fpctFrac(b.reb_chance_pct) },
+    { label: 'OReb Ch%', title: 'Offensive rebound chance %', get: b => _fpctFrac(b.oreb_chance_pct) },
+    { label: 'DReb Ch%', title: 'Defensive rebound chance %', get: b => _fpctFrac(b.dreb_chance_pct) },
   ],
   assists: [
-    { label: 'Ast',       get: b => _fn1(b.ast) },
-    { label: 'Ast/36',    title: 'Assists per 36', get: b => _fn1(_fp36(b, 'ast')) },
-    { label: 'PotAst',    title: 'Potential assists per game', get: b => _fn1(b.potential_ast) },
-    { label: 'PotAst/36', title: 'Potential assists per 36', get: b => _fn1(_fp36(b, 'potential_ast')) },
-    { label: 'ToP',       title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
-    { label: 'Sec/Tch',   title: 'Avg seconds per touch', get: b => _fn1(b.avg_sec_per_touch) },
+    { label: 'Ast',         get: b => _fn1(b.ast) },
+    { label: 'Ast/36',      title: 'Assists per 36 min', get: b => _fn1(_fp36(b, 'ast')) },
+    { label: 'Pot Ast',     title: 'Potential assists per game (passes that would be assists if the shot fell)', get: b => _fn1(b.potential_ast) },
+    { label: 'Pot Ast/36',  title: 'Potential assists per 36 min', get: b => _fn1(_fp36(b, 'potential_ast')) },
+    { label: 'Ast/Pot',     title: 'Assists ÷ potential assists (conversion ratio)', get: b => _fratio(b.ast, b.potential_ast) },
+    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
+    { label: 'Sec/Touch',   title: 'Average seconds per touch', get: b => _fn1(b.avg_sec_per_touch) },
   ],
   steals: [
-    { label: 'Stl',    get: b => _fn1(b.stl) },
-    { label: 'Stl/36', title: 'Steals per 36', get: b => _fn1(_fp36(b, 'stl')) },
-    { label: 'Defl',   title: 'Deflections per game', get: b => _fn1(b.deflections) },
+    { label: 'Stl',         get: b => _fn1(b.stl) },
+    { label: 'Stl/36',      title: 'Steals per 36 min', get: b => _fn1(_fp36(b, 'stl')) },
+    { label: 'Deflections', title: 'Deflections per game', get: b => _fn1(b.deflections) },
   ],
   blocks: [
-    { label: 'Blk',    get: b => _fn1(b.blk) },
-    { label: 'Blk/36', title: 'Blocks per 36', get: b => _fn1(_fp36(b, 'blk')) },
-    { label: 'Cont',   title: 'Contested shots (total)', get: b => _fn1(b.contested_shots) },
-    { label: 'Cont 2', title: 'Contested 2pt shots', get: b => _fn1(b.contested_shots_2pt) },
-    { label: 'Cont 3', title: 'Contested 3pt shots', get: b => _fn1(b.contested_shots_3pt) },
+    { label: 'Blk',         get: b => _fn1(b.blk) },
+    { label: 'Blk/36',      title: 'Blocks per 36 min', get: b => _fn1(_fp36(b, 'blk')) },
+    { label: 'Contested',   title: 'Contested shots per game (total)', get: b => _fn1(b.contested_shots) },
+    { label: 'Cont 2P',     title: 'Contested 2-point shots per game', get: b => _fn1(b.contested_shots_2pt) },
+    { label: 'Cont 3P',     title: 'Contested 3-point shots per game', get: b => _fn1(b.contested_shots_3pt) },
   ],
   turnovers: [
-    { label: 'TO',    get: b => _fn1(b.tov) },
-    { label: 'TO/36', title: 'Turnovers per 36', get: b => _fn1(_fp36(b, 'tov')) },
+    { label: 'TO',           get: b => _fn1(b.tov) },
+    { label: 'TO/36',        title: 'Turnovers per 36 min', get: b => _fn1(_fp36(b, 'tov')) },
+    { label: 'Time of Poss', title: 'Time of possession (min/game)', get: b => _fn1(b.time_of_poss) },
   ],
 }
 
@@ -11967,12 +11970,36 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   <div className="table-scroll" style={{ marginTop: 12 }}>
                     <table className="gamelog-table form-period-table">
                       <thead>
-                        <tr>
-                          <th>Period</th>
-                          {(FORM_COLUMNS[maStat] || []).map((c, i) => (
-                            <th key={i} className="num" title={c.title || undefined}>{c.label}</th>
-                          ))}
-                        </tr>
+                        {(() => {
+                          const cols = FORM_COLUMNS[maStat] || []
+                          if (!cols.some(c => c.group)) {
+                            return (
+                              <tr>
+                                <th>Period</th>
+                                {cols.map((c, i) => <th key={i} className="num" title={c.title || undefined}>{c.label}</th>)}
+                              </tr>
+                            )
+                          }
+                          const row1 = [], row2 = []
+                          let i = 0
+                          while (i < cols.length) {
+                            const c = cols[i]
+                            if (c.group) {
+                              let j = i
+                              while (j < cols.length && cols[j].group === c.group) j++
+                              row1.push(<th key={`g${i}`} className="num form-group-head" colSpan={j - i}>{c.group}</th>)
+                              for (let k = i; k < j; k++) row2.push(<th key={k} className="num" title={cols[k].title || undefined}>{cols[k].label}</th>)
+                              i = j
+                            } else {
+                              row1.push(<th key={i} className="num" rowSpan={2} title={c.title || undefined}>{c.label}</th>)
+                              i++
+                            }
+                          }
+                          return (<>
+                            <tr><th rowSpan={2}>Period</th>{row1}</tr>
+                            <tr>{row2}</tr>
+                          </>)
+                        })()}
                       </thead>
                       <tbody>
                         {maTableBuckets.map(b => (
