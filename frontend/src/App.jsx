@@ -8968,6 +8968,7 @@ const FORM_COLUMNS = {
   scoring: [
     { label: 'Pts', get: b => _fn1(b.pts) },
     { label: '3PM', get: b => _fn1(b.fg3m) },
+    { label: '3P%', get: b => _fpct(b.fg3_pct) },
     { label: '3PA', get: b => _fn1(b.fg3a) },
     { label: 'FG%', get: b => _fpct(b.fg_pct) },
     { label: 'FGA', get: b => _fn1(b.fga) },
