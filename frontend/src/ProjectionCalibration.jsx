@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
 const STYLES = `
-.pcal-page { padding: 24px; background: #0f172a; min-height: 100vh; color: #e2e8f0; font-family: system-ui, sans-serif; }
+.pcal-page { padding: 24px; background: #0f172a; min-height: 100vh; color: #e2e8f0; font-family: var(--sans); }
 .pcal-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .pcal-select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
 .pcal-select:focus { outline: 2px solid #3b82f6; }

@@ -1,8 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --mono: 'DM Mono', ui-monospace, monospace;
+  /* Single typeface across the app — --mono kept as an alias so the many
+     var(--mono) usages resolve to the main font (was 'DM Mono'). */
   --sans: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'Space Grotesk', system-ui, sans-serif;
 }
 
 :root, [data-theme="dark"] {

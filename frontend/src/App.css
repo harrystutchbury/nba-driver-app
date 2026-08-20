@@ -2270,7 +2270,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .driver-results { margin-top: 24px; }
 .preset-btn {
   padding: 4px 10px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
   font-size: 11px;
   background: transparent;
   border: 1px solid var(--border);
@@ -3435,7 +3435,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .bs-game-nav-row:last-child { border-bottom: none; }
 .bs-game-nav-row:hover { background: rgba(255,255,255,0.04); }
 .bs-nav-team { font-weight: 700; font-size: 13px; }
-.bs-nav-score { font-family: 'DM Mono', monospace; font-size: 13px; text-align: center; }
+.bs-nav-score { font-family: var(--mono); font-size: 13px; text-align: center; }
 .bs-nav-status { font-size: 11px; text-align: right; }
 .bs-nav-status { background: none !important; padding: 0; }
 .bs-nav-status.bs-final { color: var(--muted); }
@@ -3443,7 +3443,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 /* ── Daily rank column ── */
 .bs-rank-head { color: #a78bfa !important; }
-.bs-rank { font-family: 'DM Mono', monospace; font-size: 11px; color: #a78bfa; text-align: center; }
+.bs-rank { font-family: var(--mono); font-size: 11px; color: #a78bfa; text-align: center; }
 
 .bs-date-nav {
   display: flex;
@@ -3470,7 +3470,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   color: var(--text);
   border-radius: 6px;
   padding: 6px 10px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
   font-size: 14px;
 }
 
@@ -3516,7 +3516,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 .bs-score {
   font-size: 26px;
   font-weight: 700;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
   color: var(--text);
   letter-spacing: 2px;
 }
@@ -3529,7 +3529,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .bs-status {
   font-size: 12px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
   padding: 3px 8px;
   border-radius: 4px;
   text-transform: uppercase;
@@ -3542,7 +3542,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
 
 .bs-blowout {
   font-size: 11px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
   background: rgba(245,166,35,0.12);
   color: #f5a623;
   padding: 3px 8px;
@@ -3576,7 +3576,7 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 13px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--mono);
 }
 
 /* Fixed column widths — stat columns are independent of name length */
@@ -3704,7 +3704,7 @@ td.bs-pos {
 }
 
 .bs-ztotal-head { color: var(--accent) !important; font-weight: 700; }
-.bs-ztotal { font-weight: 700; font-size: 13px; font-family: 'DM Mono', monospace; }
+.bs-ztotal { font-weight: 700; font-size: 13px; font-family: var(--mono); }
 .bs-ztotal.z-pos { color: var(--skill); }
 .bs-ztotal.z-neg { color: #ff6b6b; }
 

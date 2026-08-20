@@ -1443,12 +1443,12 @@ function ShotZoneCourt({ id, title, zones }) {
         <circle cx={250} cy={422.5} r={7.5} fill="none" stroke={lc} strokeWidth={2} />
 
         {/* Zone labels */}
-        <text x={250} y={413} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('restricted_area')}</text>
-        <text x={250} y={355} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('paint_non_ra')}</text>
-        <text x={250} y={250} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('mid_range')}</text>
-        <text x={250} y={150} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('above_break_3')}</text>
-        <text x={15} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(-90,15,402)">{lbl('corner_3')}</text>
-        <text x={485} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="DM Mono,monospace" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(90,485,402)">{lbl('corner_3')}</text>
+        <text x={250} y={413} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('restricted_area')}</text>
+        <text x={250} y={355} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('paint_non_ra')}</text>
+        <text x={250} y={250} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('mid_range')}</text>
+        <text x={250} y={150} textAnchor="middle" fill="#fff" fontSize={10} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2.5} paintOrder="stroke fill">{lbl('above_break_3')}</text>
+        <text x={15} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(-90,15,402)">{lbl('corner_3')}</text>
+        <text x={485} y={402} textAnchor="middle" fill="#fff" fontSize={9} fontFamily="Space Grotesk,system-ui,sans-serif" stroke="#0a0e1a" strokeWidth={2} paintOrder="stroke fill" transform="rotate(90,485,402)">{lbl('corner_3')}</text>
       </svg>
 
       {/* Gradient legend */}
@@ -9733,8 +9733,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         borderWidth: 1,
         titleColor: '#888',
         bodyColor: '#e8e8e8',
-        titleFont: { family: "'DM Mono', monospace", size: 10 },
-        bodyFont:  { family: "'DM Mono', monospace", size: 12 },
+        titleFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 10 },
+        bodyFont:  { family: "'Space Grotesk', system-ui, sans-serif", size: 12 },
         padding: 10,
         cornerRadius: 4,
       },
@@ -9743,13 +9743,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       x: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 },
                   callback: (_, i, ticks) => { const v = trendLabels[i]; return v ? v.slice(2) : '' } },
       },
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.07)', drawTicks: false },
         border: { color: '#222' },
-        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 } },
       },
     },
   }
@@ -9977,7 +9977,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
         ticks: {
           color: '#888',
-          font: { family: "'DM Mono', monospace", size: 11 },
+          font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
           callback: (_, i) => maDateLabel(maGames[i]?.game_date),
@@ -9986,7 +9986,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
-        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 } },
       },
     },
   }
@@ -10038,7 +10038,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
         ticks: {
           color: '#888',
-          font: { family: "'DM Mono', monospace", size: 11 },
+          font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 },
           maxTicksLimit: 12,
           maxRotation: 0,
           callback: (_, i) => maDateLabel(maGames[i]?.game_date),
@@ -10047,7 +10047,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       y: {
         grid:   { color: isDark() ? '#1a1a1a' : 'rgba(0,0,0,0.03)', drawTicks: false },
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.08)' },
-        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
+        ticks:  { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 } },
       },
     },
   }
@@ -10062,7 +10062,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       const yScale = chart.scales.y
       const dark = isDark()
       ctx.save()
-      ctx.font = "500 11px 'DM Mono', monospace"
+      ctx.font = "500 11px 'Space Grotesk', system-ui, sans-serif"
       ctx.textAlign = 'center'
 
       const { bottom: cBot } = chart.chartArea
@@ -10188,8 +10188,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         borderWidth: 1,
         titleColor: '#555',
         bodyColor: '#e8e8e8',
-        titleFont: { family: "'DM Mono', monospace", size: 10 },
-        bodyFont:  { family: "'DM Mono', monospace", size: 12 },
+        titleFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 10 },
+        bodyFont:  { family: "'Space Grotesk', system-ui, sans-serif", size: 12 },
         padding: 10,
         cornerRadius: 4,
       },
@@ -10200,7 +10200,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
         border: { color: isDark() ? '#222' : 'rgba(0,0,0,0.1)' },
         ticks: {
           color: isDark() ? '#ffffff' : '#1a1d2e',
-          font: { family: "'DM Mono', monospace", size: 11 },
+          font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 },
           maxRotation: 0,
           minRotation: 0,
         },
@@ -11425,12 +11425,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         responsive: true, maintainAspectRatio: false,
                         layout: { padding: { top: 20 } },
                         plugins: {
-                          legend: { display: true, position: 'bottom', labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
-                          tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
-                          datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
+                          legend: { display: true, position: 'bottom', labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 }, boxWidth: 10, padding: 20 } },
+                          tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 10 }, bodyFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 12 }, padding: 10, cornerRadius: 4 },
+                          datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 } },
                         },
                         scales: {
-                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
+                          x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 }, maxRotation: 0 } },
                           y: { display: false },
                         },
                       })
@@ -12437,12 +12437,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 responsive: true, maintainAspectRatio: false,
                 layout: { padding: { top: 60 } },
                 plugins: {
-                  legend: { display: true, labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, boxWidth: 10, padding: 20 } },
-                  tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'DM Mono', monospace", size: 10 }, bodyFont: { family: "'DM Mono', monospace", size: 12 }, padding: 10, cornerRadius: 4 },
-                  datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 } },
+                  legend: { display: true, labels: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 }, boxWidth: 10, padding: 20 } },
+                  tooltip: { backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#555', bodyColor: '#e8e8e8', titleFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 10 }, bodyFont: { family: "'Space Grotesk', system-ui, sans-serif", size: 12 }, padding: 10, cornerRadius: 4 },
+                  datalabels: { anchor: 'end', align: 'end', clamp: true, formatter: v => v > 0 ? `${v}%` : null, color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 } },
                 },
                 scales: {
-                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'DM Mono', monospace", size: 11 }, maxRotation: 0 } },
+                  x: { grid: { color: '#1a1a1a' }, border: { color: '#222' }, ticks: { color: isDark() ? '#ffffff' : '#1a1d2e', font: { family: "'Space Grotesk', system-ui, sans-serif", size: 11 }, maxRotation: 0 } },
                   y: { display: false },
                 },
               })

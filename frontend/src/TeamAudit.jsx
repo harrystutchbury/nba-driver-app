@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 const STATS = ['GP', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV']
 
 const STYLES = `
-.tsa-page { padding: 24px; background: #0f172a; min-height: 100vh; color: #e2e8f0; font-family: system-ui, sans-serif; }
+.tsa-page { padding: 24px; background: #0f172a; min-height: 100vh; color: #e2e8f0; font-family: var(--sans); }
 .tsa-title { font-size: 20px; font-weight: 700; color: #f1f5f9; margin: 0 0 4px; }
 .tsa-sub { color: #64748b; font-size: 13px; margin-bottom: 16px; }
 .tsa-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
