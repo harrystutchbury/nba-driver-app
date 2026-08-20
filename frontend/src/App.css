@@ -6686,22 +6686,46 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 /* Form Table view */
 /* Fill available width with equal columns (fixed layout); a per-render min-width
    lets many-column categories scroll instead of clipping. */
+/* Form table — same look as the Rankings/Projections tables (striped rows,
+   muted normal-case headers, 13px, roomier cells) while keeping the fixed
+   layout + horizontal scroll that the wide views need. */
 .form-period-table {
   width: 100%;
   table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
 }
 .form-period-table th:first-child,
-.form-period-table td:first-child { width: 96px; text-align: left; }
-.form-period-table th,
-.form-period-table td {
+.form-period-table td:first-child { width: 100px; text-align: left; }
+.form-period-table th {
+  padding: 10px 10px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
-  padding: 5px 10px;
-  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.form-period-table td,
+.form-period-table td.mono,
+.form-period-table td.num.mono {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .form-period-table td.num,
 .form-period-table th.num { text-align: right; }
+.form-period-table tbody tr:nth-child(odd) td  { background: var(--bg); }
+.form-period-table tbody tr:nth-child(even) td { background: var(--surface); }
+.form-period-table tbody tr:last-child td { border-bottom: none; }
 .form-group-head {
   text-align: center !important;
   color: var(--muted);
