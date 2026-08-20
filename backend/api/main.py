@@ -1537,76 +1537,83 @@ def get_z_score_comparison(
         conn.close()
         raise HTTPException(status_code=404, detail=f"Player '{player}' not found.")
 
-    def _period_pop(start, end, top_n=200):
-        rows = conn.execute("""
-            SELECT player_slug,
-                   AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
-                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
-                   AVG(fg3m) as fg3m,
-                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
-                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
-            FROM game_logs
-            WHERE game_date BETWEEN ? AND ? AND min >= 5
-            GROUP BY player_slug
-            HAVING COUNT(*) >= 3
-            ORDER BY COUNT(*) DESC
-            LIMIT ?
-        """, (start, end, top_n)).fetchall()
-        return [dict(r) for r in rows]
-
-    def _player_stats(start, end):
-        row = conn.execute("""
-            SELECT AVG(pts) as pts, AVG(reb) as reb, AVG(ast) as ast,
-                   AVG(stl) as stl, AVG(blk) as blk, AVG(tov) as tov,
-                   AVG(fg3m) as fg3m,
-                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
-                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct,
-                   COUNT(*) as gp
+    def _player_period_avg(start, end):
+        """The player's per-game line for a date range, aggregated exactly like
+        the player-page season rows (_avg_row), so its Z matches the table."""
+        prows = conn.execute("""
+            SELECT pts, reb, ast, stl, blk, tov, fg3m, fg3a, min,
+                   fga, fta, fgm, ftm, oreb, dreb
             FROM game_logs
             WHERE player_slug = ? AND game_date BETWEEN ? AND ? AND min > 0
-        """, (player, start, end)).fetchone()
-        return dict(row) if row and row["gp"] and row["gp"] > 0 else None
+        """, (player, start, end)).fetchall()
+        return _avg_row([dict(r) for r in prows]) if prows else None
 
-    def _z(val, pop_vals):
-        if val is None or len(pop_vals) < 2:
-            return 0.0
-        mean = sum(pop_vals) / len(pop_vals)
-        std  = (sum((v - mean) ** 2 for v in pop_vals) / len(pop_vals)) ** 0.5
-        return (val - mean) / std if std > 1e-9 else 0.0
+    def _cat_zs(avg, league):
+        """Per-category Z for the player, mirroring _composite_z exactly: counting
+        stats scored directly; FG%/FT% use the volume-weighted impact
+        (pct - league_mean) x attempts_pg. TOV inverted. Returns {key: z}."""
+        out = {}
+        if not avg or not league:
+            return out
+        fg_mean = league.get('_fg_mean')
+        ft_mean = league.get('_ft_mean')
+        for key in Z_KEYS:
+            mean, std = league.get(key, (None, None))
+            if mean is None or std is None:
+                continue
+            if key == 'fg_pct':
+                if avg.get('fg_pct') is None or avg.get('fga_pg') is None or fg_mean is None:
+                    continue
+                val = (avg['fg_pct'] - fg_mean) * avg['fga_pg']
+            elif key == 'ft_pct':
+                if avg.get('ft_pct') is None or avg.get('fta_pg') is None or ft_mean is None:
+                    continue
+                val = (avg['ft_pct'] - ft_mean) * avg['fta_pg']
+            else:
+                val = avg.get(key)
+            if val is None:
+                continue
+            z = (val - mean) / std
+            out[key] = -z if key == 'tov' else z
+        return out
 
-    pop_a   = _period_pop(pa_start, pa_end)
-    pop_b   = _period_pop(pb_start, pb_end)
-    stats_a = _player_stats(pa_start, pa_end)
-    stats_b = _player_stats(pb_start, pb_end)
+    # Use the SAME canonical z engine as the player-page Z column: impact-weighted
+    # FG%/FT% against the >=20-mpg / >=10-game population per period. Previously
+    # this endpoint z-scored raw FG%/FT% against a wide >=5-min pool, which
+    # over-rewarded high-percentage bigs and disagreed with the player table.
+    league_a, _ = _league_data(conn, cutoff=pa_start, cutoff_end=pa_end, min_games=10)
+    league_b, _ = _league_data(conn, cutoff=pb_start, cutoff_end=pb_end, min_games=10)
+    stats_a = _player_period_avg(pa_start, pa_end)
+    stats_b = _player_period_avg(pb_start, pb_end)
 
     if not stats_a and not stats_b:
         conn.close()
         raise HTTPException(status_code=404, detail="Insufficient data for the requested player and date ranges.")
 
+    zs_a = _cat_zs(stats_a, league_a)
+    zs_b = _cat_zs(stats_b, league_b)
+
     CATS = [
-        ("pts",    "PTS",  False),
-        ("reb",    "REB",  False),
-        ("ast",    "AST",  False),
-        ("stl",    "STL",  False),
-        ("blk",    "BLK",  False),
-        ("tov",    "TOV",  True),
-        ("fg3m",   "3PM",  False),
-        ("fg_pct", "FG%",  False),
-        ("ft_pct", "FT%",  False),
+        ("pts",    "PTS"),
+        ("reb",    "REB"),
+        ("ast",    "AST"),
+        ("stl",    "STL"),
+        ("blk",    "BLK"),
+        ("tov",    "TOV"),
+        ("fg3m",   "3PM"),
+        ("fg_pct", "FG%"),
+        ("ft_pct", "FT%"),
     ]
 
     categories = []
     z_total_a  = 0.0
     z_total_b  = 0.0
 
-    for key, label, inverted in CATS:
-        vals_a = [r[key] for r in pop_a if r.get(key) is not None]
-        vals_b = [r[key] for r in pop_b if r.get(key) is not None]
-        val_a  = stats_a.get(key) if stats_a else None
-        val_b  = stats_b.get(key) if stats_b else None
-
-        z_a = _z(val_a, vals_a) * (-1 if inverted else 1)
-        z_b = _z(val_b, vals_b) * (-1 if inverted else 1)
+    for key, label in CATS:
+        z_a = zs_a.get(key, 0.0)
+        z_b = zs_b.get(key, 0.0)
+        val_a = stats_a.get(key) if stats_a else None
+        val_b = stats_b.get(key) if stats_b else None
 
         z_total_a += z_a
         z_total_b += z_b
