@@ -6726,3 +6726,97 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Unified table formatting — makes the secondary tables (Stat Line Projector,
+   Driver Analysis, Shot diet, Compare, Z-breakdown, Game Log) match the
+   Rankings / Projections tables: 13px, muted normal-case headers on a shaded
+   header row, 8px cell padding, alternating row stripes, bottom borders.
+   Appended last so it overrides each table's earlier per-table rules; the
+   more-specific `.num` / first-column rules on those tables still win, so
+   right-alignment and name columns are preserved.
+   ────────────────────────────────────────────────────────────────────────── */
+.usage-table,
+.drivers-table,
+.shot-table,
+.compare-table,
+.z-breakdown-table,
+.career-log-table,
+.gamelog-table:not(.form-period-table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.usage-table th,
+.drivers-table th,
+.shot-table th,
+.compare-table th,
+.z-breakdown-table th,
+.career-log-table th,
+.gamelog-table:not(.form-period-table) th {
+  padding: 10px 10px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.usage-table th.num,
+.drivers-table th.num,
+.shot-table th.num,
+.compare-table th.num,
+.z-breakdown-table th.num,
+.career-log-table th.num,
+.gamelog-table:not(.form-period-table) th.num { text-align: right; }
+
+.usage-table td,
+.drivers-table td,
+.shot-table td,
+.compare-table td,
+.z-breakdown-table td,
+.career-log-table td,
+.gamelog-table:not(.form-period-table) td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.usage-table td.num,
+.drivers-table td.num,
+.shot-table td.num,
+.compare-table td.num,
+.z-breakdown-table td.num,
+.career-log-table td.num,
+.gamelog-table:not(.form-period-table) td.num { text-align: right; }
+
+.usage-table tbody tr:nth-child(odd) td,
+.drivers-table tbody tr:nth-child(odd) td,
+.shot-table tbody tr:nth-child(odd) td,
+.compare-table tbody tr:nth-child(odd) td,
+.z-breakdown-table tbody tr:nth-child(odd) td,
+.career-log-table tbody tr:nth-child(odd) td,
+.gamelog-table:not(.form-period-table) tbody tr:nth-child(odd) td { background: var(--bg); }
+
+.usage-table tbody tr:nth-child(even) td,
+.drivers-table tbody tr:nth-child(even) td,
+.shot-table tbody tr:nth-child(even) td,
+.compare-table tbody tr:nth-child(even) td,
+.z-breakdown-table tbody tr:nth-child(even) td,
+.career-log-table tbody tr:nth-child(even) td,
+.gamelog-table:not(.form-period-table) tbody tr:nth-child(even) td { background: var(--surface); }
+
+.usage-table tbody tr:last-child td,
+.drivers-table tbody tr:last-child td,
+.shot-table tbody tr:last-child td,
+.compare-table tbody tr:last-child td,
+.z-breakdown-table tbody tr:last-child td,
+.career-log-table tbody tr:last-child td,
+.gamelog-table:not(.form-period-table) tbody tr:last-child td { border-bottom: none; }
