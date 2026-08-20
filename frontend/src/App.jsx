@@ -9006,6 +9006,7 @@ const FORM_COLUMNS = {
     { label: 'Stl',         get: b => _fn1(b.stl) },
     { label: 'Stl/36',      title: 'Steals per 36 min', get: b => _fn1(_fp36(b, 'stl')) },
     { label: 'Deflections', title: 'Deflections per game', get: b => _fn1(b.deflections) },
+    { label: 'Stl/Defl',    title: 'Steals per deflection', get: b => _fratio(b.stl, b.deflections) },
   ],
   blocks: [
     { label: 'GP',          get: b => b.gp },
@@ -9014,6 +9015,7 @@ const FORM_COLUMNS = {
     { label: 'Contested',   title: 'Contested shots per game (total)', get: b => _fn1(b.contested_shots) },
     { label: 'Cont 2P',     title: 'Contested 2-point shots per game', get: b => _fn1(b.contested_shots_2pt) },
     { label: 'Cont 3P',     title: 'Contested 3-point shots per game', get: b => _fn1(b.contested_shots_3pt) },
+    { label: 'Blk/Cont',    title: 'Blocks per contested shot', get: b => _fratio(b.blk, b.contested_shots) },
   ],
   turnovers: [
     { label: 'GP',           get: b => b.gp },
