@@ -4511,6 +4511,51 @@ def admin_refresh_adp(
         conn.close()
 
 
+@router.post("/admin/debug-yahoo-adp")
+def admin_debug_yahoo_adp(current_user: str = Depends(get_current_user)):
+    """
+    Probe: resolve the current Yahoo NBA game and return a small raw sample of
+    the players + draft_analysis feed, so the ADP parser can be locked to Yahoo's
+    exact JSON shape. Uses the calling admin's connected Yahoo token.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        fc = conn.execute(
+            "SELECT 1 FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+            [current_user]
+        ).fetchone()
+        if not fc:
+            raise HTTPException(400, "No Yahoo connection on this admin account")
+        token = _refresh_yahoo_token(conn, current_user)
+
+        def _flat(o):
+            if isinstance(o, dict):
+                return o
+            d = {}
+            for e in (o or []):
+                if isinstance(e, dict):
+                    d.update(e)
+            return d
+
+        game = _yahoo_api(token, "game/nba")
+        gc   = (game.get("fantasy_content") or {}).get("game")
+        meta = _flat(gc[0] if isinstance(gc, list) else gc)
+        gk   = meta.get("game_key")
+        season = meta.get("season")
+
+        sample = _yahoo_api(token, f"game/{gk}/players;out=draft_analysis;start=0;count=5")
+        return {"game_key": gk, "season": season, "sample": sample}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("admin_debug_yahoo_adp failed")
+        raise HTTPException(500, f"Yahoo error: {e}")
+    finally:
+        conn.close()
+
+
 @router.post("/admin/fix-slug-collisions")
 def admin_fix_slug_collisions(
     season:  str = None,
