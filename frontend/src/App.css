@@ -2399,6 +2399,30 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   margin-bottom: 32px;
 }
 
+/* Lets the (fixed-min-width) waterfall scroll sideways on narrow screens
+   instead of squishing 13 bars + value labels into the viewport. */
+.chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+  /* Driver Analysis on mobile: controls stack full-width, the headline
+     metrics stay a compact 3-up, and the waterfall scrolls horizontally. */
+  .controls-inner { gap: 12px; }
+  .controls-inner > .ctrl-group,
+  .controls-inner > .ctrl-period,
+  .controls-inner > .preset-group { flex: 1 1 100%; }
+  .hist-mode-toggle { width: 100%; }
+  .hist-mode-toggle .hist-mode-btn { flex: 1 1 0; text-align: center; }
+  .analyse-btn { width: 100%; align-self: stretch; }
+
+  .metrics-row { grid-template-columns: repeat(3, 1fr); }
+  .metric-card { padding: 10px 8px; }
+  .metric-label { font-size: 8px; letter-spacing: 0.6px; }
+  .metric-value { font-size: 18px; margin: 3px 0 2px; }
+  .metric-sub { font-size: 9px; word-break: break-word; }
+
+  .chart-scroll .chart-wrap { min-width: 520px; margin-bottom: 20px; }
+}
+
 /* ── Z-score breakdown table ─────────────────────────────── */
 .z-breakdown-wrap {
   margin-bottom: 28px;

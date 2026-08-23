@@ -11121,8 +11121,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         <span className="metric-sub">{zResult.mode === 'with_without' ? zResult.period_b.end : `${zResult.period_b.start} – ${zResult.period_b.end}`}</span>
                       </div>
                     </div>
-                    <div className="chart-wrap">
-                      <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                    <div className="chart-scroll">
+                      <div className="chart-wrap">
+                        <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                      </div>
                     </div>
                     {zBreakdown && (
                       <div id="z-breakdown-table-wrap" className="z-breakdown-wrap">
@@ -11379,8 +11381,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                     </div>
 
                     {/* ── Waterfall chart ───────────────────────────── */}
-                    <div className="chart-wrap">
-                      <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                    <div className="chart-scroll">
+                      <div className="chart-wrap">
+                        <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+                      </div>
                     </div>
 
                     {shotDiet && (stat === 'pts' || stat === 'fg3m' || stat === 'fg_pct') && (() => {
@@ -12331,8 +12335,10 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
             </div>
 
             {/* ── Waterfall chart ───────────────────────────── */}
-            <div className="chart-wrap">
-              <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+            <div className="chart-scroll">
+              <div className="chart-wrap">
+                <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
+              </div>
             </div>
 
             {/* ── Driver table + Insights ───────────────────── */}
