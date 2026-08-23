@@ -2438,9 +2438,11 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   .metric-value { font-size: 18px; margin: 3px 0 2px; }
   .metric-sub { font-size: 9px; word-break: break-word; }
 
-  /* Swap the sideways waterfall for a vertical per-category bar list: one row
-     per stat, a diverging bar (red left / green right) with its value. */
-  .chart-scroll { display: none; }
+  /* The category waterfall is swapped for a vertical per-category bar list;
+     other (single-stat / breakdown) waterfalls keep the sideways-scroll
+     fallback so they stay legible rather than squished. */
+  .chart-scroll.has-mobile-bars { display: none; }
+  .chart-scroll:not(.has-mobile-bars) .chart-wrap { min-width: 520px; margin-bottom: 20px; }
   .driver-bars { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 24px; }
   .dbar-row { display: grid; grid-template-columns: 42px 1fr 50px; align-items: center; gap: 8px; }
   .dbar-label {
