@@ -4530,27 +4530,38 @@ def admin_debug_yahoo_adp(current_user: str = Depends(get_current_user)):
             raise HTTPException(400, "No Yahoo connection on this admin account")
         token = _refresh_yahoo_token(conn, current_user)
 
-        # Yahoo forbids the game-level players collection (403). Use the LEAGUE-level
-        # feed instead — league/{key}/players;out=draft_analysis returns every player
-        # with Yahoo's site-wide ADP. Prefer the stored league, else discover the
-        # most recent NBA league on the account.
         lk_row = conn.execute(
-            "SELECT league_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+            "SELECT league_key, team_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
             [current_user]
         ).fetchone()
-        league_key = lk_row["league_key"] if lk_row else None
-        discovered = []
-        if not league_key:
-            discovered = _discover_yahoo_leagues(token)
-            if discovered:
-                league_key = max(discovered, key=lambda x: x["year"])["league_key"]
-        if not league_key:
-            raise HTTPException(400, "No Yahoo league found on this account (connect/select a league first)")
+        stored_league = lk_row["league_key"] if lk_row else None
 
-        game_key = league_key.split(".")[0]
-        sample = _yahoo_api(token, f"league/{league_key}/players;out=draft_analysis;start=0;count=5")
-        return {"league_key": league_key, "game_key": game_key,
-                "discovered_leagues": discovered, "sample": sample}
+        # Raw discovery so we can see exactly what Yahoo exposes on the account.
+        try:
+            raw_leagues = _yahoo_api(token, "users;use_login=1/games;game_keys=nba/leagues")
+        except Exception as e:
+            raw_leagues = {"error": str(e)}
+        discovered = _discover_yahoo_leagues(token)
+
+        league_key = stored_league or (
+            max(discovered, key=lambda x: x["year"])["league_key"] if discovered else None
+        )
+
+        sample = None
+        if league_key:
+            try:
+                sample = _yahoo_api(
+                    token, f"league/{league_key}/players;out=draft_analysis;start=0;count=3")
+            except Exception as e:
+                sample = {"error": str(e)}
+
+        return {
+            "stored_league": stored_league,
+            "discovered":    discovered,
+            "league_key":    league_key,
+            "raw_leagues":   raw_leagues,
+            "sample":        sample,
+        }
     except HTTPException:
         raise
     except Exception as e:
