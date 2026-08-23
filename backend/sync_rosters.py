@@ -250,9 +250,15 @@ def sync(season: str = None, dry_run: bool = False, conn=None) -> dict:
         for p in roster:
             slug = p["slug"]
             if slug:
-                # Tank01 has a Basketball Reference id — exact match.
-                if slug in existing_slugs or slug in taken:
-                    already += 1 if slug in existing_slugs else 0
+                # Tank01 has a Basketball Reference id — this IS the player, so
+                # add them unless they already have a row for the TARGET season.
+                # Do NOT gate on `taken`: that set spans every past season + all
+                # game logs, so skipping on it drops every veteran who is missing
+                # from this season (someone who left and rejoined, or whom the
+                # season-roll missed — e.g. DeMar DeRozan). `taken` is only for
+                # generated-slug collision control in the else-branch below.
+                if slug in existing_slugs:
+                    already += 1
                     continue
                 taken.add(slug)
                 added.append({**p, "slug": slug, "generated": False})
