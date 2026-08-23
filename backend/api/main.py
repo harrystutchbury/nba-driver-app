@@ -4395,6 +4395,70 @@ def admin_purge_synced_roster(
         conn.close()
 
 
+@router.post("/admin/set-player-team")
+def admin_set_player_team(
+    slug:   str = Query(..., description="Player br_slug"),
+    team:   str = Query(..., description="Full upper-case team name, e.g. 'DENVER NUGGETS', or 'FA'"),
+    season: str = Query(None, description="Season to set (defaults to the latest / projection season)"),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Manually place a player on a team for a season, upserting the players row.
+    For offseason signings our roster source (Tank01) hasn't ingested yet — e.g.
+    DeMar DeRozan signing with Denver after being waived by Sacramento, which
+    otherwise leaves him on no 2026-27 roster and invisible to projections.
+
+    Tagged roster_source='manual' so it's identifiable and survives the additive
+    Tank01 sync (which only INSERTs new slugs and won't clobber this row).
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+
+        if not season:
+            row = conn.execute("SELECT MAX(season) FROM players").fetchone()
+            season = row[0] if row and row[0] else None
+        if not season:
+            raise HTTPException(400, "No season found in players table")
+
+        name_row = conn.execute(
+            "SELECT full_name FROM players WHERE slug=? ORDER BY season DESC LIMIT 1", (slug,)
+        ).fetchone()
+        if not name_row:
+            raise HTTPException(404, f"Player '{slug}' not found in players table")
+        full_name = name_row["full_name"]
+        team = team.strip().upper()
+
+        before = conn.execute(
+            "SELECT team, roster_source FROM players WHERE slug=? AND season=?", (slug, season)
+        ).fetchone()
+
+        conn.execute("""
+            INSERT INTO players (slug, full_name, team, season, roster_source)
+            VALUES (?, ?, ?, ?, 'manual')
+            ON CONFLICT(slug, season) DO UPDATE SET
+                team = excluded.team,
+                roster_source = 'manual'
+        """, (slug, full_name, team, season))
+        conn.commit()
+
+        return {
+            "slug": slug,
+            "name": full_name,
+            "season": season,
+            "team_before": (before["team"] if before else None),
+            "team_after": team,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_set_player_team failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
 @router.post("/admin/fix-slug-collisions")
 def admin_fix_slug_collisions(
     season:  str = None,
