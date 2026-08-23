@@ -943,7 +943,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
 
   function handleSort(key) {
     if (sortKey === key) setSortAsc(a => !a)
-    else { setSortKey(key); setSortAsc(key === 'tov') }
+    else { setSortKey(key); setSortAsc(key === 'tov' || key === 'adp') }  // lower is better
   }
 
   const PCT_KEYS = new Set(['fg_pct', 'ft_pct'])
@@ -1007,6 +1007,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const getSortVal = (p, key) => {
     if (key === 'z_total') return getEffectiveZTotal(p)
     if (key === 'ctw') return p.ctw ?? -Infinity
+    if (key === 'adp') return p.adp ?? Infinity   // undrafted → sort to the bottom
     if (viewMode === 'totals' && isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
     return p[key] ?? -Infinity
   }
@@ -1152,6 +1153,9 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                   Player <SortIcon col="name" />
                 </th>
                 <th>Pos</th>
+                <th className="num" onClick={() => handleSort('adp')} style={{ cursor: 'pointer' }} title="ESPN Average Draft Position (upcoming season)">
+                  ADP <SortIcon col="adp" />
+                </th>
                 <th className="num" onClick={() => handleSort('gp')} style={{ cursor: 'pointer' }}>
                   GP <SortIcon col="gp" />
                 </th>
@@ -1197,6 +1201,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                       </div>
                     </td>
                     <td className="muted" style={{ fontSize: '11px' }}>{posAbbr(p.position)}</td>
+                    <td className="num mono">{p.adp != null ? (Number.isInteger(p.adp) ? p.adp : p.adp.toFixed(1)) : '—'}</td>
                     <td className="num mono">{p.gp ?? '—'}</td>
                     <td className="num mono">{p.min_pg != null ? p.min_pg.toFixed(1) : '—'}</td>
                     {RANK_COLS.map(c => {

@@ -2837,6 +2837,28 @@ def get_rankings(
             p["ctw_fg_pct"] = ctw["expected_wins_fg"]     if ctw else None
             p["ctw_ft_pct"] = ctw["expected_wins_ft"]     if ctw else None
 
+        # Attach ADP for the upcoming draft season (the latest roster season),
+        # regardless of which stats period is being ranked.
+        adp_season_row = conn.execute("SELECT MAX(season) FROM players").fetchone()
+        adp_season = adp_season_row[0] if adp_season_row else None
+        adp_map = {}
+        if adp_season:
+            try:
+                adp_map = {
+                    r["slug"]: r for r in conn.execute(
+                        "SELECT slug, espn_adp, espn_rank FROM player_adp WHERE season = ?",
+                        (adp_season,)
+                    ).fetchall()
+                }
+            except Exception:
+                adp_map = {}   # table not created yet / no ADP loaded — board still works
+        for p in results:
+            a = adp_map.get(p["slug"])
+            p["espn_adp"]  = a["espn_adp"]  if a else None
+            p["espn_rank"] = a["espn_rank"] if a else None
+            # single display value: crowd ADP when present, else ESPN's draft rank
+            p["adp"] = (p["espn_adp"] if p["espn_adp"] is not None else p["espn_rank"])
+
         results.sort(key=lambda x: (x["z_total"] or -999), reverse=True)
         results = results[:450]   # top 450 board
         for i, p in enumerate(results):
@@ -4454,6 +4476,36 @@ def admin_set_player_team(
         raise
     except Exception:
         logger.exception("admin_set_player_team failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
+@router.post("/admin/refresh-adp")
+def admin_refresh_adp(
+    season: str = Query(None, description="Draft season 'YYYY-YY' (defaults to latest roster season)"),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Pull ESPN Average Draft Position for the draft season and upsert into
+    player_adp. ESPN's game-level feed is public (no auth), so this needs no
+    connected account. Run during draft season to keep the ADP column fresh.
+    """
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        if not season:
+            row = conn.execute("SELECT MAX(season) FROM players").fetchone()
+            season = row[0] if row and row[0] else None
+        if not season:
+            raise HTTPException(400, "No season found in players table")
+        import adp_espn
+        return adp_espn.refresh_espn_adp(conn, season)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_refresh_adp failed")
         raise HTTPException(500, "Internal server error")
     finally:
         conn.close()

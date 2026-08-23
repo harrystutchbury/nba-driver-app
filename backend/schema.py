@@ -452,6 +452,21 @@ def init_db():
     except Exception:
         pass
 
+    # Average Draft Position, keyed by our slug + draft season (e.g. '2026-27').
+    # ESPN columns populated now (public feed); Yahoo columns reserved for phase 2.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS player_adp (
+            slug              TEXT NOT NULL,
+            season            TEXT NOT NULL,
+            espn_adp          REAL,   -- ESPN ownership.averageDraftPosition (crowd)
+            espn_rank         REAL,   -- ESPN draftRanksByRankType.STANDARD.rank
+            yahoo_adp         REAL,   -- Yahoo draft_analysis.average_pick (phase 2)
+            yahoo_pct_drafted REAL,   -- Yahoo draft_analysis.percent_drafted (phase 2)
+            updated_at        TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (slug, season)
+        )
+    """)
+
     try:
         conn.execute("ALTER TABLE fantasy_player_map ADD COLUMN position TEXT")
     except Exception:
