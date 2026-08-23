@@ -9173,6 +9173,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [agingArchetype, setAgingArchetype] = useState(null)
   const [agingExpanded, setAgingExpanded]   = useState(false)
   const [driverExpanded, setDriverExpanded] = useState(false)
+  const [showCustomDates, setShowCustomDates] = useState(false)  // mobile: collapse date pickers
   const [schedProj, setSchedProj]           = useState(null)
   const [schedExpanded, setSchedExpanded]   = useState(false)
   const [schedPeriod, setSchedPeriod]       = useState('season')
@@ -11049,20 +11050,29 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                         ))}
                       </div>
                     </div>
-                    <div className="ctrl-group ctrl-period">
-                      <span className="ctrl-label">Baseline period</span>
-                      <div className="date-pair">
-                        <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={(e) => setPeriodA(p => ({ ...p, start: e.target.value }))} />
-                        <span className="date-sep">–</span>
-                        <input className="ctrl-input date-input" type="date" value={periodA.end} onChange={(e) => setPeriodA(p => ({ ...p, end: e.target.value }))} />
+                    <button
+                      type="button"
+                      className="date-toggle"
+                      onClick={() => setShowCustomDates(v => !v)}
+                    >
+                      Custom date ranges <span>{showCustomDates ? '▲' : '▼'}</span>
+                    </button>
+                    <div className={`date-groups${showCustomDates ? ' open' : ''}`}>
+                      <div className="ctrl-group ctrl-period">
+                        <span className="ctrl-label">Baseline period</span>
+                        <div className="date-pair">
+                          <input className="ctrl-input date-input" type="date" value={periodA.start} onChange={(e) => setPeriodA(p => ({ ...p, start: e.target.value }))} />
+                          <span className="date-sep">–</span>
+                          <input className="ctrl-input date-input" type="date" value={periodA.end} onChange={(e) => setPeriodA(p => ({ ...p, end: e.target.value }))} />
+                        </div>
                       </div>
-                    </div>
-                    <div className="ctrl-group ctrl-period">
-                      <span className="ctrl-label">Comparison period</span>
-                      <div className="date-pair">
-                        <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={(e) => setPeriodB(p => ({ ...p, start: e.target.value }))} />
-                        <span className="date-sep">–</span>
-                        <input className="ctrl-input date-input" type="date" value={periodB.end} onChange={(e) => setPeriodB(p => ({ ...p, end: e.target.value }))} />
+                      <div className="ctrl-group ctrl-period">
+                        <span className="ctrl-label">Comparison period</span>
+                        <div className="date-pair">
+                          <input className="ctrl-input date-input" type="date" value={periodB.start} onChange={(e) => setPeriodB(p => ({ ...p, start: e.target.value }))} />
+                          <span className="date-sep">–</span>
+                          <input className="ctrl-input date-input" type="date" value={periodB.end} onChange={(e) => setPeriodB(p => ({ ...p, end: e.target.value }))} />
+                        </div>
                       </div>
                     </div>
                   </> : <>
@@ -11125,6 +11135,32 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                       <div className="chart-wrap">
                         <Bar data={chartData} options={chartOptions} plugins={[labelPlugin]} />
                       </div>
+                    </div>
+                    {/* Mobile: the waterfall doesn't fit a phone, so show each category
+                        as its own row — a diverging bar (red left / green right). */}
+                    <div className="driver-bars">
+                      {(() => {
+                        const cats = zResult.categories || []
+                        const maxAbs = Math.max(0.001, ...cats.map(c => Math.abs(c.delta ?? 0)))
+                        return cats.map(c => {
+                          const d = c.delta ?? 0
+                          const pos = d >= 0
+                          const w = Math.abs(d) / maxAbs * 50
+                          return (
+                            <div className="dbar-row" key={c.key}>
+                              <span className="dbar-label">{c.label}</span>
+                              <div className="dbar-track">
+                                <span className="dbar-zero" />
+                                <span
+                                  className={`dbar-fill ${pos ? 'pos' : 'neg'}`}
+                                  style={pos ? { left: '50%', width: `${w}%` } : { right: '50%', width: `${w}%` }}
+                                />
+                              </div>
+                              <span className={`dbar-val ${pos ? 'pos' : 'neg'}`}>{pos ? '+' : ''}{d.toFixed(2)}</span>
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                     {zBreakdown && (
                       <div id="z-breakdown-table-wrap" className="z-breakdown-wrap">

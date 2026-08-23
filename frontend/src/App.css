@@ -2399,28 +2399,62 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   margin-bottom: 32px;
 }
 
-/* Lets the (fixed-min-width) waterfall scroll sideways on narrow screens
-   instead of squishing 13 bars + value labels into the viewport. */
 .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* Mobile-only pieces — hidden on desktop, where the waterfall + inline dates
+   are shown instead. `display:contents` lets the date wrapper vanish on desktop
+   so the layout there is byte-for-byte unchanged. */
+.driver-bars { display: none; }
+.date-toggle { display: none; }
+.date-groups { display: contents; }
+
 @media (max-width: 640px) {
-  /* Driver Analysis on mobile: controls stack full-width, the headline
-     metrics stay a compact 3-up, and the waterfall scrolls horizontally. */
+  /* Controls stack full-width (descendant selectors so the wrapped date
+     groups are covered too). */
   .controls-inner { gap: 12px; }
-  .controls-inner > .ctrl-group,
-  .controls-inner > .ctrl-period,
-  .controls-inner > .preset-group { flex: 1 1 100%; }
+  .controls-inner .ctrl-group,
+  .controls-inner .ctrl-period,
+  .controls-inner .preset-group { flex: 1 1 100%; }
   .hist-mode-toggle { width: 100%; }
   .hist-mode-toggle .hist-mode-btn { flex: 1 1 0; text-align: center; }
   .analyse-btn { width: 100%; align-self: stretch; }
 
+  /* Collapse the manual date pickers behind a toggle — presets cover the
+     common cases, so this cuts a wall of inputs off the top of the panel. */
+  .date-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 9px 12px; background: transparent;
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--label); font-family: var(--mono); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+  }
+  .date-groups { display: none; }
+  .date-groups.open { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+
+  /* Headline metrics: compact 3-up */
   .metrics-row { grid-template-columns: repeat(3, 1fr); }
   .metric-card { padding: 10px 8px; }
   .metric-label { font-size: 8px; letter-spacing: 0.6px; }
   .metric-value { font-size: 18px; margin: 3px 0 2px; }
   .metric-sub { font-size: 9px; word-break: break-word; }
 
-  .chart-scroll .chart-wrap { min-width: 520px; margin-bottom: 20px; }
+  /* Swap the sideways waterfall for a vertical per-category bar list: one row
+     per stat, a diverging bar (red left / green right) with its value. */
+  .chart-scroll { display: none; }
+  .driver-bars { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 24px; }
+  .dbar-row { display: grid; grid-template-columns: 42px 1fr 50px; align-items: center; gap: 8px; }
+  .dbar-label {
+    font-family: var(--mono); font-size: 11px; color: var(--label);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .dbar-track { position: relative; height: 16px; }
+  .dbar-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }
+  .dbar-fill { position: absolute; top: 2px; height: 12px; border-radius: 3px; min-width: 2px; }
+  .dbar-fill.pos { background: var(--accent); }
+  .dbar-fill.neg { background: var(--neg); }
+  .dbar-val { font-family: var(--mono); font-size: 12px; text-align: right; }
+  .dbar-val.pos { color: var(--accent); }
+  .dbar-val.neg { color: var(--neg); }
 }
 
 /* ── Z-score breakdown table ─────────────────────────────── */
