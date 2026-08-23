@@ -4530,23 +4530,27 @@ def admin_debug_yahoo_adp(current_user: str = Depends(get_current_user)):
             raise HTTPException(400, "No Yahoo connection on this admin account")
         token = _refresh_yahoo_token(conn, current_user)
 
-        def _flat(o):
-            if isinstance(o, dict):
-                return o
-            d = {}
-            for e in (o or []):
-                if isinstance(e, dict):
-                    d.update(e)
-            return d
+        # Yahoo forbids the game-level players collection (403). Use the LEAGUE-level
+        # feed instead — league/{key}/players;out=draft_analysis returns every player
+        # with Yahoo's site-wide ADP. Prefer the stored league, else discover the
+        # most recent NBA league on the account.
+        lk_row = conn.execute(
+            "SELECT league_key FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+            [current_user]
+        ).fetchone()
+        league_key = lk_row["league_key"] if lk_row else None
+        discovered = []
+        if not league_key:
+            discovered = _discover_yahoo_leagues(token)
+            if discovered:
+                league_key = max(discovered, key=lambda x: x["year"])["league_key"]
+        if not league_key:
+            raise HTTPException(400, "No Yahoo league found on this account (connect/select a league first)")
 
-        game = _yahoo_api(token, "game/nba")
-        gc   = (game.get("fantasy_content") or {}).get("game")
-        meta = _flat(gc[0] if isinstance(gc, list) else gc)
-        gk   = meta.get("game_key")
-        season = meta.get("season")
-
-        sample = _yahoo_api(token, f"game/{gk}/players;out=draft_analysis;start=0;count=5")
-        return {"game_key": gk, "season": season, "sample": sample}
+        game_key = league_key.split(".")[0]
+        sample = _yahoo_api(token, f"league/{league_key}/players;out=draft_analysis;start=0;count=5")
+        return {"league_key": league_key, "game_key": game_key,
+                "discovered_leagues": discovered, "sample": sample}
     except HTTPException:
         raise
     except Exception as e:
