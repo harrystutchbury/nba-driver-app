@@ -720,9 +720,12 @@ def get_team_calibration(
     # (last season's pool, or explicitly dropped to FA) who are NOT on a real
     # team for the projection season, so they can be re-allocated.
     if team == "FA":
-        # Free agents = anyone in the system UNDER 35 (or explicitly dropped to
-        # FA) who isn't on a real team for the projection season. The age cap
-        # keeps returning vets of any recency while excluding the long-retired.
+        # Free agents = anyone who isn't on a real team for the projection season
+        # and is still relevant: played the last completed season (any age — this
+        # is what surfaces waived-then-unsigned vets like DeMar DeRozan), OR is
+        # under 35, OR was explicitly dropped to FA. Recency (a PREV_SEASON row)
+        # is the real "not long-retired" signal; the age cap alone wrongly hid
+        # recently-active players over 35.
         cutoff = datetime.now().date()
         try:
             cutoff = cutoff.replace(year=cutoff.year - 35)
@@ -740,10 +743,11 @@ def get_team_calibration(
               AND (
                     (b.birthdate IS NOT NULL AND b.birthdate > ?)
                     OR p.slug IN (SELECT slug FROM players WHERE season = ? AND team = 'FA')
+                    OR p.slug IN (SELECT slug FROM players WHERE season = ?)
                   )
             GROUP BY p.slug ORDER BY full_name
             """,
-            [season, cutoff.isoformat(), season],
+            [season, cutoff.isoformat(), season, PREV_SEASON],
         ).fetchall()
     else:
         players = conn.execute(
