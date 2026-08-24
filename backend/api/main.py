@@ -4536,6 +4536,29 @@ def admin_debug_yahoo_adp(current_user: str = Depends(get_current_user)):
         ).fetchone()
         stored_league = lk_row["league_key"] if lk_row else None
 
+        # Token freshness — tells us if a reconnect actually re-minted the token.
+        meta = conn.execute(
+            "SELECT expires_at, updated_at, "
+            "CASE WHEN refresh_token IS NOT NULL AND refresh_token<>'' THEN 1 ELSE 0 END AS has_refresh, "
+            "length(access_token) AS tok_len "
+            "FROM fantasy_connections WHERE username=? AND provider='yahoo'",
+            [current_user]
+        ).fetchone()
+        token_meta = dict(meta) if meta else {}
+
+        # Isolate the failure: simplest call → user's games → nba filter.
+        def _try(path):
+            try:
+                _yahoo_api(token, path)
+                return "ok"
+            except Exception as e:
+                return str(e)[:200]
+        probes = {
+            "game/nba":                              _try("game/nba"),
+            "users;use_login=1/games":               _try("users;use_login=1/games"),
+            "users;use_login=1/games;game_keys=nba": _try("users;use_login=1/games;game_keys=nba"),
+        }
+
         # Raw discovery so we can see exactly what Yahoo exposes on the account.
         try:
             raw_leagues = _yahoo_api(token, "users;use_login=1/games;game_keys=nba/leagues")
@@ -4556,6 +4579,8 @@ def admin_debug_yahoo_adp(current_user: str = Depends(get_current_user)):
                 sample = {"error": str(e)}
 
         return {
+            "token_meta":    token_meta,
+            "probes":        probes,
             "stored_league": stored_league,
             "discovered":    discovered,
             "league_key":    league_key,
