@@ -1154,7 +1154,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                 </th>
                 <th>Pos</th>
                 <th className="num" onClick={() => handleSort('adp')} style={{ cursor: 'pointer' }} title="ESPN Average Draft Position (upcoming season)">
-                  ADP <SortIcon col="adp" />
+                  ESPN ADP <SortIcon col="adp" />
                 </th>
                 <th className="num" onClick={() => handleSort('gp')} style={{ cursor: 'pointer' }}>
                   GP <SortIcon col="gp" />
@@ -2041,7 +2041,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
   function handleSort(key) {
     if (sortKey === key) setSortAsc(a => !a)
-    else { setSortKey(key); setSortAsc(key === 'tov') }
+    else { setSortKey(key); setSortAsc(key === 'tov' || key === 'adp') }  // lower is better
   }
 
   const activePeriod = PROJ_PERIODS.find(p => {
@@ -2107,6 +2107,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const getSortVal = (p, key) => {
     if (key === 'period_value') return getEffectiveValue(p)
     if (key === 'ctw') return p.ctw ?? -Infinity
+    if (key === 'adp') return p.adp ?? Infinity   // undrafted → sort to the bottom
     if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
     return p[key] ?? -Infinity
   }
@@ -2261,6 +2262,9 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   Player <SortIcon col="name" />
                 </th>
                 <th>Pos</th>
+                <th className="num" onClick={() => handleSort('adp')} style={{ cursor: 'pointer' }} title="ESPN Average Draft Position (upcoming season)">
+                  ESPN ADP <SortIcon col="adp" />
+                </th>
                 <th className="num" onClick={() => handleSort('gp')} style={{ cursor: 'pointer' }}>
                   GP <SortIcon col="gp" />
                 </th>
@@ -2305,6 +2309,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                     </div>
                   </td>
                   <td className="muted" style={{ fontSize: '11px' }}>{posAbbr(p.position)}</td>
+                  <td className="num mono">{p.adp != null ? (Number.isInteger(p.adp) ? p.adp : p.adp.toFixed(1)) : '—'}</td>
                   <td className="num mono">{p.gp}</td>
                   {PROJ_COLS.map(c => {
                     const punted = puntedCats.has(c.key)

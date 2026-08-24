@@ -3932,6 +3932,24 @@ def get_projections_calibrated(
                 entry[k] = None
             results.append(entry)
 
+        # ESPN ADP for the draft season (same source as /rankings). `season` here
+        # is already MAX(season) = the projection/draft season.
+        adp_map = {}
+        try:
+            adp_map = {
+                r["slug"]: r for r in conn.execute(
+                    "SELECT slug, espn_adp, espn_rank FROM player_adp WHERE season = ?",
+                    (season,)
+                ).fetchall()
+            }
+        except Exception:
+            adp_map = {}
+        for p in results:
+            a = adp_map.get(p["slug"])
+            p["espn_adp"]  = a["espn_adp"]  if a else None
+            p["espn_rank"] = a["espn_rank"] if a else None
+            p["adp"] = (p["espn_adp"] if p["espn_adp"] is not None else p["espn_rank"])
+
         for i, p in enumerate(results):
             p["rank"] = i + 1
 
