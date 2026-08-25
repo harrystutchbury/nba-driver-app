@@ -2482,7 +2482,9 @@ function DraftPage() {
   useEffect(() => {
     if (!setup) return
     setLoading(true)
-    apiFetch('/api/rankings?period=season')
+    // Draft off our projection model (matchup + home/away adjusted once the
+    // schedule loads) for the full upcoming season — not raw last-year averages.
+    apiFetch('/api/projections-calibrated?start=2026-10-21&end=2027-06-30')
       .then(r => r.json())
       .then(d => { setRankData(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
@@ -2794,6 +2796,9 @@ function DraftPage() {
                   <span className="dp-name">{draftShortName(p.name)}</span>
                   <span className="dp-meta">{p.position} · {p.team}</span>
                 </div>
+                <span className="dp-adp" title="ESPN Average Draft Position">
+                  {p.adp != null ? (Number.isInteger(p.adp) ? p.adp : p.adp.toFixed(1)) : '—'}
+                </span>
                 <span className={`dp-score ${p.draftScore >= 0 ? 'pos' : 'neg'}`}>
                   {p.draftScore >= 0 ? '+' : ''}{p.draftScore.toFixed(1)}
                 </span>
@@ -2802,8 +2807,8 @@ function DraftPage() {
             {!loading && available.length === 0 && <div className="draft-loading">No players found</div>}
           </div>
           <div className="draft-list-legend">
-            <span>PTS · REB · AST</span>
-            <span>Draft value{myRoster.length === 0 ? ' (raw z-score)' : ' (need-adjusted)'}</span>
+            <span>ESPN ADP</span>
+            <span>Draft value{myRoster.length === 0 ? ' (projected z-score)' : ' (need-adjusted)'}</span>
           </div>
         </div>
       </div>

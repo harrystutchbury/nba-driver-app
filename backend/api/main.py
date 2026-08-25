@@ -7310,7 +7310,7 @@ ESPN_STAT_MAP = {
 def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
     """Fetch scoring settings directly from ESPN Fantasy API."""
     import json as _json
-    url = f"https://fantasy.espn.com/apis/v3/games/fba/seasons/2026/segments/0/leagues/{league_id}"
+    url = f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_current_season_end_year()}/segments/0/leagues/{league_id}"
     try:
         resp = _requests.get(
             url,
@@ -9260,7 +9260,7 @@ def _espn_matchup_projection_inner(current_user, week, as_of_date=None, add_slug
     acq_limit = -1
     try:
         _alr = _requests.get(
-            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/2026/segments/0/leagues/{fc['league_key']}",
+            f"https://fantasy.espn.com/apis/v3/games/fba/seasons/{_current_season_end_year()}/segments/0/leagues/{fc['league_key']}",
             params={"view": "mSettings"},
             cookies={"espn_s2": fc["access_token"], "SWID": fc["refresh_token"]},
             timeout=8,

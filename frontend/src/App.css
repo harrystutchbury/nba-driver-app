@@ -6577,7 +6577,8 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .draft-pick-search { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; width: 100%; box-sizing: border-box; }
 .draft-pick-header.my-turn .draft-pick-search { border-color: var(--accent)66; }
 .draft-player-list { flex: 1; overflow-y: auto; }
-.draft-player-row { display: grid; grid-template-columns: 26px 1fr 48px; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border)33; width: 100%; background: none; border-left: none; border-right: none; border-top: none; color: var(--text); cursor: pointer; text-align: left; }
+.draft-player-row { display: grid; grid-template-columns: 26px 1fr 44px 48px; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border)33; width: 100%; background: none; border-left: none; border-right: none; border-top: none; color: var(--text); cursor: pointer; text-align: left; }
+.dp-adp { font-size: 11px; color: var(--muted); font-family: var(--mono); text-align: right; }
 .draft-player-row:hover { background: var(--card); }
 .dp-rank { font-size: 11px; color: var(--muted); text-align: center; }
 .dp-info { min-width: 0; }
