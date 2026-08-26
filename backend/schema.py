@@ -467,6 +467,15 @@ def init_db():
         )
     """)
 
+    # Hand-written draft-kit blurbs, keyed by our slug. Edited inline by admins.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS player_blurbs (
+            slug       TEXT PRIMARY KEY,
+            blurb      TEXT,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     try:
         conn.execute("ALTER TABLE fantasy_player_map ADD COLUMN position TEXT")
     except Exception:

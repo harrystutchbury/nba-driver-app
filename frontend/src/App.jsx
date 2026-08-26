@@ -2816,6 +2816,124 @@ function DraftPage() {
   )
 }
 
+// ─── Draft Kit ────────────────────────────────────────────────────────────────
+
+const DK_COLS = [
+  ['gp', 'GP'], ['min', 'MIN'], ['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'],
+  ['stl', 'STL'], ['blk', 'BLK'], ['tov', 'TOV'], ['fg3m', '3PM'], ['fg_pct', 'FG%'], ['ft_pct', 'FT%'],
+]
+
+function DraftKitCard({ p, isAdmin, onSelectPlayer }) {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(p.blurb || '')
+  const [blurb,   setBlurb]   = useState(p.blurb || '')
+  const [saving,  setSaving]  = useState(false)
+
+  const fmtStat = (v, pct) => v == null ? '—' : (pct ? `${v}%` : (Number.isInteger(v) ? v : v.toFixed(1)))
+  const fmtAdp  = (v) => v == null ? '—' : (Number.isInteger(v) ? v : v.toFixed(1))
+
+  async function save() {
+    setSaving(true)
+    try {
+      const r = await apiFetch('/api/admin/draft-kit-blurb', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: p.slug, blurb: draft }),
+      })
+      if (r.ok) { setBlurb(draft); setEditing(false) }
+    } finally { setSaving(false) }
+  }
+
+  const StatRow = ({ label, line, cls }) => (
+    <tr className={cls}>
+      <td className="dk-stat-label">{label}</td>
+      {DK_COLS.map(([k]) => (
+        <td key={k} className="num mono">{line ? fmtStat(line[k], k === 'fg_pct' || k === 'ft_pct') : '—'}</td>
+      ))}
+    </tr>
+  )
+
+  return (
+    <div className="dk-card">
+      <div className="dk-card-head">
+        <span className="dk-rank">{p.rank}</span>
+        <div className="dk-name-block">
+          <button className="dk-name" onClick={() => onSelectPlayer?.(p)}>{p.name}</button>
+          <span className="dk-meta">
+            {[p.position, p.team, p.age != null ? `Age ${p.age}` : null].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+        <div className="dk-adps">
+          <div className="dk-adp"><span className="dk-adp-label">ESPN ADP</span><span className="dk-adp-val">{fmtAdp(p.espn_adp)}</span></div>
+          <div className="dk-adp"><span className="dk-adp-label">Yahoo ADP</span><span className="dk-adp-val">{fmtAdp(p.yahoo_adp)}</span></div>
+        </div>
+      </div>
+
+      <div className="dk-stats-wrap">
+        <table className="dk-stats">
+          <thead>
+            <tr><th className="dk-stat-label"></th>{DK_COLS.map(([k, lbl]) => <th key={k} className="num">{lbl}</th>)}</tr>
+          </thead>
+          <tbody>
+            <StatRow label="2025-26"       line={p.stats_2025} cls="dk-actual" />
+            <StatRow label="2026-27 Proj"  line={p.proj_2026}  cls="dk-proj" />
+          </tbody>
+        </table>
+      </div>
+
+      <div className="dk-blurb-wrap">
+        {editing ? (
+          <div className="dk-blurb-edit">
+            <textarea className="dk-blurb-input" value={draft} onChange={e => setDraft(e.target.value)}
+                      rows={4} placeholder="Write this player's blurb…" />
+            <div className="dk-blurb-actions">
+              <button className="dk-btn dk-btn-save" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button className="dk-btn" onClick={() => { setDraft(blurb); setEditing(false) }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {blurb
+              ? <p className="dk-blurb">{blurb}</p>
+              : <p className="dk-blurb dk-blurb-empty">{isAdmin ? 'No blurb yet.' : ''}</p>}
+            {isAdmin && (
+              <button className="dk-blurb-edit-btn" onClick={() => setEditing(true)}>
+                {blurb ? 'Edit blurb' : 'Add blurb'}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DraftKitPage({ isAdmin, onSelectPlayer }) {
+  const [players, setPlayers] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch('/api/draft-kit')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setPlayers(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="dk-empty">Loading draft kit…</div>
+  if (!players?.length) return <div className="dk-empty">Draft kit isn't available yet.</div>
+
+  return (
+    <div className="dk-page">
+      <div className="dk-intro">
+        <h1 className="dk-title">2026-27 Draft Kit</h1>
+        <p className="dk-sub">Top {players.length} players by ADP — last season, our 2026-27 projection, and the take.</p>
+      </div>
+      <div className="dk-list">
+        {players.map(p => <DraftKitCard key={p.slug} p={p} isAdmin={isAdmin} onSelectPlayer={onSelectPlayer} />)}
+      </div>
+    </div>
+  )
+}
+
 // ─── Forum ────────────────────────────────────────────────────────────────────
 
 function timeAgo(dt) {
@@ -9079,7 +9197,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0]
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
+      'weekly-schedule','season-schedule','blog','forum','draft','draft-kit','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     if (VALID.has(p0)) return p0
     return localStorage.getItem('auth_token') ? 'fantasy' : 'dashboard'
   })
@@ -9095,6 +9213,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     dashboard:         'Home',
     rankings:          'Rankings',
     projections:       'Projections',
+    'draft-kit':       'Draft Kit',
     trending:          'Trending Players',
     boxscores:         'Box Scores',
     injuries:          'Injury Report',
@@ -9370,7 +9489,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     const parts = window.location.pathname.split('/').filter(Boolean)
     const p0 = parts[0] || ''
     const VALID = new Set(['rankings','projections','trending','boxscores','injuries','depth',
-      'weekly-schedule','season-schedule','blog','forum','draft','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
+      'weekly-schedule','season-schedule','blog','forum','draft','draft-kit','adjustments','moderation','admin','player','fantasy','transformation','proj-audit','proj-calibration','team-audit'])
     const newPage = VALID.has(p0) ? p0 : 'dashboard'
     setPage(newPage)
     if (p0 === 'blog') setBlogInitSlug(parts[1] || null)
@@ -10414,12 +10533,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <button className={`nav-btn${page === 'dashboard' ? ' active' : ''}`} onClick={() => go('dashboard')}>Home</button>
 
                 <div className="nav-group">
-                  <button className={`nav-btn nav-group-btn${['rankings','projections','trending','depth','transformation','proj-audit','proj-calibration','team-audit'].includes(page) ? ' active' : ''}`}>
+                  <button className={`nav-btn nav-group-btn${['rankings','projections','draft-kit','trending','depth','transformation','proj-audit','proj-calibration','team-audit'].includes(page) ? ' active' : ''}`}>
                     Players <span className="nav-chevron">▾</span>
                   </button>
                   <div className="nav-dropdown">
                     <button className="nav-drop-item" onClick={() => go('rankings')}>Rankings</button>
                     <button className="nav-drop-item" onClick={() => go('projections')}>Projections</button>
+                    <button className="nav-drop-item" onClick={() => go('draft-kit')}>Draft Kit</button>
                     <button className="nav-drop-item" onClick={() => go('trending')}>Trending Players</button>
                     <button className="nav-drop-item" onClick={() => go('depth')}>Depth Charts</button>
                     <button className="nav-drop-item" onClick={() => go('transformation')}>Driver Breakdown</button>
@@ -10579,6 +10699,8 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       {page === 'forum' && <ForumPage />}
 
       {page === 'draft' && <DraftPage />}
+
+      {page === 'draft-kit' && <DraftKitPage isAdmin={isAdmin} onSelectPlayer={p => navigate('player', { playerObj: p })} />}
 
       {page === 'adjustments'      && <AdjustmentsPage />}
       {page === 'proj-audit'       && <AuditErrorBoundary><ProjectionAuditPageNew /></AuditErrorBoundary>}

@@ -6905,3 +6905,85 @@ input[type="number"].adj-input::-webkit-inner-spin-button { opacity: 0.4; }
 .z-breakdown-table tbody tr:last-child td,
 .career-log-table tbody tr:last-child td,
 .gamelog-table:not(.form-period-table) tbody tr:last-child td { border-bottom: none; }
+
+/* ── Draft Kit ─────────────────────────────────────────────────────────────── */
+.dk-page { max-width: 920px; margin: 0 auto; padding: 8px 0 60px; }
+.dk-empty { max-width: 920px; margin: 0 auto; padding: 40px 16px; color: var(--muted); text-align: center; }
+.dk-intro { padding: 8px 4px 20px; }
+.dk-title { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; margin: 0 0 4px; color: var(--text); }
+.dk-sub { font-size: 13px; color: var(--muted); margin: 0; }
+
+.dk-list { display: flex; flex-direction: column; gap: 14px; }
+
+.dk-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.dk-card-head { display: flex; align-items: flex-start; gap: 14px; }
+.dk-rank {
+  font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--muted);
+  min-width: 34px; text-align: right; line-height: 1.4; flex-shrink: 0;
+}
+.dk-name-block { flex: 1 1 auto; min-width: 0; }
+.dk-name {
+  display: block; background: none; border: none; padding: 0; cursor: pointer;
+  font-size: 18px; font-weight: 600; color: var(--text); text-align: left; letter-spacing: -0.2px;
+}
+.dk-name:hover { color: var(--skill); }
+.dk-meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.dk-adps { display: flex; gap: 10px; flex-shrink: 0; }
+.dk-adp {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 12px; min-width: 66px;
+}
+.dk-adp-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.dk-adp-val { font-family: var(--mono); font-size: 17px; font-weight: 600; color: var(--text); }
+
+.dk-stats-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 14px 0 4px; }
+.dk-stats { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+.dk-stats th {
+  padding: 6px 8px; font-family: var(--sans); font-size: 11px; font-weight: 500;
+  color: var(--muted); text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.dk-stats th.dk-stat-label, .dk-stats td.dk-stat-label { text-align: left; }
+.dk-stats td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.dk-stats tr:last-child td { border-bottom: none; }
+.dk-stat-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); min-width: 92px; }
+.dk-actual td { color: var(--label); }
+.dk-proj td { color: var(--text); }
+.dk-proj td.dk-stat-label { color: var(--skill); }
+.dk-proj { background: var(--skill-bg); }
+
+.dk-blurb-wrap { margin-top: 12px; }
+.dk-blurb { font-size: 14px; line-height: 1.6; color: var(--label); margin: 0; }
+.dk-blurb-empty { color: var(--muted); font-style: italic; }
+.dk-blurb-edit-btn {
+  margin-top: 8px; background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); font-size: 11px; padding: 4px 10px; cursor: pointer;
+}
+.dk-blurb-edit-btn:hover { border-color: var(--skill); color: var(--skill); }
+.dk-blurb-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; padding: 10px 12px;
+  resize: vertical; outline: none;
+}
+.dk-blurb-input:focus { border-color: var(--skill); }
+.dk-blurb-actions { display: flex; gap: 8px; margin-top: 8px; }
+.dk-btn {
+  background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+  font-size: 12px; padding: 6px 14px; cursor: pointer;
+}
+.dk-btn:hover { color: var(--text); }
+.dk-btn-save { border-color: var(--skill); color: var(--skill); }
+.dk-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .dk-card-head { flex-wrap: wrap; }
+  .dk-adps { width: 100%; margin-top: 4px; padding-left: 48px; }
+  .dk-title { font-size: 21px; }
+}

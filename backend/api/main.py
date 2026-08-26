@@ -2870,6 +2870,156 @@ def get_rankings(
 
 
 # -----------------------------------------------------------------------
+# GET /draft-kit  — public top-100 draft profiles
+# -----------------------------------------------------------------------
+
+@router.get("/draft-kit")
+def get_draft_kit(limit: int = Query(100, ge=1, le=200)):
+    """
+    Public draft-kit profiles for the top players by ESPN ADP. Each profile:
+    name, position, team, age, last-season (2025-26) line, projected (2026-27)
+    line, ESPN + Yahoo ADP, and a hand-written blurb.
+    """
+    from api.proj_router import get_or_init_inputs, compute_projected, get_team_pace, PREV_SEASON
+    from datetime import date
+
+    conn = get_conn()
+    try:
+        srow = conn.execute("SELECT MAX(season) FROM players").fetchone()
+        season = srow[0] if srow and srow[0] else None
+        if not season:
+            return []
+
+        adp_rows = conn.execute(
+            "SELECT slug, espn_adp, espn_rank, yahoo_adp FROM player_adp WHERE season = ?",
+            (season,)
+        ).fetchall()
+        adp_map = {r["slug"]: dict(r) for r in adp_rows}
+        # Rank by ESPN ADP (crowd) → ESPN draft rank fallback; drop players with neither.
+        ordered = sorted(
+            [(r["slug"], (r["espn_adp"] if r["espn_adp"] is not None else r["espn_rank"]))
+             for r in adp_rows
+             if r["espn_adp"] is not None or r["espn_rank"] is not None],
+            key=lambda x: x[1]
+        )
+        top = [s for s, _ in ordered[:limit]]
+        if not top:
+            return []
+        ph = ",".join("?" * len(top))
+
+        bio = {r["slug"]: dict(r) for r in conn.execute(f"""
+            SELECT p.slug, p.full_name AS name, p.team,
+                   COALESCE(fpm.position, t01.position, b.position_group) AS position,
+                   b.birthdate
+            FROM players p
+            LEFT JOIN player_bio b            ON b.br_slug = p.slug
+            LEFT JOIN fantasy_player_map fpm  ON fpm.br_slug = p.slug AND fpm.provider = 'espn'
+            LEFT JOIN tank01_player_map t01   ON t01.br_slug = p.slug
+            WHERE p.season = ? AND p.slug IN ({ph})
+        """, [season] + top).fetchall()}
+
+        prev = {r["player_slug"]: dict(r) for r in conn.execute(f"""
+            SELECT player_slug,
+                   COUNT(*) AS gp, AVG(min) AS min, AVG(pts) AS pts, AVG(reb) AS reb,
+                   AVG(ast) AS ast, AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+                   AVG(fg3m) AS fg3m,
+                   SUM(fgm) * 100.0 / NULLIF(SUM(fga), 0) AS fg_pct,
+                   SUM(ftm) * 100.0 / NULLIF(SUM(fta), 0) AS ft_pct
+            FROM game_logs
+            WHERE season = ? AND min > 0 AND player_slug IN ({ph})
+            GROUP BY player_slug
+        """, [PREV_SEASON] + top).fetchall()}
+
+        blurbs = {r["slug"]: r["blurb"] for r in conn.execute(
+            f"SELECT slug, blurb FROM player_blurbs WHERE slug IN ({ph})", top).fetchall()}
+
+        def _age(bd):
+            if not bd:
+                return None
+            try:
+                b = date.fromisoformat(bd[:10]); t = date.today()
+                return t.year - b.year - ((t.month, t.day) < (b.month, b.day))
+            except Exception:
+                return None
+
+        def _line(gp, mn, pts, reb, ast, stl, blk, tov, fg3m, fg, ft):
+            r1 = lambda v: round(v, 1) if v is not None else None
+            return {"gp": int(gp) if gp is not None else None, "min": r1(mn),
+                    "pts": r1(pts), "reb": r1(reb), "ast": r1(ast), "stl": r1(stl),
+                    "blk": r1(blk), "tov": r1(tov), "fg3m": r1(fg3m),
+                    "fg_pct": r1(fg), "ft_pct": r1(ft)}
+
+        pace_cache = {}
+        out = []
+        for i, slug in enumerate(top):
+            info = bio.get(slug, {})
+            team = info.get("team")
+
+            proj_line = None
+            if team:
+                if team not in pace_cache:
+                    pace_cache[team] = get_team_pace(conn, team, season)
+                inp = get_or_init_inputs(conn, slug, season, team, base_year=PREV_SEASON)
+                p = compute_projected(inp, pace_cache[team])
+                if p:
+                    proj_line = _line(
+                        int(round(inp.get("projected_gp") or 0)),
+                        inp.get("minutes_per_game"),
+                        p["pts"], (p["oreb"] or 0) + (p["dreb"] or 0),
+                        p["ast"], p["stl"], p["blk"], p["tov"], p["fg3m"],
+                        p["fg_pct"] * 100 if p["fg_pct"] is not None else None,
+                        (p["ft_pct"] or 0) * 100 if p.get("ft_pct") is not None else None,
+                    )
+
+            pv = prev.get(slug)
+            prev_line = _line(pv["gp"], pv["min"], pv["pts"], pv["reb"], pv["ast"],
+                              pv["stl"], pv["blk"], pv["tov"], pv["fg3m"],
+                              pv["fg_pct"], pv["ft_pct"]) if pv else None
+
+            pa = adp_map.get(slug, {})
+            out.append({
+                "rank": i + 1, "slug": slug,
+                "name": info.get("name", slug), "team": team,
+                "position": info.get("position"), "age": _age(info.get("birthdate")),
+                "espn_adp": pa.get("espn_adp") if pa.get("espn_adp") is not None else pa.get("espn_rank"),
+                "yahoo_adp": pa.get("yahoo_adp"),
+                "blurb": blurbs.get(slug),
+                "stats_2025": prev_line,
+                "proj_2026": proj_line,
+            })
+        return out
+    finally:
+        conn.close()
+
+
+@router.post("/admin/draft-kit-blurb")
+def admin_set_draft_kit_blurb(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """Upsert a player's draft-kit blurb (admin-only)."""
+    conn = get_conn()
+    try:
+        if not _is_admin(current_user, conn):
+            raise HTTPException(status_code=403, detail="Admin only")
+        slug  = (body.get("slug") or "").strip()
+        blurb = (body.get("blurb") or "").strip()
+        if not slug:
+            raise HTTPException(400, "slug is required")
+        conn.execute("""
+            INSERT INTO player_blurbs (slug, blurb, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(slug) DO UPDATE SET blurb = excluded.blurb, updated_at = datetime('now')
+        """, (slug, blurb))
+        conn.commit()
+        return {"ok": True, "slug": slug, "blurb": blurb}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin_set_draft_kit_blurb failed")
+        raise HTTPException(500, "Internal server error")
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------
 # GET /schedule-projection
 # -----------------------------------------------------------------------
 
