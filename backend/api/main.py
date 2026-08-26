@@ -3142,8 +3142,12 @@ def get_schedule_projection(
 # -----------------------------------------------------------------------
 
 @router.post("/admin/refresh-schedule")
-def admin_refresh_schedule(current_user: str = Depends(get_current_user)):
-    """Fetch upcoming schedule from basketball-reference and store in DB."""
+def admin_refresh_schedule(
+    season: int = Query(None, description="Season end year (e.g. 2027 = 2026-27). Defaults to current."),
+    current_user: str = Depends(get_current_user),
+):
+    """Fetch a season's upcoming schedule from basketball-reference and store it.
+    Pass ?season=2027 to load 2026-27 during the offseason (before the helper rolls)."""
     conn = get_conn()
     try:
         if not _is_admin(current_user, conn):
@@ -3151,10 +3155,10 @@ def admin_refresh_schedule(current_user: str = Depends(get_current_user)):
         import refresh as refresh_mod
         from schema import init_db
         init_db()
-        season_year = _current_season_end_year()
+        season_year = season or _current_season_end_year()
         refresh_mod.refresh_schedule(conn, season_year)
         count = conn.execute("SELECT COUNT(*) FROM nba_schedule WHERE season=?", (season_year,)).fetchone()[0]
-        return {"status": "ok", "games_stored": count}
+        return {"status": "ok", "season": season_year, "games_stored": count}
     except HTTPException:
         raise
     except Exception as e:
@@ -9731,9 +9735,21 @@ def get_schedule_weeks(current_user: str = Depends(get_current_user)):
     season_year = _current_season_end_year()
     season = f"{season_year - 1}-{str(season_year)[2:]}"
 
+    # Prefer the loaded schedule (upcoming season) so the page shows future weeks;
+    # fall back to game_logs (last completed season) when no schedule is loaded.
     game_rows = conn.execute("""
-        SELECT DISTINCT game_date, team FROM game_logs WHERE season=? ORDER BY game_date
-    """, [season]).fetchall()
+        SELECT DISTINCT game_date, team FROM (
+            SELECT game_date, home_team AS team FROM nba_schedule
+              WHERE season = (SELECT MAX(season) FROM nba_schedule)
+            UNION
+            SELECT game_date, away_team AS team FROM nba_schedule
+              WHERE season = (SELECT MAX(season) FROM nba_schedule)
+        ) ORDER BY game_date
+    """).fetchall()
+    if not game_rows:
+        game_rows = conn.execute("""
+            SELECT DISTINCT game_date, team FROM game_logs WHERE season=? ORDER BY game_date
+        """, [season]).fetchall()
 
     pts_rows = conn.execute("""
         SELECT opponent AS team, AVG(game_pts) AS avg_pts
@@ -9881,7 +9897,8 @@ def fantasy_week_detail(
     end:   str = Query(...),
     current_user: str = Depends(get_current_user),
 ):
-    """Return per-team, per-day game data for a date range (week drill-down)."""
+    """Return per-team, per-day game data for a date range (week drill-down).
+    Played games come from game_logs; future/scheduled games from nba_schedule."""
     conn = get_conn()
     rows = conn.execute("""
         SELECT DISTINCT game_date, team, opponent, home_away
@@ -9889,13 +9906,24 @@ def fantasy_week_detail(
         WHERE game_date >= ? AND game_date <= ? AND opponent IS NOT NULL
         ORDER BY game_date, team
     """, [start, end]).fetchall()
+    sched = conn.execute("""
+        SELECT game_date, home_team, away_team
+        FROM nba_schedule
+        WHERE game_date >= ? AND game_date <= ?
+    """, [start, end]).fetchall()
     conn.close()
+
     result: dict = {}
     for r in rows:
         result.setdefault(r["team"], {})[r["game_date"]] = {
             "opp":  r["opponent"],
             "home": r["home_away"] == "H" if r["home_away"] else None,
         }
+    # Scheduled games — setdefault so an actually-played game_log entry wins.
+    for r in sched:
+        gd = r["game_date"]
+        result.setdefault(r["home_team"], {}).setdefault(gd, {"opp": r["away_team"], "home": True})
+        result.setdefault(r["away_team"], {}).setdefault(gd, {"opp": r["home_team"], "home": False})
     return result
 
 
