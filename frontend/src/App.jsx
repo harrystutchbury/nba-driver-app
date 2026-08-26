@@ -5369,10 +5369,6 @@ function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings'
         )
       })()}
 
-      <p className="proj-note">
-        Based on 2025–26 season averages for matched players.
-      </p>
-
       {isCat && tracked_cats?.length > 0 && standings.length > 0 && (() => {
         const negCats = new Set(['TO', 'TOV'])
         // Per-cat ranks: 1 = best. For neg cats, lower value = rank 1.
