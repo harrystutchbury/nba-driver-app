@@ -12,8 +12,17 @@ DB_PATH = os.environ.get(
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout + busy_timeout: a locked connection waits/retries up to 30s instead
+    # of erroring instantly with "database is locked" (which 500'd every read once).
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")
+    # WAL: readers don't block on a writer (and vice-versa), so a slow write can't
+    # freeze the whole API. Idempotent — a no-op once the DB is already in WAL.
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
     return conn
 
 
