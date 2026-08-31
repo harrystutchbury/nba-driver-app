@@ -11008,8 +11008,12 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                   player: { slug: '__proj__', name: `${playerStats.player.name} '26/27 Proj` },
                   stats: { seasons: [projStatsRow] },
                 } : null
+                // When comparing vs the projection, tag the baseline with its season.
+                const baseName = (cmpProj && projEntry)
+                  ? `${playerStats.player.name} '25/26`
+                  : playerStats.player.name
                 const allPlayers = [
-                  { player: playerStats.player, stats: playerStats },
+                  { player: { ...playerStats.player, name: baseName }, stats: playerStats },
                   ...(cmpProj && projEntry ? [projEntry] : []),
                   ...cmpPlayers,
                 ]
