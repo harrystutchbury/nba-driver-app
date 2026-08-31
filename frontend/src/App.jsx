@@ -9330,6 +9330,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   const [cmpSuggs,    setCmpSuggs]    = useState([])
   const [cmpShow,     setCmpShow]     = useState(false)
   const [cmpPlayers,  setCmpPlayers]  = useState([]) // [{player, stats}]
+  const [cmpProj,     setCmpProj]     = useState(false) // compare vs the player's own 2026/27 projection
 
   const isPro = true // all features open
 
@@ -9377,7 +9378,7 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
   }, [cmpQuery])
 
   // Reset compare players when main player changes
-  useEffect(() => { setCmpPlayers([]) }, [selectedPlayer])
+  useEffect(() => { setCmpPlayers([]); setCmpProj(false) }, [selectedPlayer])
 
   const [playerBlogPosts, setPlayerBlogPosts] = useState([])
   useEffect(() => {
@@ -10995,11 +10996,27 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                 <span className="proj-toggle">{cmpExpanded ? '▲' : '▼'}</span>
               </div>
               {cmpExpanded && (() => {
-                const CMP_COLORS = [isDark() ? '#00e676' : '#0a7a36', '#ff9e64', '#64b5ff', '#c084fc']
-                const allPlayers = [{ player: playerStats.player, stats: playerStats }, ...cmpPlayers]
+                const CMP_COLORS = [isDark() ? '#00e676' : '#0a7a36', '#ff9e64', '#64b5ff', '#c084fc', '#ff5db1']
+                // The player's own 2026/27 projection as a comparison entry.
+                const projStatsRow = (ourProj && ourProjRowZ) ? {
+                  ...ourProj,
+                  z_pts: ourProjRowZ.pts, z_reb: ourProjRowZ.reb, z_ast: ourProjRowZ.ast,
+                  z_stl: ourProjRowZ.stl, z_blk: ourProjRowZ.blk, z_tov: ourProjRowZ.tov,
+                  z_fg3m: ourProjRowZ.fg3m, z_fg_pct: ourProjRowZ.fg_pct, z_ft_pct: ourProjRowZ.ft_pct,
+                } : null
+                const projEntry = projStatsRow ? {
+                  player: { slug: '__proj__', name: `${playerStats.player.name} '26/27 Proj` },
+                  stats: { seasons: [projStatsRow] },
+                } : null
+                const allPlayers = [
+                  { player: playerStats.player, stats: playerStats },
+                  ...(cmpProj && projEntry ? [projEntry] : []),
+                  ...cmpPlayers,
+                ]
                 const canAdd = cmpPlayers.length < 3
 
                 function removeCmpPlayer(slug) {
+                  if (slug === '__proj__') { setCmpProj(false); return }
                   setCmpPlayers(ps => ps.filter(p => p.player.slug !== slug))
                 }
 
@@ -11098,6 +11115,11 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             </ul>
                           )}
                         </div>
+                      )}
+                      {!cmpProj && projEntry && (
+                        <button className="cmp-proj-btn" onClick={() => setCmpProj(true)}>
+                          + 2026/27 Projection
+                        </button>
                       )}
                     </div>
 

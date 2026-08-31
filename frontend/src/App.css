@@ -2986,6 +2986,21 @@ a.nav-btn { text-decoration: none; display: inline-block; }
   font-weight: 500;
 }
 
+.cmp-proj-btn {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  cursor: pointer;
+}
+.cmp-proj-btn:hover { border-color: var(--skill); color: var(--skill); }
+
 .cmp-chip-remove {
   background: none;
   border: none;
