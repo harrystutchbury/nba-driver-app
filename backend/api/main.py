@@ -2933,6 +2933,23 @@ def get_draft_kit(limit: int = Query(100, ge=1, le=200)):
         blurbs = {r["slug"]: r["blurb"] for r in conn.execute(
             f"SELECT slug, blurb FROM player_blurbs WHERE slug IN ({ph})", top).fetchall()}
 
+        # Z-score + rank per row, reusing the Rankings (2025-26) and Projections
+        # (2026-27) computations so the numbers match those pages exactly.
+        try:
+            # pass every param explicitly — calling an endpoint fn directly leaves
+            # unset Query(...) defaults as truthy Query objects, not None.
+            r25 = {p["slug"]: {"z": p.get("z_total"), "rank": p.get("rank")}
+                   for p in get_rankings(period="season", position="all", start=None, end=None)}
+        except Exception:
+            r25 = {}
+        try:
+            pj = get_projections_calibrated(start="2026-10-21", end="2027-06-30")
+            pj_ranked = sorted([p for p in pj if p.get("z_total") is not None],
+                               key=lambda x: x["z_total"], reverse=True)
+            r26 = {p["slug"]: {"z": p["z_total"], "rank": i + 1} for i, p in enumerate(pj_ranked)}
+        except Exception:
+            r26 = {}
+
         def _age(bd):
             if not bd:
                 return None
@@ -2975,6 +2992,15 @@ def get_draft_kit(limit: int = Query(100, ge=1, le=200)):
             prev_line = _line(pv["gp"], pv["min"], pv["pts"], pv["reb"], pv["ast"],
                               pv["stl"], pv["blk"], pv["tov"], pv["fg3m"],
                               pv["fg_pct"], pv["ft_pct"]) if pv else None
+
+            if prev_line:
+                rr = r25.get(slug)
+                prev_line["z"]    = rr["z"]    if rr else None
+                prev_line["rank"] = rr["rank"] if rr else None
+            if proj_line:
+                rr = r26.get(slug)
+                proj_line["z"]    = rr["z"]    if rr else None
+                proj_line["rank"] = rr["rank"] if rr else None
 
             pa = adp_map.get(slug, {})
             out.append({

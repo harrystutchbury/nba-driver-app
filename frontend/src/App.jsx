@@ -2819,6 +2819,7 @@ function DraftPage() {
 // ─── Draft Kit ────────────────────────────────────────────────────────────────
 
 const DK_COLS = [
+  ['z', 'Z'], ['rank', 'RK'],
   ['gp', 'GP'], ['min', 'MIN'], ['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'],
   ['stl', 'STL'], ['blk', 'BLK'], ['tov', 'TOV'], ['fg3m', '3PM'], ['fg_pct', 'FG%'], ['ft_pct', 'FT%'],
 ]
@@ -2846,9 +2847,20 @@ function DraftKitCard({ p, isAdmin, onSelectPlayer }) {
   const StatRow = ({ label, line, cls }) => (
     <tr className={cls}>
       <td className="dk-stat-label">{label}</td>
-      {DK_COLS.map(([k]) => (
-        <td key={k} className="num mono">{line ? fmtStat(line[k], k === 'fg_pct' || k === 'ft_pct') : '—'}</td>
-      ))}
+      {DK_COLS.map(([k]) => {
+        let val = '—', extra = ''
+        if (line) {
+          if (k === 'z') {
+            val = line.z == null ? '—' : (line.z >= 0 ? '+' : '') + line.z.toFixed(1)
+            extra = line.z == null ? '' : line.z >= 0 ? ' dk-z-pos' : ' dk-z-neg'
+          } else if (k === 'rank') {
+            val = line.rank == null ? '—' : line.rank
+          } else {
+            val = fmtStat(line[k], k === 'fg_pct' || k === 'ft_pct')
+          }
+        }
+        return <td key={k} className={`num mono${extra}`}>{val}</td>
+      })}
     </tr>
   )
 
@@ -2859,7 +2871,7 @@ function DraftKitCard({ p, isAdmin, onSelectPlayer }) {
         <div className="dk-name-block">
           <button className="dk-name" onClick={() => onSelectPlayer?.(p)}>{p.name}</button>
           <span className="dk-meta">
-            {[p.position, p.team, p.age != null ? `Age ${p.age}` : null].filter(Boolean).join(' · ')}
+            {[p.position, p.team, p.age != null ? `${p.age}` : null].filter(Boolean).join(' · ')}
           </span>
         </div>
         <div className="dk-adps">
@@ -2925,7 +2937,6 @@ function DraftKitPage({ isAdmin, onSelectPlayer }) {
     <div className="dk-page">
       <div className="dk-intro">
         <h1 className="dk-title">2026-27 Draft Kit</h1>
-        <p className="dk-sub">Top {players.length} players by ADP — last season, our 2026-27 projection, and the take.</p>
       </div>
       <div className="dk-list">
         {players.map(p => <DraftKitCard key={p.slug} p={p} isAdmin={isAdmin} onSelectPlayer={onSelectPlayer} />)}
