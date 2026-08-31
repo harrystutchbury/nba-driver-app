@@ -2874,10 +2874,12 @@ function DraftKitCard({ p, isAdmin, onSelectPlayer }) {
             {[p.position, p.team, p.age != null ? `${p.age}` : null].filter(Boolean).join(' · ')}
           </span>
         </div>
+        {/* ADP boxes hidden until both ESPN + Yahoo are flowing — restore to bring back.
         <div className="dk-adps">
           <div className="dk-adp"><span className="dk-adp-label">ESPN ADP</span><span className="dk-adp-val">{fmtAdp(p.espn_adp)}</span></div>
           <div className="dk-adp"><span className="dk-adp-label">Yahoo ADP</span><span className="dk-adp-val">{fmtAdp(p.yahoo_adp)}</span></div>
         </div>
+        */}
       </div>
 
       <div className="dk-stats-wrap">
