@@ -10366,9 +10366,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
     { key: 'stl',     label: 'STL' },
     { key: 'blk',     label: 'BLK' },
     { key: 'tov',     label: 'TOV' },
-    { key: 'fga_pg',  label: 'FGA/M', noZ: true, fmt: d => (d?.fga_pg != null && d?.fg_pct != null) ? `${(d.fga_pg * d.fg_pct / 100).toFixed(1)}/${(+d.fga_pg).toFixed(1)}` : '—' },
+    { key: 'fga_pg',  label: 'FGM/A', noZ: true, fmt: d => (d?.fga_pg != null && d?.fg_pct != null) ? `${(d.fga_pg * d.fg_pct / 100).toFixed(1)}/${(+d.fga_pg).toFixed(1)}` : '—' },
     { key: 'fg_pct',  label: 'FG%' },
-    { key: '_2pa_pg', label: '2PA/M', noZ: true, fmt: d => {
+    { key: '_2pa_pg', label: '2PM/A', noZ: true, fmt: d => {
       if (d?.fga_pg == null || d?.fg3a_pg == null || d?.fg_pct == null || d?.fg3m == null) return '—'
       const pa = d.fga_pg - d.fg3a_pg
       const pm = d.fga_pg * d.fg_pct / 100 - d.fg3m
@@ -10380,9 +10380,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
       const pm = d.fga_pg * d.fg_pct / 100 - d.fg3m
       return pa > 0 ? (pm / pa * 100).toFixed(1) + '%' : '—'
     }},
-    { key: 'fg3a_pg', label: '3PA/M', noZ: true, fmt: d => (d?.fg3m != null && d?.fg3a_pg != null) ? `${(+d.fg3m).toFixed(1)}/${(+d.fg3a_pg).toFixed(1)}` : '—' },
+    { key: 'fg3a_pg', label: '3PM/A', noZ: true, fmt: d => (d?.fg3m != null && d?.fg3a_pg != null) ? `${(+d.fg3m).toFixed(1)}/${(+d.fg3a_pg).toFixed(1)}` : '—' },
     { key: 'fg3_pct', label: '3P%',   noZ: true, fmt: d => d?.fg3_pct != null ? d.fg3_pct.toFixed(1) + '%' : '—' },
-    { key: 'fta_pg',  label: 'FTA/M', noZ: true, fmt: d => (d?.fta_pg != null && d?.ft_pct != null) ? `${(d.fta_pg * d.ft_pct / 100).toFixed(1)}/${(+d.fta_pg).toFixed(1)}` : '—' },
+    { key: 'fta_pg',  label: 'FTM/A', noZ: true, fmt: d => (d?.fta_pg != null && d?.ft_pct != null) ? `${(d.fta_pg * d.ft_pct / 100).toFixed(1)}/${(+d.fta_pg).toFixed(1)}` : '—' },
     { key: 'ft_pct',  label: 'FT%' },
   ]
 
@@ -12273,9 +12273,9 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <th className="num">STL</th>
                             <th className="num">BLK</th>
                             <th className="num">TOV</th>
-                            <th className="num">FGA/M</th>
+                            <th className="num">FGM/A</th>
                             <th className="num">FG%</th>
-                            <th className="num">FTA/M</th>
+                            <th className="num">FTM/A</th>
                             <th className="num">FT%</th>
                           </tr>
                         </thead>
@@ -12366,13 +12366,13 @@ function AppMain({ onLogout, onOpenAccount, onOpenLogin, token }) {
                             <th className="num">STL</th>
                             <th className="num">BLK</th>
                             <th className="num">TOV</th>
-                            <th className="num">FGA/M</th>
+                            <th className="num">FGM/A</th>
                             <th className="num">FG%</th>
-                            <th className="num">2PA/M</th>
+                            <th className="num">2PM/A</th>
                             <th className="num">2P%</th>
-                            <th className="num">3PA/M</th>
+                            <th className="num">3PM/A</th>
                             <th className="num">3P%</th>
-                            <th className="num">FTA/M</th>
+                            <th className="num">FTM/A</th>
                             <th className="num">FT%</th>
                           </tr>
                         </thead>
