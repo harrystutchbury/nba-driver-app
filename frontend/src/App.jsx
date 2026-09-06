@@ -5691,7 +5691,8 @@ function ProjectedStandings({ endpoint = '/api/fantasy/espn/projected-standings'
 // ── Roster Analysis tab ────────────────────────────────────────────────────────
 
 function RosterAnalysis({ data, dwData, dwErr, freeAgents, onSelectPlayer }) {
-  const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map } = data
+  const { my_roster, my_stats, my_cat_z, teams, cat_ranks, tracked_cats, neg_cats, stat_name_map, scoring_type, point_values } = data
+  const isPoints = (scoring_type || '').toUpperCase().includes('POINT')
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
   const negSet = new Set(neg_cats || [])
@@ -5736,6 +5737,62 @@ function RosterAnalysis({ data, dwData, dwErr, freeAgents, onSelectPlayer }) {
       if (neg ? diff < 0 : diff > 0) w++; else l++
     })
     return { w, l, tie }
+  }
+
+  // ── Points-league view: value roster + league by fantasy points ──
+  if (isPoints) {
+    const pv = point_values || SCORING_PRESETS.yahoo
+    const fpOf   = (p) => p.stats ? fantasyPoints(p.stats, pv) : null
+    const teamFP = (t) => (t.players || []).reduce((s, p) => s + (fpOf(p) || 0), 0)
+    const myRosterSorted = [...my_roster].sort((a, b) => (fpOf(b) ?? -Infinity) - (fpOf(a) ?? -Infinity))
+    const myTeam  = teams.find(t => t.is_my_team) || { players: my_roster }
+    const myFP    = teamFP(myTeam)
+    const teamsByFP = [...teams].map(t => ({ ...t, fp: teamFP(t) })).sort((a, b) => b.fp - a.fp)
+    const PCOLS = [['pts','PTS'],['reb','REB'],['ast','AST'],['stl','STL'],['blk','BLK'],['tov','TO'],['fg3m','3PM'],['fg_pct','FG%'],['ft_pct','FT%']]
+    return (
+      <div className="fantasy-wrap">
+        <div className="ra-section-title">Roster — Fantasy Points (per game)</div>
+        <div className="dash-card ra-card-wide" style={{ overflowX: 'auto', marginBottom: 24 }}>
+          <table className="dash-table ra-table">
+            <thead>
+              <tr><th>Player</th>{PCOLS.map(([, h]) => <th key={h}>{h}</th>)}<th>FP/G</th></tr>
+            </thead>
+            <tbody>
+              {myRosterSorted.map((p, i) => {
+                const s = p.stats; const fp = fpOf(p)
+                return (
+                  <tr key={p.espn_name + i} className={!s ? 'ra-row-unmatched' : ''}>
+                    <td className={`ra-player-name${p.br_slug && onSelectPlayer ? ' rank-player-link' : ''}`}
+                        onClick={() => p.br_slug && onSelectPlayer && onSelectPlayer({ slug: p.br_slug, name: p.espn_name })}>
+                      {p.espn_name}{!p.br_slug && <span className="ra-no-data"> (no data)</span>}
+                    </td>
+                    {PCOLS.map(([k]) => <td key={k}>{s?.[k] != null ? s[k].toFixed(1) : '—'}</td>)}
+                    <td><strong>{fp != null ? fp.toFixed(1) : '—'}</strong></td>
+                  </tr>
+                )
+              })}
+              <tr className="ra-totals-row"><td>TOTAL</td><td colSpan={PCOLS.length}></td><td><strong>{myFP.toFixed(1)}</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="ra-section-title">League roster strength (total FP/G)</div>
+        <div className="dash-card ra-card-wide" style={{ overflowX: 'auto' }}>
+          <table className="dash-table ra-table">
+            <thead><tr><th>#</th><th>Team</th><th>Total FP/G</th></tr></thead>
+            <tbody>
+              {teamsByFP.map((t, i) => (
+                <tr key={t.team_id || i} className={t.is_my_team ? 'ra-my-team-row' : ''}>
+                  <td>{i + 1}</td>
+                  <td>{t.name}{t.is_my_team ? ' (you)' : ''}</td>
+                  <td><strong>{t.fp.toFixed(1)}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -6228,7 +6285,8 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
     }).then(r => r.ok ? r.json() : null).then(d => { if (d) setBaseSim(d) }).catch(() => {})
   }, [])
 
-  const { my_roster, my_stats, teams, tracked_cats, neg_cats, stat_name_map, cat_ranks } = data
+  const { my_roster, my_stats, teams, tracked_cats, neg_cats, stat_name_map, cat_ranks, scoring_type, point_values } = data
+  const isPoints = (scoring_type || '').toUpperCase().includes('POINT')
   const catToKey = {}
   tracked_cats.forEach(cat => { if (stat_name_map[cat]) catToKey[cat] = stat_name_map[cat] })
   const negSet  = new Set(neg_cats || [])
@@ -6639,8 +6697,46 @@ function TradeAnalysis({ data, onSelectPlayer, endpoints = {} }) {
         const myStandAfter  = simResult.projected_standings?.find(r=>r.is_my_team)
         const winPct = r => r ? ((r.proj_wins/(r.proj_wins+r.proj_losses+0.0001))*100).toFixed(1)+'%' : '—'
 
+        // ── Points-league before/after FP summary ──
+        const pv = point_values || SCORING_PRESETS.yahoo
+        const fpOf = p => p.stats ? fantasyPoints(p.stats, pv) : null
+        const beforeFP = beforeRoster.reduce((s,p)=>s+(fpOf(p)||0),0)
+        const afterFP  = afterRoster.reduce((s,p)=>s+(fpOf(p)||0),0)
+        const fpDelta  = afterFP - beforeFP
+
         return (
           <div style={{marginTop:20}}>
+
+            {isPoints && (
+              <>
+                <div className="ra-section-title" style={{marginTop:0}}>Fantasy Points — Before vs After (per game)</div>
+                <div className="dash-card" style={{overflowX:'auto', marginBottom:18}}>
+                  <div style={{display:'flex', gap:24, flexWrap:'wrap', alignItems:'baseline', marginBottom:12}}>
+                    <div><span style={{color:'var(--muted)',fontSize:13}}>Before </span><strong style={{fontSize:18}}>{beforeFP.toFixed(1)}</strong></div>
+                    <div><span style={{color:'var(--muted)',fontSize:13}}>After </span><strong style={{fontSize:18}}>{afterFP.toFixed(1)}</strong></div>
+                    <div><span style={{color:'var(--muted)',fontSize:13}}>Change </span><strong style={{fontSize:18, color: fpDelta>=0?'var(--pos,#1a9850)':'var(--neg,#d73027)'}}>{fpDelta>=0?'+':''}{fpDelta.toFixed(1)}</strong></div>
+                  </div>
+                  <table className="dash-table ra-table">
+                    <thead>
+                      <tr><th>Player</th><th>Change</th><th style={{textAlign:'right'}}>FP/G</th></tr>
+                    </thead>
+                    <tbody>
+                      {[...beforeRoster.filter(p=>p.isOut).map(p=>({...p,tag:'out'})),
+                        ...afterRoster.filter(p=>p.isNew).map(p=>({...p,tag:'in'}))].map((p,i)=>{
+                        const fp = fpOf(p)
+                        return (
+                          <tr key={p.slug+i}>
+                            <td className="ra-player-name">{p.name}</td>
+                            <td style={{color: p.tag==='in'?'var(--pos,#1a9850)':'var(--neg,#d73027)'}}>{p.tag==='in'?'Acquire':'Trade away'}{p.from&&p.tag==='in'?` (from ${p.from})`:''}</td>
+                            <td style={{textAlign:'right'}}>{fp!=null?fp.toFixed(1):'—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             {/* VS Each Opponent */}
             <div className="ra-section-title" style={{marginTop:0}}>VS Each Opponent</div>

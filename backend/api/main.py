@@ -10732,6 +10732,7 @@ def espn_roster_analysis(current_user: str = Depends(get_current_user)):
         "teams":        list(all_team_stats.values()),
         "cat_ranks":    cat_ranks,
         "scoring_type": scoring_type,
+        "point_values": _espn_items_to_point_values(scoring.get("items")),
         "tracked_cats": tracked_cats,
         "neg_cats":     list(NEG_CATS),
         "stat_name_map": stat_name_map,
