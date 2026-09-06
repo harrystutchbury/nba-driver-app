@@ -75,6 +75,9 @@ function FantasyConnectionsSection() {
   const [msg,          setMsg]         = useState(null)
   const [yahooLeagues, setYahooLeagues] = useState(null)
   const [yahooLoading, setYahooLoading] = useState(false)
+  const [fxLeagueId,   setFxLeagueId]   = useState('')
+  const [fxCookies,    setFxCookies]    = useState('')
+  const [fxShowForm,   setFxShowForm]   = useState(false)
 
   useEffect(() => { loadStatus() }, [])
 
@@ -103,6 +106,28 @@ function FantasyConnectionsSection() {
     loadStatus()
   }
 
+  async function handleFantraxConnect(e) {
+    e.preventDefault(); setLoading(true); setMsg(null)
+    try {
+      const res = await apiFetch('/api/fantasy/fantrax/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league_id: fxLeagueId.trim(), cookies: fxCookies.trim() }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      const d = await res.json()
+      setFxShowForm(false); setFxLeagueId(''); setFxCookies('')
+      setMsg({ type: 'ok', text: `Fantrax connected!${d.league_name ? ` (${d.league_name})` : ''} Visit the Fantasy tab to select your team.` })
+      loadStatus()
+    } catch (e) { setMsg({ type: 'err', text: e.message }) }
+    setLoading(false)
+  }
+
+  async function handleFantraxDisconnect() {
+    if (!confirm('Disconnect Fantrax?')) return
+    await apiFetch('/api/fantasy/fantrax/disconnect', { method: 'DELETE' })
+    loadStatus()
+  }
+
   async function handleYahooConnect() {
     setLoading(true)
     try {
@@ -121,8 +146,9 @@ function FantasyConnectionsSection() {
 
   if (!status) return <p className="modal-loading">Loading…</p>
 
-  const espn  = status.espn  || {}
-  const yahoo = status.yahoo || {}
+  const espn    = status.espn  || {}
+  const yahoo   = status.yahoo || {}
+  const fantrax = status.fantrax || {}
 
   return (
     <div className="acct-fantasy-section">
@@ -217,6 +243,37 @@ function FantasyConnectionsSection() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Fantrax */}
+      <div className="acct-provider-row">
+        <span className="acct-provider-name">Fantrax</span>
+        {fantrax.connected ? (
+          <div className="acct-provider-connected">
+            <span className="acct-connected-badge">Connected ✓</span>
+            <button className="acct-disconnect-btn" onClick={handleFantraxDisconnect}>Disconnect</button>
+          </div>
+        ) : (
+          <button className="acct-connect-btn" onClick={() => setFxShowForm(s => !s)}>
+            {fxShowForm ? 'Cancel' : 'Connect Fantrax'}
+          </button>
+        )}
+      </div>
+      {fxShowForm && !fantrax.connected && (
+        <form onSubmit={handleFantraxConnect} className="acct-espn-form">
+          <p className="fantasy-connect-sub">
+            Fantrax has no public API, so we connect using your session cookies.<br/>
+            <b>1.</b> On <code>fantrax.com</code> (logged in), open your league — the ID is in the URL:
+            <code>fantrax.com/fantasy/league/<b>THIS_PART</b>/…</code><br/>
+            <b>2.</b> DevTools → <b>Application</b> → <b>Service workers</b> → tick <b>Bypass for network</b> → reload.<br/>
+            <b>3.</b> DevTools → <b>Network</b> → filter <code>req</code> → click a <code>fxpa/req</code> row → <b>Headers</b> → <b>Request Headers</b> → copy the whole <code>Cookie</code> value and paste it below.
+          </p>
+          <input className="login-input" type="text" placeholder="League ID (from URL)" value={fxLeagueId} onChange={e => setFxLeagueId(e.target.value)} />
+          <textarea className="login-input" rows={4} placeholder="Cookie value (the whole string)" value={fxCookies} onChange={e => setFxCookies(e.target.value)} style={{resize:'vertical',fontFamily:'monospace',fontSize:12}} />
+          <button className="login-btn" type="submit" disabled={loading || !fxLeagueId.trim() || !fxCookies.trim()}>
+            {loading ? 'Connecting…' : 'Connect'}
+          </button>
+        </form>
       )}
     </div>
   )

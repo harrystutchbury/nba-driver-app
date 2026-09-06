@@ -6103,7 +6103,7 @@ def fantasy_status(current_user: str = Depends(get_current_user)):
             "league_key": row["league_key"],
             "team_key": row["team_key"],
         }
-    for p in ("yahoo", "espn"):
+    for p in ("yahoo", "espn", "fantrax"):
         if p not in result:
             result[p] = {"connected": False}
     return result
@@ -8704,6 +8704,15 @@ def espn_roster(current_user: str = Depends(get_current_user)):
 def espn_disconnect(current_user: str = Depends(get_current_user)):
     conn = get_conn()
     conn.execute("DELETE FROM fantasy_connections WHERE username=? AND provider='espn'", [current_user])
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@fantasy_router.delete("/fantrax/disconnect")
+def fantrax_disconnect(current_user: str = Depends(get_current_user)):
+    conn = get_conn()
+    conn.execute("DELETE FROM fantasy_connections WHERE username=? AND provider='fantrax'", [current_user])
     conn.commit()
     conn.close()
     return {"ok": True}
