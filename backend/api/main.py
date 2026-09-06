@@ -7799,49 +7799,98 @@ def _fantrax_client(conn, current_user: str):
     return client_from_row(row)
 
 
+def _fx_shape(obj, depth=0, max_depth=6, max_list=3, max_dict=25, max_str=200):
+    """Compact structural view of a Fantrax response: full keys, trimmed lists,
+    truncated strings — small enough to inspect without dumping megabytes."""
+    if isinstance(obj, str):
+        return obj if len(obj) <= max_str else obj[:max_str] + f"…(+{len(obj) - max_str} chars)"
+    if isinstance(obj, dict):
+        if depth >= max_depth:
+            return f"{{dict: {len(obj)} keys: {list(obj)[:8]}}}"
+        items = list(obj.items())
+        out = {k: _fx_shape(v, depth + 1, max_depth, max_list, max_dict, max_str) for k, v in items[:max_dict]}
+        if len(items) > max_dict:
+            out["__more_keys__"] = [k for k, _ in items[max_dict:]]
+        return out
+    if isinstance(obj, list):
+        if depth >= max_depth:
+            return f"[list: {len(obj)} items]"
+        shaped = [_fx_shape(v, depth + 1, max_depth, max_list, max_dict, max_str) for v in obj[:max_list]]
+        if len(obj) > max_list:
+            shaped.append(f"…(+{len(obj) - max_list} more, {len(obj)} total)")
+        return shaped
+    return obj
+
+
+def _fx_collect(obj, pattern, path="", found=None, max_found=25):
+    """Recursively collect subtrees whose key matches `pattern` (compiled regex)."""
+    import re as _re
+    if found is None:
+        found = {}
+    if len(found) >= max_found:
+        return found
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            p = f"{path}.{k}" if path else str(k)
+            if pattern.search(str(k)):
+                found[p] = _fx_shape(v, max_list=30, max_dict=40)
+            else:
+                _fx_collect(v, pattern, p, found, max_found)
+            if len(found) >= max_found:
+                break
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj[:5]):
+            _fx_collect(v, pattern, f"{path}[{i}]", found, max_found)
+    return found
+
+
 @fantasy_router.get("/fantrax/debug")
 def fantrax_debug(current_user: str = Depends(get_current_user)):
-    """Return raw Fantrax responses so response shapes can be mapped.
-
-    Dumps getFantasyLeagueInfo, getStandings, and one team roster. Used to build
-    the roster/scoring parsers against the user's real league. Only exposes the
-    caller's own connected league.
-    """
+    """Return a compact, mapped view of Fantrax responses (getFantasyLeagueInfo,
+    getStandings, one team roster) so parsers can be built against real data.
+    Drops the giant positionMap; returns full scoring-related blocks. Only
+    exposes the caller's own connected league."""
+    import re as _re
     from fantrax import FantraxError, FantraxNotLoggedIn
     conn = get_conn()
     try:
         client = _fantrax_client(conn, current_user)
     finally:
         conn.close()
+
     out = {}
+    scoring_re = _re.compile(r"scor|categ|point|statlist|statids|fantasyscore|pointspergame", _re.I)
+
+    info = {}
     try:
-        out["league_info"] = client.league_info()
+        info = client.league_info()
+        settings = dict(info.get("fantasySettings") or {})
+        out["league_info_top_keys"] = list(info.keys())
+        out["fantasy_settings"] = _fx_shape(settings, max_list=20, max_dict=60)
+        # Full view of everything except the huge positionMap.
+        trimmed = {k: v for k, v in info.items() if k != "positionMap"}
+        out["league_info_shape"] = _fx_shape(trimmed)
+        out["scoring_blocks"] = _fx_collect(trimmed, scoring_re)
+        my_team_id = settings.get("myDefaultTeamId") or (settings.get("myTeamIds") or [None])[0]
     except (FantraxError, FantraxNotLoggedIn) as e:
         out["league_info_error"] = str(e)
+        my_team_id = None
+
     try:
         standings = client.standings()
-        out["standings"] = standings
+        out["standings_shape"] = _fx_shape(standings)
+        out["standings_scoring_blocks"] = _fx_collect(standings, scoring_re)
     except (FantraxError, FantraxNotLoggedIn) as e:
         out["standings_error"] = str(e)
-        standings = {}
-    # Try to pull the first team's roster so we can see player-stat shape.
+
     try:
-        team_id = None
-        for key in ("fantasyTeamInfo", "fantasyTeams", "tableList"):
-            block = standings.get(key) if isinstance(standings, dict) else None
-            if isinstance(block, dict) and block:
-                team_id = next(iter(block.keys()))
-                break
-            if isinstance(block, list) and block:
-                first = block[0]
-                team_id = first.get("teamId") or first.get("id")
-                if team_id:
-                    break
-        if team_id:
-            out["sample_team_id"] = team_id
-            out["sample_roster"] = client.team_roster(str(team_id))
+        if my_team_id:
+            out["sample_team_id"] = my_team_id
+            roster = client.team_roster(str(my_team_id))
+            out["roster_shape"] = _fx_shape(roster, max_list=3, max_depth=8)
     except (FantraxError, FantraxNotLoggedIn) as e:
         out["roster_error"] = str(e)
+
     return out
 
 
