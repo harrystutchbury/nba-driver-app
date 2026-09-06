@@ -8594,20 +8594,25 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   }
   useEffect(() => { loadStatus() }, [])
 
-  const espn  = status?.espn  || {}
-  const yahoo = status?.yahoo || {}
+  const espn    = status?.espn    || {}
+  const yahoo   = status?.yahoo   || {}
+  const fantrax = status?.fantrax || {}
 
   // Resolve which provider is actually active, falling back gracefully
   const effectiveProvider = (() => {
     if (!status) return null
-    const espnReady  = espn.connected  && espn.team_key
-    const yahooReady = yahoo.connected && yahoo.league_key
-    if (activeProvider === 'espn'  && (espn.connected))  return 'espn'
-    if (activeProvider === 'yahoo' && (yahoo.connected)) return 'yahoo'
-    if (espnReady)  return 'espn'
-    if (yahooReady) return 'yahoo'
-    if (espn.connected)  return 'espn'
-    if (yahoo.connected) return 'yahoo'
+    const espnReady    = espn.connected    && espn.team_key
+    const yahooReady   = yahoo.connected   && yahoo.league_key
+    const fantraxReady = fantrax.connected && fantrax.team_key
+    if (activeProvider === 'espn'    && (espn.connected))    return 'espn'
+    if (activeProvider === 'yahoo'   && (yahoo.connected))   return 'yahoo'
+    if (activeProvider === 'fantrax' && (fantrax.connected)) return 'fantrax'
+    if (espnReady)    return 'espn'
+    if (yahooReady)   return 'yahoo'
+    if (fantraxReady) return 'fantrax'
+    if (espn.connected)    return 'espn'
+    if (yahoo.connected)   return 'yahoo'
+    if (fantrax.connected) return 'fantrax'
     return null
   })()
 
@@ -8634,8 +8639,14 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => setRosterData(d))
         .catch(() => setRosterErr('Failed to load Yahoo roster data'))
+    } else if (effectiveProvider === 'fantrax' && fantrax.connected) {
+      setRosterData(null); setRosterErr(null)
+      apiFetch('/api/fantasy/fantrax/roster-analysis')
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => setRosterData(d))
+        .catch(() => setRosterErr('Failed to load Fantrax roster — try reconnecting in Account.'))
     }
-  }, [effectiveProvider, status?.espn?.team_key, status?.yahoo?.league_key])
+  }, [effectiveProvider, status?.espn?.team_key, status?.yahoo?.league_key, status?.fantrax?.team_key])
 
   // Fetch decisive-wins
   useEffect(() => {
@@ -8662,17 +8673,17 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   if (!status) return <div className="dash-empty">Loading…</div>
 
   // Neither connected
-  if (!espn.connected && !yahoo.connected) return (
+  if (!espn.connected && !yahoo.connected && !fantrax.connected) return (
     <div className="fantasy-wrap">
       <div className="fantasy-connect-card">
         <h2 className="fantasy-connect-title">Connect your fantasy league</h2>
-        <p className="fantasy-connect-sub">Go to <strong>Account</strong> (top right) to connect your ESPN or Yahoo league, then come back here.</p>
+        <p className="fantasy-connect-sub">Go to <strong>Account</strong> (top right) to connect your ESPN, Yahoo or Fantrax league, then come back here.</p>
       </div>
     </div>
   )
 
   // Provider switcher — shown whenever multiple providers are connected
-  const connectedProviders = ['espn', 'yahoo'].filter(p => status[p]?.connected)
+  const connectedProviders = ['espn', 'yahoo', 'fantrax'].filter(p => status[p]?.connected)
   const providerSwitcher = connectedProviders.length > 1 && (
     <div style={{display:'flex',gap:6,padding:'12px 24px',borderBottom:'1px solid var(--border)'}}>
       {connectedProviders.map(p => (
@@ -8736,6 +8747,30 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
           }} />
       )}
       {tab === 'history' && <LeagueHistory />}
+    </div>
+  )
+
+  // Fantrax — roster (points view) + trade; other tabs land here after their draft
+  if (effectiveProvider === 'fantrax') return (
+    <div>
+      {providerSwitcher}
+      {tab === 'roster' && (rosterErr
+        ? <div className="login-error" style={{margin:24}}>{rosterErr}</div>
+        : !rosterData ? <div className="dash-empty">Loading…</div>
+        : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
+      )}
+      {tab !== 'roster' && (
+        <div className="fantasy-wrap">
+          <div className="fantasy-connect-card">
+            <h2 className="fantasy-connect-title">Fantrax — Roster tab</h2>
+            <p className="fantasy-connect-sub">
+              Fantrax support currently covers the <strong>Roster</strong> tab (points scoring).
+              Standings, matchup and trade views come next. If your roster looks empty, your
+              league may not be drafted yet.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 

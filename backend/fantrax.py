@@ -163,6 +163,112 @@ class FantraxClient:
         return self.call(self._method(method, **data))
 
 
+# ── response parsers ──────────────────────────────────────────────────────────
+# Field shapes confirmed against a real league's getStandings / getTeamRosterInfo
+# responses (see the community fantraxapi wrapper for the populated-roster shape):
+#   roster: resp["tables"][i]["rows"][j] with "posId", "statusId", optional
+#           "scorer" {scorerId,name,teamName,posShortNames,...}, and "cells"
+#           aligned to header cells; FP columns are the header cells whose
+#           "sortKey" is "SCORE" (total FP) and "FPTS_PER_GAME" (FP/game).
+#   standings: resp["tableList"][k] with tableType (e.g. "H2hPointsBased1"),
+#           header.cells[].key, rows[].cells[].content, rows[].fixedCells
+#           ([rank, {content:teamName, teamId}]).
+
+
+def _to_float(v):
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).replace(",", "").strip()
+    if s in ("", "-", "—"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _to_int(v):
+    f = _to_float(v)
+    return int(f) if f is not None else None
+
+
+def is_points_league(standings: dict) -> bool:
+    """Detect a points-scoring league from the standings table type."""
+    for table in (standings or {}).get("tableList", []) or []:
+        if "point" in str(table.get("tableType", "")).lower():
+            return True
+    return False
+
+
+def parse_teams(standings: dict) -> dict:
+    """Return {team_id: {name, short_name}} from getStandings.fantasyTeamInfo."""
+    out = {}
+    info = (standings or {}).get("fantasyTeamInfo") or {}
+    for tid, t in info.items():
+        out[str(tid)] = {"name": t.get("name"), "short_name": t.get("shortName")}
+    return out
+
+
+def parse_standings(standings: dict) -> list:
+    """Return a list of standings rows: {rank, team_id, name, <header keys...>}."""
+    rows_out = []
+    for table in (standings or {}).get("tableList", []) or []:
+        if table.get("caption") != "Standings":
+            continue
+        header = (table.get("header") or {}).get("cells") or []
+        keys = [(h.get("key") or h.get("shortName") or f"c{i}") for i, h in enumerate(header)]
+        for row in table.get("rows") or []:
+            fixed = row.get("fixedCells") or []
+            rank = fixed[0].get("content") if len(fixed) > 0 and isinstance(fixed[0], dict) else None
+            team_cell = fixed[1] if len(fixed) > 1 and isinstance(fixed[1], dict) else {}
+            entry = {
+                "rank": _to_int(rank),
+                "team_id": team_cell.get("teamId"),
+                "name": team_cell.get("content"),
+            }
+            for k, cell in zip(keys, row.get("cells") or []):
+                entry[k] = cell.get("content") if isinstance(cell, dict) else cell
+            rows_out.append(entry)
+    return rows_out
+
+
+def parse_roster(roster_resp: dict) -> list:
+    """Return a list of rostered players from a getTeamRosterInfo (STATS) response.
+
+    Each player: {id, name, team, pos, pos_id, status_id, fantasy_points,
+    fantasy_points_per_game}. Empty roster slots (no "scorer") are skipped.
+    """
+    players = []
+    for group in (roster_resp or {}).get("tables", []) or []:
+        header = (group.get("header") or {}).get("cells") or []
+        for row in group.get("rows") or []:
+            scorer = row.get("scorer")
+            if not scorer:
+                continue  # empty slot
+            total_fp = fppg = None
+            for h, cell in zip(header, row.get("cells") or []):
+                if not isinstance(cell, dict):
+                    continue
+                sk = h.get("sortKey")
+                if sk == "SCORE":
+                    total_fp = _to_float(cell.get("content"))
+                elif sk == "FPTS_PER_GAME":
+                    fppg = _to_float(cell.get("content"))
+            players.append({
+                "id":         scorer.get("scorerId"),
+                "name":       scorer.get("name"),
+                "team":       scorer.get("teamName"),
+                "pos":        scorer.get("posShortNames"),
+                "pos_id":     row.get("posId"),
+                "status_id":  row.get("statusId"),
+                "fantasy_points":          total_fp,
+                "fantasy_points_per_game": fppg,
+            })
+    return players
+
+
 def client_from_row(row) -> FantraxClient:
     """Build a client from a fantasy_connections row (access_token = JSON cookies)."""
     import json as _json

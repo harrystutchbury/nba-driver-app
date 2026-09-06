@@ -7709,6 +7709,15 @@ def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_cur
 # Fantrax has no official API/OAuth; we replay its internal fxpa/req endpoint
 # with the member's session cookies. See backend/fantrax.py.
 
+# Fantrax's default NBA points scoring. Fantrax doesn't expose per-stat point
+# values through the endpoints we read, so connected points leagues fall back to
+# these defaults (same as the frontend 'fantrax' preset). Keys match the frontend
+# fantasyPoints() helper.
+_FANTRAX_DEFAULT_POINTS = {
+    "pts": 1.0, "reb": 1.2, "ast": 1.5, "stl": 3.0, "blk": 3.0, "tov": -1.0,
+}
+
+
 def _parse_fantrax_scoring(league_info: dict) -> dict:
     """Best-effort parse of Fantrax league scoring config into our shape.
 
@@ -7761,6 +7770,8 @@ def fantrax_connect(body: dict = Body(...), current_user: str = Depends(get_curr
     if not cookies:
         raise HTTPException(status_code=422, detail="Could not parse any cookies")
 
+    from fantrax import is_points_league
+
     client = FantraxClient(league_id, cookies=cookies)
     try:
         info = client.league_info()
@@ -7769,23 +7780,38 @@ def fantrax_connect(body: dict = Body(...), current_user: str = Depends(get_curr
     except FantraxError as e:
         raise HTTPException(status_code=400, detail=f"Could not connect to Fantrax league: {e}")
 
-    scoring = _parse_fantrax_scoring(info)
-    league_name = info.get("leagueName") or (info.get("leagueInfo") or {}).get("name") or ""
+    settings = info.get("fantasySettings") or {}
+    league_name = settings.get("leagueName") or info.get("leagueName") or ""
+    team_key = settings.get("myDefaultTeamId") or (settings.get("myTeamIds") or [None])[0]
+
+    # Detect points vs category from the standings table type.
+    scoring_type = "CATEGORY"
+    try:
+        standings = client.standings()
+        if is_points_league(standings):
+            scoring_type = "POINTS"
+    except FantraxError:
+        pass
+
+    scoring = {
+        "scoring_type": scoring_type,
+        "point_values": dict(_FANTRAX_DEFAULT_POINTS) if scoring_type == "POINTS" else None,
+    }
 
     conn = get_conn()
     conn.execute("""
-        INSERT INTO fantasy_connections (username, provider, access_token, league_key, scoring_settings)
-        VALUES (?,?,?,?,?)
+        INSERT INTO fantasy_connections (username, provider, access_token, league_key, team_key, scoring_settings)
+        VALUES (?,?,?,?,?,?)
         ON CONFLICT(username, provider) DO UPDATE SET
             access_token=excluded.access_token,
             league_key=excluded.league_key,
-            team_key=NULL,
+            team_key=excluded.team_key,
             scoring_settings=excluded.scoring_settings,
             updated_at=datetime('now')
-    """, [current_user, "fantrax", _json.dumps(cookies), league_id, _json.dumps(scoring)])
+    """, [current_user, "fantrax", _json.dumps(cookies), league_id, team_key, _json.dumps(scoring)])
     conn.commit()
     conn.close()
-    return {"ok": True, "league_name": league_name, "scoring_type": scoring.get("scoring_type")}
+    return {"ok": True, "league_name": league_name, "scoring_type": scoring_type, "team_selected": bool(team_key)}
 
 
 def _fantrax_client(conn, current_user: str):
@@ -7892,6 +7918,131 @@ def fantrax_debug(current_user: str = Depends(get_current_user)):
         out["roster_error"] = str(e)
 
     return out
+
+
+@fantasy_router.get("/fantrax/roster-analysis")
+def fantrax_roster_analysis(current_user: str = Depends(get_current_user)):
+    """Return my Fantrax roster + every team's roster in the ESPN roster-analysis
+    shape, so the existing RosterAnalysis / TradeAnalysis components render it.
+
+    For points leagues, players carry our season-average `stats` (matched by
+    name) and `point_values` are returned so the client computes FP/G. Standings
+    supply team names/ids; each team's roster is fetched via getTeamRosterInfo.
+    NOTE: validated shapes, but the connected league was undrafted at build time,
+    so this needs a populated league to fully verify.
+    """
+    import json as _json
+    from rapidfuzz import process as rfprocess
+    from fantrax import (client_from_row, parse_teams, parse_roster,
+                         FantraxError, FantraxNotLoggedIn)
+
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT access_token, league_key, team_key, scoring_settings "
+        "FROM fantasy_connections WHERE username=? AND provider='fantrax'",
+        [current_user],
+    ).fetchone()
+    if not fc or not fc["league_key"]:
+        conn.close()
+        raise HTTPException(status_code=404, detail="No Fantrax league connected")
+
+    scoring      = _json.loads(fc["scoring_settings"]) if fc["scoring_settings"] else {}
+    scoring_type = scoring.get("scoring_type", "POINTS")
+    point_values = scoring.get("point_values") or dict(_FANTRAX_DEFAULT_POINTS)
+    my_team_id   = str(fc["team_key"]) if fc["team_key"] else None
+
+    stat_name_map = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+        "BLK": "blk", "TO": "tov", "3PM": "fg3m", "FG%": "fg_pct", "FT%": "ft_pct",
+    }
+    tracked_cats = ["PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "FG%", "FT%"]
+
+    season_year = _current_season_end_year()
+    season      = f"{season_year - 1}-{str(season_year)[2:]}"
+
+    rows = conn.execute("""
+        SELECT player_slug,
+               AVG(pts) AS pts, AVG(reb) AS reb, AVG(ast) AS ast,
+               AVG(stl) AS stl, AVG(blk) AS blk, AVG(tov) AS tov,
+               AVG(fg3m) AS fg3m,
+               SUM(fgm)*100.0/NULLIF(SUM(fga),0) AS fg_pct,
+               SUM(ftm)*100.0/NULLIF(SUM(fta),0) AS ft_pct,
+               AVG(fga) AS fga_pg, AVG(fta) AS fta_pg
+        FROM game_logs WHERE season=? AND min>5
+        GROUP BY player_slug HAVING COUNT(*)>=5
+    """, [season]).fetchall()
+    player_avgs = {r["player_slug"]: dict(r) for r in rows}
+
+    name_rows    = conn.execute("SELECT slug, full_name FROM players GROUP BY slug").fetchall()
+    name_to_slug = {r["full_name"]: r["slug"] for r in name_rows}
+    all_names    = list(name_to_slug.keys())
+    conn.close()
+
+    def _resolve_slug(name):
+        if not name:
+            return None
+        if name in name_to_slug:
+            return name_to_slug[name]
+        m = rfprocess.extractOne(name, all_names, score_cutoff=80)
+        return name_to_slug[m[0]] if m else None
+
+    def _stats_of(slug):
+        avg = player_avgs.get(slug) if slug else None
+        if not avg:
+            return None
+        return {k: round(avg[k] or 0, 1) for k in
+                ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct", "fga_pg", "fta_pg"]}
+
+    try:
+        client = client_from_row(fc)
+        standings = client.standings()
+    except FantraxNotLoggedIn:
+        raise HTTPException(status_code=401, detail="Fantrax session expired — reconnect in Account.")
+    except FantraxError as e:
+        raise HTTPException(status_code=502, detail=f"Fantrax error: {e}")
+
+    teams_map = parse_teams(standings)  # {team_id: {name, short_name}}
+    if my_team_id and my_team_id not in teams_map:
+        teams_map[my_team_id] = {"name": "My Team", "short_name": ""}
+
+    my_players = []
+    teams_out  = []
+    for tid, tinfo in teams_map.items():
+        try:
+            roster = client.team_roster(str(tid))
+            players = parse_roster(roster)
+        except (FantraxError, FantraxNotLoggedIn):
+            players = []
+        team_players = []
+        for p in players:
+            slug = _resolve_slug(p.get("name"))
+            team_players.append({
+                "espn_name": p.get("name"),        # reuse field name for RosterAnalysis
+                "br_slug":   slug,
+                "fantrax_fppg": p.get("fantasy_points_per_game"),
+                "stats":     _stats_of(slug),
+            })
+        is_mine = (str(tid) == my_team_id)
+        if is_mine:
+            my_players = team_players
+        teams_out.append({
+            "team_id":    str(tid),
+            "name":       tinfo.get("name") or tinfo.get("short_name") or str(tid),
+            "is_my_team": is_mine,
+            "players":    team_players,
+        })
+
+    return {
+        "my_roster":     my_players,
+        "my_stats":      {},
+        "teams":         teams_out,
+        "cat_ranks":     {},
+        "scoring_type":  scoring_type,
+        "point_values":  point_values,
+        "tracked_cats":  tracked_cats,
+        "neg_cats":      ["TO"],
+        "stat_name_map": stat_name_map,
+    }
 
 
 # ── League History ─────────────────────────────────────────────────────────────
