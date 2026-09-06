@@ -7705,6 +7705,146 @@ def espn_select_team(body: dict = Body(...), current_user: str = Depends(get_cur
     return {"ok": True}
 
 
+# ── Fantrax ──────────────────────────────────────────────────────────────────
+# Fantrax has no official API/OAuth; we replay its internal fxpa/req endpoint
+# with the member's session cookies. See backend/fantrax.py.
+
+def _parse_fantrax_scoring(league_info: dict) -> dict:
+    """Best-effort parse of Fantrax league scoring config into our shape.
+
+    Returns {scoring_type, point_values, tracked_cats, raw}. Fantrax's league
+    JSON shape is undocumented and varies by sport/league; until we've mapped a
+    real response we keep the raw block so /fantrax/debug can reveal the fields
+    and this parser can be tightened.
+    """
+    out = {"scoring_type": "UNKNOWN", "point_values": None, "tracked_cats": [], "raw": None}
+    if not isinstance(league_info, dict):
+        return out
+    # Common Fantrax locations for scoring config; probe defensively.
+    scoring = (
+        league_info.get("scoringSystem")
+        or league_info.get("scoring")
+        or (league_info.get("leagueInfo") or {}).get("scoringSystem")
+        or {}
+    )
+    out["raw"] = scoring or None
+    # Heuristic: a points league exposes per-category point values; a roto/category
+    # league exposes tracked categories without point weights.
+    stype = (
+        str(scoring.get("type") or scoring.get("scoringType") or league_info.get("scoringType") or "")
+    ).upper()
+    if "POINT" in stype:
+        out["scoring_type"] = "POINTS"
+    elif stype:
+        out["scoring_type"] = stype
+    return out
+
+
+@fantasy_router.post("/fantrax/connect")
+def fantrax_connect(body: dict = Body(...), current_user: str = Depends(get_current_user)):
+    """Save Fantrax league id + session cookies. Validates by loading league info."""
+    import json as _json
+    from fantrax import FantraxClient, parse_cookie_string, FantraxError, FantraxNotLoggedIn
+
+    league_id = str(body.get("league_id") or "").strip()
+    raw_cookies = body.get("cookies")
+    if not league_id:
+        raise HTTPException(status_code=422, detail="league_id is required")
+    if not raw_cookies:
+        raise HTTPException(status_code=422, detail="cookies are required")
+
+    # Accept either a dict of cookies or a raw "name=value; ..." string.
+    if isinstance(raw_cookies, dict):
+        cookies = {str(k): str(v) for k, v in raw_cookies.items()}
+    else:
+        cookies = parse_cookie_string(str(raw_cookies))
+    if not cookies:
+        raise HTTPException(status_code=422, detail="Could not parse any cookies")
+
+    client = FantraxClient(league_id, cookies=cookies)
+    try:
+        info = client.league_info()
+    except FantraxNotLoggedIn:
+        raise HTTPException(status_code=401, detail="Cookies are invalid or expired — copy fresh ones while logged in.")
+    except FantraxError as e:
+        raise HTTPException(status_code=400, detail=f"Could not connect to Fantrax league: {e}")
+
+    scoring = _parse_fantrax_scoring(info)
+    league_name = info.get("leagueName") or (info.get("leagueInfo") or {}).get("name") or ""
+
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO fantasy_connections (username, provider, access_token, league_key, scoring_settings)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(username, provider) DO UPDATE SET
+            access_token=excluded.access_token,
+            league_key=excluded.league_key,
+            team_key=NULL,
+            scoring_settings=excluded.scoring_settings,
+            updated_at=datetime('now')
+    """, [current_user, "fantrax", _json.dumps(cookies), league_id, _json.dumps(scoring)])
+    conn.commit()
+    conn.close()
+    return {"ok": True, "league_name": league_name, "scoring_type": scoring.get("scoring_type")}
+
+
+def _fantrax_client(conn, current_user: str):
+    from fantrax import client_from_row
+    row = conn.execute(
+        "SELECT access_token, league_key FROM fantasy_connections WHERE username=? AND provider='fantrax'",
+        [current_user],
+    ).fetchone()
+    if not row or not row["league_key"]:
+        raise HTTPException(status_code=404, detail="No Fantrax league connected")
+    return client_from_row(row)
+
+
+@fantasy_router.get("/fantrax/debug")
+def fantrax_debug(current_user: str = Depends(get_current_user)):
+    """Return raw Fantrax responses so response shapes can be mapped.
+
+    Dumps getFantasyLeagueInfo, getStandings, and one team roster. Used to build
+    the roster/scoring parsers against the user's real league. Only exposes the
+    caller's own connected league.
+    """
+    from fantrax import FantraxError, FantraxNotLoggedIn
+    conn = get_conn()
+    try:
+        client = _fantrax_client(conn, current_user)
+    finally:
+        conn.close()
+    out = {}
+    try:
+        out["league_info"] = client.league_info()
+    except (FantraxError, FantraxNotLoggedIn) as e:
+        out["league_info_error"] = str(e)
+    try:
+        standings = client.standings()
+        out["standings"] = standings
+    except (FantraxError, FantraxNotLoggedIn) as e:
+        out["standings_error"] = str(e)
+        standings = {}
+    # Try to pull the first team's roster so we can see player-stat shape.
+    try:
+        team_id = None
+        for key in ("fantasyTeamInfo", "fantasyTeams", "tableList"):
+            block = standings.get(key) if isinstance(standings, dict) else None
+            if isinstance(block, dict) and block:
+                team_id = next(iter(block.keys()))
+                break
+            if isinstance(block, list) and block:
+                first = block[0]
+                team_id = first.get("teamId") or first.get("id")
+                if team_id:
+                    break
+        if team_id:
+            out["sample_team_id"] = team_id
+            out["sample_roster"] = client.team_roster(str(team_id))
+    except (FantraxError, FantraxNotLoggedIn) as e:
+        out["roster_error"] = str(e)
+    return out
+
+
 # ── League History ─────────────────────────────────────────────────────────────
 
 def _fetch_espn_season_history(league_id: int, year: int, espn_s2: str, swid: str):
