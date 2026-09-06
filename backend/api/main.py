@@ -7539,6 +7539,63 @@ def _fetch_espn_scoring(league_id: str, espn_s2: str, swid: str) -> dict:
     }
 
 
+_ESPN_STAT_TO_FP_KEY = {
+    "PTS": "pts", "REB": "reb", "OREB": "reb", "DREB": "reb", "AST": "ast",
+    "STL": "stl", "BLK": "blk", "TO": "tov", "FGM": "fgm", "FGA": "fga",
+    "FTM": "ftm", "FTA": "fta", "3PM": "fg3m",
+}
+
+
+def _espn_items_to_point_values(items):
+    """Convert stored ESPN scoringItems into a {fp_key: point_value} map matching
+    the frontend SCORING_PRESETS shape. OREB/DREB fold into total reb."""
+    pv = {}
+    for it in (items or []):
+        key = _ESPN_STAT_TO_FP_KEY.get(it.get("stat"))
+        if not key:
+            continue
+        val = it.get("points") or 0
+        if it.get("is_reverse"):
+            val = -abs(val)
+        pv[key] = round(pv.get(key, 0) + val, 4)
+    return pv
+
+
+@fantasy_router.get("/my-scoring")
+def get_my_scoring(current_user: str = Depends(get_current_user)):
+    """Return the connected league's scoring as point values, when it's a points
+    league — powers the "My League" preset in the rankings/projections points view."""
+    import json as _json
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT provider, scoring_settings FROM fantasy_connections "
+            "WHERE username=? AND scoring_settings IS NOT NULL",
+            [current_user]
+        ).fetchall()
+        for r in rows:
+            try:
+                sc = _json.loads(r["scoring_settings"])
+            except Exception:
+                continue
+            st = (sc.get("scoring_type") or "").upper()
+            if "POINT" not in st:
+                continue
+            # ESPN items carry per-stat point values; Yahoo parsing TBD.
+            pv = _espn_items_to_point_values(sc.get("items")) if r["provider"] == "espn" else {}
+            if pv:
+                return {
+                    "connected": True,
+                    "provider": r["provider"],
+                    "scoring_type": sc.get("scoring_type"),
+                    "league_name": sc.get("league_name", ""),
+                    "point_values": pv,
+                }
+        return {"connected": False}
+    finally:
+        conn.close()
+
+
 def _espn_league(conn, username: str):
     """Return an initialised espn_api League object for the user."""
     from espn_api.basketball import League as EspnLeague

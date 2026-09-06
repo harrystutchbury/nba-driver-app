@@ -946,6 +946,8 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [pointsPreset, setPointsPreset] = useState(() => localStorage.getItem('rank_points_preset') || 'yahoo')  // espn|yahoo|fantrax
   useEffect(() => { localStorage.setItem('rank_score_mode', scoreMode) }, [scoreMode])
   useEffect(() => { localStorage.setItem('rank_points_preset', pointsPreset) }, [pointsPreset])
+  const [myScoring, setMyScoring] = useState(null)  // connected points-league scoring, if any
+  useEffect(() => { apiFetch('/api/fantasy/my-scoring').then(r => r.ok ? r.json() : null).then(d => d && setMyScoring(d)).catch(() => {}) }, [])
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
   const [team, setTeam] = useState('all')
@@ -1036,7 +1038,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   }
 
   const getEffectiveFP = (p) => {
-    const fpg = fantasyPoints(p, SCORING_PRESETS[pointsPreset])
+    const fpg = fantasyPoints(p, (pointsPreset === 'myleague' && myScoring?.point_values) ? myScoring.point_values : (SCORING_PRESETS[pointsPreset] || SCORING_PRESETS.yahoo))
     if (fpg == null) return null
     return viewMode === 'totals' ? +(fpg * (p.gp ?? 0)).toFixed(1) : +fpg.toFixed(1)
   }
@@ -1115,6 +1117,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
               <option value="espn">ESPN</option>
               <option value="yahoo">Yahoo</option>
               <option value="fantrax">Fantrax</option>
+              {myScoring?.connected && <option value="myleague">My League</option>}
             </select>
           )}
         </div>
@@ -1228,7 +1231,7 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                   </th>
                 ))}
                 {scoreMode === 'points' ? (
-                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Fantasy points (${SCORING_PRESETS[pointsPreset].label}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
+                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Fantasy points (${(SCORING_PRESETS[pointsPreset]?.label ?? (myScoring?.league_name || 'My League'))}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
                     FP <SortIcon col="fp" />
                   </th>
                 ) : (
@@ -2084,6 +2087,8 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [pointsPreset, setPointsPreset] = useState(() => localStorage.getItem('rank_points_preset') || 'yahoo')
   useEffect(() => { localStorage.setItem('rank_score_mode', scoreMode) }, [scoreMode])
   useEffect(() => { localStorage.setItem('rank_points_preset', pointsPreset) }, [pointsPreset])
+  const [myScoring, setMyScoring] = useState(null)  // connected points-league scoring, if any
+  useEffect(() => { apiFetch('/api/fantasy/my-scoring').then(r => r.ok ? r.json() : null).then(d => d && setMyScoring(d)).catch(() => {}) }, [])
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
   const [team, setTeam] = useState('all')
@@ -2180,7 +2185,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
 
   const getEffectiveFP = (p) => {
     if (p.unprojected) return null
-    const fpg = fantasyPoints(p, SCORING_PRESETS[pointsPreset])
+    const fpg = fantasyPoints(p, (pointsPreset === 'myleague' && myScoring?.point_values) ? myScoring.point_values : (SCORING_PRESETS[pointsPreset] || SCORING_PRESETS.yahoo))
     if (fpg == null) return null
     return viewMode === 'totals' ? +(fpg * (p.gp ?? 0)).toFixed(1) : +fpg.toFixed(1)
   }
@@ -2259,6 +2264,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
               <option value="espn">ESPN</option>
               <option value="yahoo">Yahoo</option>
               <option value="fantrax">Fantrax</option>
+              {myScoring?.connected && <option value="myleague">My League</option>}
             </select>
           )}
         </div>
@@ -2378,7 +2384,7 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                   </th>
                 ))}
                 {scoreMode === 'points' ? (
-                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Projected fantasy points (${SCORING_PRESETS[pointsPreset].label}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
+                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Projected fantasy points (${(SCORING_PRESETS[pointsPreset]?.label ?? (myScoring?.league_name || 'My League'))}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
                     FP <SortIcon col="fp" />
                   </th>
                 ) : (
