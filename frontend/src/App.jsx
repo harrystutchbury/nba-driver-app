@@ -865,6 +865,33 @@ function ordinal(n) {
 
 
 
+// ─── Fantasy points scoring ─────────────────────────────────────────────────
+// Preset point values per stat for the three platforms' default points leagues.
+// A connected league's real settings override these on the fantasy pages.
+const SCORING_PRESETS = {
+  espn:    { label: 'ESPN',    pts: 1, fg3m: 1, reb: 1,   ast: 2,   stl: 4, blk: 4, tov: -2, fgm: 2, fga: -1, ftm: 1, fta: -1 },
+  yahoo:   { label: 'Yahoo',   pts: 1, reb: 1.2, ast: 1.5, stl: 3, blk: 3, tov: -1 },
+  fantrax: { label: 'Fantrax', pts: 1, reb: 1.2, ast: 1.5, stl: 3, blk: 3, tov: -1 },
+}
+
+// Per-game fantasy points from a per-game stats row. Derives FGM/FTM (and misses)
+// from attempts × pct so make/miss-based scoring (ESPN) works.
+function fantasyPoints(r, sys) {
+  if (!r || !sys) return null
+  const fga = r.fga_pg ?? 0
+  const fta = r.fta_pg ?? 0
+  const fgm = (r.fg_pct != null) ? fga * r.fg_pct / 100 : 0
+  const ftm = (r.ft_pct != null) ? fta * r.ft_pct / 100 : 0
+  const stat = { pts: r.pts, reb: r.reb, ast: r.ast, stl: r.stl, blk: r.blk,
+                 tov: r.tov, fg3m: r.fg3m, fgm, fga, ftm, fta }
+  let fp = 0
+  for (const k in sys) {
+    if (k === 'label') continue
+    fp += (sys[k] || 0) * (stat[k] ?? 0)
+  }
+  return fp
+}
+
 // ─── Rankings Page ────────────────────────────────────────────────────────────
 
 // makes/attempts formatter for FGM/A + FTM/A columns (per game, or season in Totals).
@@ -915,6 +942,10 @@ function RankingsPage({ onSelectPlayer, ownership }) {
   const [showRaw, setShowRaw]   = useState(true)
   const [showZ, setShowZ]       = useState(true)
   const [showCTW, setShowCTW]   = useState(false)
+  const [scoreMode, setScoreMode]       = useState(() => localStorage.getItem('rank_score_mode') || 'cat')      // 'cat' | 'points'
+  const [pointsPreset, setPointsPreset] = useState(() => localStorage.getItem('rank_points_preset') || 'yahoo')  // espn|yahoo|fantrax
+  useEffect(() => { localStorage.setItem('rank_score_mode', scoreMode) }, [scoreMode])
+  useEffect(() => { localStorage.setItem('rank_points_preset', pointsPreset) }, [pointsPreset])
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
   const [team, setTeam] = useState('all')
@@ -1004,8 +1035,15 @@ function RankingsPage({ onSelectPlayer, ownership }) {
     return +sum.toFixed(2)
   }
 
+  const getEffectiveFP = (p) => {
+    const fpg = fantasyPoints(p, SCORING_PRESETS[pointsPreset])
+    if (fpg == null) return null
+    return viewMode === 'totals' ? +(fpg * (p.gp ?? 0)).toFixed(1) : +fpg.toFixed(1)
+  }
+
   const getSortVal = (p, key) => {
     if (key === 'z_total') return getEffectiveZTotal(p)
+    if (key === 'fp') return getEffectiveFP(p) ?? -Infinity
     if (key === 'ctw') return p.ctw ?? -Infinity
     if (key === 'adp') return p.adp ?? Infinity   // undrafted → sort to the bottom
     if (viewMode === 'totals' && isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
@@ -1063,6 +1101,22 @@ function RankingsPage({ onSelectPlayer, ownership }) {
             <option value="all">All</option>
             {teamOptions.map(t => <option key={t} value={t}>{teamAbbr(t)}</option>)}
           </select>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Scoring</span>
+          <div className="rank-pills">
+            <button className={`rank-pill${scoreMode === 'cat' ? ' active' : ''}`}
+              onClick={() => { setScoreMode('cat'); setSortKey('z_total'); setSortAsc(false) }}>Categories</button>
+            <button className={`rank-pill${scoreMode === 'points' ? ' active' : ''}`}
+              onClick={() => { setScoreMode('points'); setSortKey('fp'); setSortAsc(false) }}>Points</button>
+          </div>
+          {scoreMode === 'points' && (
+            <select className="rank-team-select" value={pointsPreset} onChange={e => setPointsPreset(e.target.value)}>
+              <option value="espn">ESPN</option>
+              <option value="yahoo">Yahoo</option>
+              <option value="fantrax">Fantrax</option>
+            </select>
+          )}
         </div>
         <div className="rank-filter-group">
           <span className="ctrl-label">View</span>
@@ -1173,12 +1227,20 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                     )}
                   </th>
                 ))}
-                <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
-                  Value <SortIcon col="z_total" />
-                </th>
-                <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
-                  CTW <SortIcon col="ctw" />
-                </th>
+                {scoreMode === 'points' ? (
+                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Fantasy points (${SCORING_PRESETS[pointsPreset].label}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
+                    FP <SortIcon col="fp" />
+                  </th>
+                ) : (
+                  <>
+                    <th className="num" onClick={() => handleSort('z_total')} style={{ cursor: 'pointer' }}>
+                      Value <SortIcon col="z_total" />
+                    </th>
+                    <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
+                      CTW <SortIcon col="ctw" />
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -1220,17 +1282,25 @@ function RankingsPage({ onSelectPlayer, ownership }) {
                       return (
                         <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                           {showRaw && <div>{displayFmt}</div>}
-                          {showZ && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
-                          {showCTW && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
+                          {showZ && scoreMode === 'cat' && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                          {showCTW && scoreMode === 'cat' && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
                         </td>
                       )
                     })}
-                    <td className="num mono z-total-cell">
-                      {fmtZ(getEffectiveZTotal(p))}
-                    </td>
-                    <td className="num mono ctw-cell">
-                      {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
-                    </td>
+                    {scoreMode === 'points' ? (
+                      <td className="num mono z-total-cell">
+                        {getEffectiveFP(p) != null ? getEffectiveFP(p).toFixed(1) : '—'}
+                      </td>
+                    ) : (
+                      <>
+                        <td className="num mono z-total-cell">
+                          {fmtZ(getEffectiveZTotal(p))}
+                        </td>
+                        <td className="num mono ctw-cell">
+                          {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 )
               })}
@@ -2010,6 +2080,10 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
   const [showRaw, setShowRaw]       = useState(true)
   const [showZ, setShowZ]           = useState(true)
   const [showCTW, setShowCTW]       = useState(false)
+  const [scoreMode, setScoreMode]       = useState(() => localStorage.getItem('rank_score_mode') || 'cat')
+  const [pointsPreset, setPointsPreset] = useState(() => localStorage.getItem('rank_points_preset') || 'yahoo')
+  useEffect(() => { localStorage.setItem('rank_score_mode', scoreMode) }, [scoreMode])
+  useEffect(() => { localStorage.setItem('rank_points_preset', pointsPreset) }, [pointsPreset])
   const [puntedCats, setPuntedCats] = useState(new Set())
   const [faOnly, setFaOnly] = useState(false)
   const [team, setTeam] = useState('all')
@@ -2104,8 +2178,16 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
     return +sum.toFixed(2)
   }
 
+  const getEffectiveFP = (p) => {
+    if (p.unprojected) return null
+    const fpg = fantasyPoints(p, SCORING_PRESETS[pointsPreset])
+    if (fpg == null) return null
+    return viewMode === 'totals' ? +(fpg * (p.gp ?? 0)).toFixed(1) : +fpg.toFixed(1)
+  }
+
   const getSortVal = (p, key) => {
     if (key === 'period_value') return getEffectiveValue(p)
+    if (key === 'fp') return getEffectiveFP(p) ?? -Infinity
     if (key === 'ctw') return p.ctw ?? -Infinity
     if (key === 'adp') return p.adp ?? Infinity   // undrafted → sort to the bottom
     if (isTotalsKey(key)) return totalsVal(p, key) ?? -Infinity
@@ -2163,6 +2245,22 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
             <option value="all">All</option>
             {teamOptions.map(t => <option key={t} value={t}>{teamAbbr(t)}</option>)}
           </select>
+        </div>
+        <div className="rank-filter-group">
+          <span className="ctrl-label">Scoring</span>
+          <div className="rank-pills">
+            <button className={`rank-pill${scoreMode === 'cat' ? ' active' : ''}`}
+              onClick={() => { setScoreMode('cat'); setSortKey('period_value'); setSortAsc(false) }}>Categories</button>
+            <button className={`rank-pill${scoreMode === 'points' ? ' active' : ''}`}
+              onClick={() => { setScoreMode('points'); setSortKey('fp'); setSortAsc(false) }}>Points</button>
+          </div>
+          {scoreMode === 'points' && (
+            <select className="rank-team-select" value={pointsPreset} onChange={e => setPointsPreset(e.target.value)}>
+              <option value="espn">ESPN</option>
+              <option value="yahoo">Yahoo</option>
+              <option value="fantrax">Fantrax</option>
+            </select>
+          )}
         </div>
         <div className="rank-filter-group">
           <span className="ctrl-label">View</span>
@@ -2279,12 +2377,20 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                     )}
                   </th>
                 ))}
-                <th className="num" onClick={() => handleSort('period_value')} style={{ cursor: 'pointer' }}>
-                  Value <SortIcon col="period_value" />
-                </th>
-                <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
-                  CTW <SortIcon col="ctw" />
-                </th>
+                {scoreMode === 'points' ? (
+                  <th className="num" onClick={() => handleSort('fp')} style={{ cursor: 'pointer' }} title={`Projected fantasy points (${SCORING_PRESETS[pointsPreset].label}) — ${viewMode === 'totals' ? 'season total' : 'per game'}`}>
+                    FP <SortIcon col="fp" />
+                  </th>
+                ) : (
+                  <>
+                    <th className="num" onClick={() => handleSort('period_value')} style={{ cursor: 'pointer' }}>
+                      Value <SortIcon col="period_value" />
+                    </th>
+                    <th className="num ctw-col-header" onClick={() => handleSort('ctw')} style={{ cursor: 'pointer' }} title="Contribution To Winning — expected category wins (10-team league)">
+                      CTW <SortIcon col="ctw" />
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -2334,18 +2440,26 @@ function ProjectionsPage({ onSelectPlayer, ownership }) {
                     return (
                       <td key={c.key} className="num mono rank-stat-cell" style={{ opacity: punted ? 0.3 : 1 }}>
                         {showRaw && <div>{displayFmt}</div>}
-                        {showZ && !c.noZ && !hasRange && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
+                        {showZ && scoreMode === 'cat' && !c.noZ && !hasRange && <div className="rank-z" style={{ color: zColor }}>{fmtZ(z)}</div>}
                         {hasRange && rangeLow != null && <div className="rank-range">{displayLow}–{displayHigh}</div>}
-                        {showCTW && !c.noZ && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
+                        {showCTW && scoreMode === 'cat' && !c.noZ && <div className="rank-ctw">{ctwCatVal != null ? ctwCatVal.toFixed(2) : ''}</div>}
                       </td>
                     )
                   })}
-                  <td className="num mono z-total-cell">
-                    {p.unprojected ? '—' : (() => { const v = getEffectiveValue(p); return (v != null && isFinite(v)) ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
-                  </td>
-                  <td className="num mono ctw-cell">
-                    {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
-                  </td>
+                  {scoreMode === 'points' ? (
+                    <td className="num mono z-total-cell">
+                      {getEffectiveFP(p) != null ? getEffectiveFP(p).toFixed(1) : '—'}
+                    </td>
+                  ) : (
+                    <>
+                      <td className="num mono z-total-cell">
+                        {p.unprojected ? '—' : (() => { const v = getEffectiveValue(p); return (v != null && isFinite(v)) ? (v > 0 ? '+' : '') + v.toFixed(1) : '—' })()}
+                      </td>
+                      <td className="num mono ctw-cell">
+                        {ctwVal != null ? ctwVal.toFixed(2) : <span className="muted">—</span>}
+                      </td>
+                    </>
+                  )}
                 </tr>
                 )
               })}
