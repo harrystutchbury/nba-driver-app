@@ -7909,6 +7909,12 @@ def fantrax_debug(current_user: str = Depends(get_current_user)):
     except (FantraxError, FantraxNotLoggedIn) as e:
         out["standings_error"] = str(e)
 
+    # Schedule / matchup shape — for building the matchup + trade views.
+    try:
+        out["schedule_shape"] = _fx_shape(client.standings(view="SCHEDULE"), max_depth=8)
+    except (FantraxError, FantraxNotLoggedIn) as e:
+        out["schedule_error"] = str(e)
+
     try:
         if my_team_id:
             out["sample_team_id"] = my_team_id
