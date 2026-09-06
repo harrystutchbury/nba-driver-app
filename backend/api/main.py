@@ -7920,6 +7920,194 @@ def fantrax_debug(current_user: str = Depends(get_current_user)):
     return out
 
 
+def _compute_roster_analysis(teams_input, player_avgs, tracked_cats, stat_name_map,
+                             neg_cats, scoring_type, point_values, schedule_pairs=None):
+    """Provider-agnostic roster analysis: given each team's players (with br_slug),
+    compute per-team aggregate stats (volume-weighted FG%/FT%), per-player and
+    per-team z-scores, per-category league ranks, and projected wins from any
+    undecided matchup pairs. Returns the same shape as /espn/roster-analysis so
+    the RosterAnalysis / TradeAnalysis components render it for either scoring type.
+
+    teams_input: [{team_id, name, is_my_team, wins?, losses?, standing?,
+                   players:[{espn_name, br_slug, ...extra}]}]
+    schedule_pairs: optional [(home_team_id, away_team_id), ...] of undecided games.
+    """
+    import math as _math
+    NEG = set(neg_cats or [])
+    Z_KEYS = ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct"]
+    STAT_KEYS = Z_KEYS + ["fga_pg", "fta_pg"]
+
+    def _stats_from_slugs(slugs):
+        pts = reb = ast = stl = blk = tov = fg3m = 0.0
+        fgm = fga = ftm = fta = 0.0
+        for slug in slugs:
+            a = player_avgs.get(slug)
+            if not a:
+                continue
+            pts += a["pts"] or 0; reb += a["reb"] or 0; ast += a["ast"] or 0
+            stl += a["stl"] or 0; blk += a["blk"] or 0; tov += a["tov"] or 0
+            fg3m += a["fg3m"] or 0
+            fp = a["fga_pg"] or 0; tp = a["fta_pg"] or 0
+            fgm += fp * (a["fg_pct"] or 0) / 100; fga += fp
+            ftm += tp * (a["ft_pct"] or 0) / 100; fta += tp
+        return {
+            "pts": round(pts, 1), "reb": round(reb, 1), "ast": round(ast, 1),
+            "stl": round(stl, 1), "blk": round(blk, 1), "tov": round(tov, 1),
+            "fg3m": round(fg3m, 1),
+            "fg_pct": round((fgm / fga * 100) if fga else 0, 1),
+            "ft_pct": round((ftm / fta * 100) if fta else 0, 1),
+        }
+
+    all_team_stats = {}
+    my_players = []
+    my_team_id = None
+    for t in teams_input:
+        tid = str(t["team_id"])
+        if t.get("is_my_team"):
+            my_team_id = tid
+        slugs = []
+        team_players = []
+        for p in t.get("players", []):
+            slug = p.get("br_slug")
+            avg = player_avgs.get(slug) if slug else None
+            pdata = dict(p)
+            pdata["stats"] = {k: round(avg[k] or 0, 1) for k in STAT_KEYS} if avg else None
+            team_players.append(pdata)
+            if t.get("is_my_team"):
+                my_players.append(pdata)
+            if slug:
+                slugs.append(slug)
+        all_team_stats[tid] = {
+            "name": t.get("name"), "team_id": tid, "is_my_team": bool(t.get("is_my_team")),
+            "stats": _stats_from_slugs(slugs), "slugs": slugs, "players": team_players,
+            "wins": t.get("wins", 0), "losses": t.get("losses", 0), "standing": t.get("standing"),
+        }
+
+    my_stats = all_team_stats.get(my_team_id, {}).get("stats", {}) if my_team_id else {}
+    my_slugs = all_team_stats.get(my_team_id, {}).get("slugs", []) if my_team_id else []
+
+    # Per-player z-scores (population = all rostered players)
+    all_rostered = [s for d in all_team_stats.values() for s in d["slugs"]]
+    _lvs = {k: [] for k in Z_KEYS}
+    for s in all_rostered:
+        a = player_avgs.get(s)
+        if not a:
+            continue
+        for k in Z_KEYS:
+            v = a.get(k)
+            if v is not None:
+                _lvs[k].append(float(v))
+    _lz = {}
+    for k, vals in _lvs.items():
+        if len(vals) < 2:
+            continue
+        m = sum(vals) / len(vals)
+        sd = _math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals))
+        _lz[k] = (m, max(sd, 0.001))
+
+    def _pz(slug):
+        a = player_avgs.get(slug)
+        if not a:
+            return None
+        z = {}
+        for k, (m, sd) in _lz.items():
+            v = a.get(k)
+            if v is None:
+                continue
+            raw = (float(v) - m) / sd
+            z[k] = round(-raw if k == "tov" else raw, 2)
+        z["total"] = round(sum(z.values()), 2)
+        return z
+
+    for p in my_players:
+        if p.get("br_slug"):
+            p["z_scores"] = _pz(p["br_slug"])
+
+    my_cat_z = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key:
+            continue
+        my_cat_z[cat] = round(sum(p.get("z_scores", {}).get(key, 0)
+                                  for p in my_players if p.get("z_scores")), 2)
+
+    # Per-team z-scores from aggregated team stats
+    _tz_vals = {k: [d["stats"][k] for d in all_team_stats.values()
+                    if d["stats"].get(k) is not None] for k in Z_KEYS}
+    _tz = {}
+    for k, vals in _tz_vals.items():
+        if len(vals) < 2:
+            continue
+        m = sum(vals) / len(vals)
+        sd = _math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals))
+        _tz[k] = (m, max(sd, 0.001))
+    for d in all_team_stats.values():
+        tcz = {}
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key or key not in _tz:
+                continue
+            v = d["stats"].get(key)
+            if v is None:
+                continue
+            m, sd = _tz[key]
+            raw = (v - m) / sd
+            tcz[cat] = round(-raw if key == "tov" else raw, 2)
+        d["cat_z"] = tcz
+
+    cat_ranks = {}
+    for cat in tracked_cats:
+        key = stat_name_map.get(cat)
+        if not key:
+            continue
+        neg = cat in NEG
+        all_vals = [d["stats"].get(key, 0) for d in all_team_stats.values()]
+        my_val = my_stats.get(key, 0)
+        rank = sum(1 for v in all_vals if (v < my_val if neg else v > my_val)) + 1
+        cat_ranks[cat] = {"rank": rank, "total": len(all_team_stats), "key": key}
+
+    def _cat_winner(s1, s2):
+        w1 = w2 = 0
+        for cat in tracked_cats:
+            key = stat_name_map.get(cat)
+            if not key:
+                continue
+            v1, v2 = s1.get(key, 0), s2.get(key, 0)
+            if abs(v1 - v2) < 1e-6:
+                continue
+            neg = cat in NEG
+            if (v1 < v2 if neg else v1 > v2):
+                w1 += 1
+            else:
+                w2 += 1
+        return w1, w2
+
+    proj_w = {tid: 0 for tid in all_team_stats}
+    proj_l = {tid: 0 for tid in all_team_stats}
+    for (h, a) in (schedule_pairs or []):
+        h, a = str(h), str(a)
+        if h not in all_team_stats or a not in all_team_stats:
+            continue
+        hw, aw = _cat_winner(all_team_stats[h]["stats"], all_team_stats[a]["stats"])
+        if hw > aw:
+            proj_w[h] += 1; proj_l[a] += 1
+        elif aw > hw:
+            proj_w[a] += 1; proj_l[h] += 1
+    for tid, d in all_team_stats.items():
+        tw = d.get("wins", 0) + proj_w[tid]
+        tl = d.get("losses", 0) + proj_l[tid]
+        d["proj_wins"] = tw
+        d["proj_losses"] = tl
+        d["proj_win_pct"] = round(tw / (tw + tl + 0.0001), 3) if (tw + tl) > 0 else None
+
+    return {
+        "my_roster": my_players, "my_stats": my_stats, "my_slugs": my_slugs,
+        "my_cat_z": my_cat_z, "teams": list(all_team_stats.values()),
+        "cat_ranks": cat_ranks, "scoring_type": scoring_type, "point_values": point_values,
+        "tracked_cats": tracked_cats, "neg_cats": list(NEG), "stat_name_map": stat_name_map,
+    }
+
+
 @fantasy_router.get("/fantrax/roster-analysis")
 def fantrax_roster_analysis(current_user: str = Depends(get_current_user)):
     """Return my Fantrax roster + every team's roster in the ESPN roster-analysis
@@ -7986,13 +8174,6 @@ def fantrax_roster_analysis(current_user: str = Depends(get_current_user)):
         m = rfprocess.extractOne(name, all_names, score_cutoff=80)
         return name_to_slug[m[0]] if m else None
 
-    def _stats_of(slug):
-        avg = player_avgs.get(slug) if slug else None
-        if not avg:
-            return None
-        return {k: round(avg[k] or 0, 1) for k in
-                ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fg_pct", "ft_pct", "fga_pg", "fta_pg"]}
-
     try:
         client = client_from_row(fc)
         standings = client.standings()
@@ -8005,44 +8186,69 @@ def fantrax_roster_analysis(current_user: str = Depends(get_current_user)):
     if my_team_id and my_team_id not in teams_map:
         teams_map[my_team_id] = {"name": "My Team", "short_name": ""}
 
-    my_players = []
-    teams_out  = []
+    teams_input = []
     for tid, tinfo in teams_map.items():
         try:
             roster = client.team_roster(str(tid))
             players = parse_roster(roster)
         except (FantraxError, FantraxNotLoggedIn):
             players = []
-        team_players = []
-        for p in players:
-            slug = _resolve_slug(p.get("name"))
-            team_players.append({
-                "espn_name": p.get("name"),        # reuse field name for RosterAnalysis
-                "br_slug":   slug,
-                "fantrax_fppg": p.get("fantasy_points_per_game"),
-                "stats":     _stats_of(slug),
-            })
-        is_mine = (str(tid) == my_team_id)
-        if is_mine:
-            my_players = team_players
-        teams_out.append({
+        team_players = [{
+            "espn_name":    p.get("name"),        # reuse field name for RosterAnalysis
+            "br_slug":      _resolve_slug(p.get("name")),
+            "fantrax_fppg": p.get("fantasy_points_per_game"),
+        } for p in players]
+        teams_input.append({
             "team_id":    str(tid),
             "name":       tinfo.get("name") or tinfo.get("short_name") or str(tid),
-            "is_my_team": is_mine,
+            "is_my_team": (str(tid) == my_team_id),
             "players":    team_players,
         })
 
-    return {
-        "my_roster":     my_players,
-        "my_stats":      {},
-        "teams":         teams_out,
-        "cat_ranks":     {},
-        "scoring_type":  scoring_type,
-        "point_values":  point_values,
-        "tracked_cats":  tracked_cats,
-        "neg_cats":      ["TO"],
-        "stat_name_map": stat_name_map,
-    }
+    return _compute_roster_analysis(
+        teams_input, player_avgs, tracked_cats, stat_name_map,
+        neg_cats=["TO"], scoring_type=scoring_type, point_values=point_values,
+    )
+
+
+@fantasy_router.get("/fantrax/standings")
+def fantrax_standings(current_user: str = Depends(get_current_user)):
+    """Return the league's actual Fantrax standings (columns + rows) as shown on
+    Fantrax — not a projection. Column set is whatever the league's standings
+    table defines (W/L/T, points for/against, etc.)."""
+    from fantrax import client_from_row, parse_standings, FantraxError, FantraxNotLoggedIn
+    conn = get_conn()
+    fc = conn.execute(
+        "SELECT access_token, league_key, team_key FROM fantasy_connections "
+        "WHERE username=? AND provider='fantrax'", [current_user]
+    ).fetchone()
+    conn.close()
+    if not fc or not fc["league_key"]:
+        raise HTTPException(status_code=404, detail="No Fantrax league connected")
+    try:
+        client = client_from_row(fc)
+        standings = client.standings()
+    except FantraxNotLoggedIn:
+        raise HTTPException(status_code=401, detail="Fantrax session expired — reconnect in Account.")
+    except FantraxError as e:
+        raise HTTPException(status_code=502, detail=f"Fantrax error: {e}")
+
+    columns = []
+    for table in standings.get("tableList", []) or []:
+        if table.get("caption") == "Standings":
+            for h in (table.get("header") or {}).get("cells", []) or []:
+                columns.append({
+                    "key":   h.get("key") or h.get("shortName"),
+                    "name":  h.get("name"),
+                    "short": h.get("shortName"),
+                })
+            break
+
+    my_team_id = str(fc["team_key"]) if fc["team_key"] else None
+    rows = parse_standings(standings)
+    for r in rows:
+        r["is_my_team"] = (str(r.get("team_id")) == my_team_id)
+    return {"columns": columns, "rows": rows}
 
 
 # ── League History ─────────────────────────────────────────────────────────────
@@ -10465,6 +10671,23 @@ def get_my_nba_teams(current_user: str = Depends(get_current_user)):
                     logger.warning("my-nba-teams: ESPN timed out after 12s")
                 except Exception:
                     logger.exception("my-nba-teams: ESPN error")
+
+        elif provider == "fantrax":
+            from fantrax import client_from_row, parse_roster, FantraxError, FantraxNotLoggedIn
+            frow = conn.execute(
+                "SELECT access_token, league_key, team_key FROM fantasy_connections "
+                "WHERE username=? AND provider='fantrax'", [current_user]
+            ).fetchone()
+            try:
+                client = client_from_row(frow)
+                roster = client.team_roster(str(team_key))
+                for p in parse_roster(roster):
+                    m = rfprocess.extractOne(p.get("name") or "", all_names, score_cutoff=80)
+                    slug = name_to_slug[m[0]] if m else None
+                    if slug and slug in slug_to_team:
+                        teams.add(slug_to_team[slug])
+            except (FantraxError, FantraxNotLoggedIn):
+                logger.warning("my-nba-teams: Fantrax fetch failed")
     except Exception:
         logger.exception("my-nba-teams: error")
     finally:

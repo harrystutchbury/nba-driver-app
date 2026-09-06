@@ -8573,6 +8573,50 @@ function LeagueHistory() {
   )
 }
 
+function FantraxStandings() {
+  const [data, setData] = useState(undefined)
+  useEffect(() => {
+    apiFetch('/api/fantasy/fantrax/standings')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setData)
+      .catch(() => setData(null))
+  }, [])
+  if (data === undefined) return <div className="dash-empty">Loading standings…</div>
+  if (!data) return <div className="login-error" style={{margin:24}}>Failed to load Fantrax standings — try reconnecting in Account.</div>
+  const { columns = [], rows = [] } = data
+  if (!rows.length) return (
+    <div className="fantasy-wrap"><div className="fantasy-connect-card">
+      <h2 className="fantasy-connect-title">No standings yet</h2>
+      <p className="fantasy-connect-sub">Standings will appear once your league is drafted and games are played.</p>
+    </div></div>
+  )
+  return (
+    <div className="fantasy-wrap">
+      <div className="ra-section-title" style={{marginTop:0}}>Standings</div>
+      <div className="dash-card" style={{overflowX:'auto'}}>
+        <table className="dash-table ra-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              {columns.map(c => <th key={c.key} title={c.name || ''}>{c.short || c.name || c.key}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.team_id || i} className={r.is_my_team ? 'fantasy-my-team' : ''}>
+                <td>{r.rank ?? i + 1}</td>
+                <td className="ra-player-name">{r.name}{r.is_my_team ? ' (you)' : ''}</td>
+                {columns.map(c => <td key={c.key}>{r[c.key] ?? '—'}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
   const [status,        setStatus]      = useState(null)
   const [tab,           setTab]         = useState(initialTab)
@@ -8759,14 +8803,15 @@ function FantasyPage({ onSelectPlayer, initialTab = 'dashboard' }) {
         : !rosterData ? <div className="dash-empty">Loading…</div>
         : <RosterAnalysis data={rosterData} dwData={dwData} dwErr={dwErr} freeAgents={freeAgents} onSelectPlayer={onSelectPlayer} />
       )}
-      {tab !== 'roster' && (
+      {tab === 'standings' && <FantraxStandings />}
+      {(tab === 'dashboard' || tab === 'matchup' || tab === 'trade' || tab === 'history') && (
         <div className="fantasy-wrap">
           <div className="fantasy-connect-card">
-            <h2 className="fantasy-connect-title">Fantrax — Roster tab</h2>
+            <h2 className="fantasy-connect-title">Coming soon for Fantrax</h2>
             <p className="fantasy-connect-sub">
-              Fantrax support currently covers the <strong>Roster</strong> tab (points scoring).
-              Standings, matchup and trade views come next. If your roster looks empty, your
-              league may not be drafted yet.
+              Fantrax currently supports the <strong>Roster</strong> and <strong>Standings</strong> tabs.
+              The matchup, trade and dashboard views are on the way. If a view looks empty, your league
+              may not be drafted yet.
             </p>
           </div>
         </div>
